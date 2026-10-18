@@ -99,6 +99,9 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units .names.check { flex-direction:column; flex-wrap:nowrap; gap:1px; max-height:60vh; }
 .units .names.check label { display:flex; gap:6px; align-items:center; font:12px system-ui, sans-serif; padding:1px 0; }
 .units table.vals tr.changed td { color:var(--chg); font-weight:bold; }
+.units table.vals td.sparkcell { padding:1px 4px; width:94px; }
+.units svg.spark { display:block; }
+.units svg.spark polyline { fill:none; stroke:var(--accent); stroke-width:1; vector-effect:non-scaling-stroke; }
 .db .bar input.wide { max-width:520px; }
 .db .names { max-height:30vh; }
 .db h2.sub, .units h2.sub { font-size:15px; margin:16px 0 6px; }
@@ -564,7 +567,7 @@ function liveStart() {
   if (!groups.length) { alert('Tick at least one measurement group.'); return; }
   stopLive();
   const step = {cmd: {action: 'measurement_live'}, label: `Live · ${groups.length} group${groups.length > 1 ? 's' : ''}`,
-    live: true, running: true, interval: 1000, groups, data: {}};
+    live: true, running: true, interval: 1000, groups, data: {}, history: {}};
   unitPath = [...unitPath, step];
   renderUnitDetail();
   liveLoop(step);
@@ -583,6 +586,15 @@ async function liveLoop(step) {
           const rows = resultRows(await bridge({action: 'read_measurement_group', group: g, address: u.id}));
           const prev = step.data[g] && step.data[g].rows;
           if (prev) { const was = new Map(prev.map(r => [r.name, r.value])); rows.forEach(r => r.changed = was.has(r.name) && was.get(r.name) !== r.value); }
+          const hist = step.history[g] || (step.history[g] = {});  // numeric samples per parameter, for a sparkline
+          rows.forEach(r => {
+            const s = String(r.value).trim().replace(',', '.'), num = parseFloat(s);
+            if (/^[+-]?\d/.test(s) && isFinite(num)) {
+              const h = hist[r.name] || (hist[r.name] = []);
+              h.push(num); if (h.length > 60) h.shift();
+              r.hist = h;
+            }
+          });
           step.data[g] = {rows};
         } catch (e) { step.data[g] = {err: e.message}; }
         renderLive(step);
@@ -609,14 +621,23 @@ function liveHTML(step) {
 
 function liveTable(step) {
   return step.groups.map(g => {
-    const d = step.data[g], head = `<tr><th colspan="3">${esc(g)}</th></tr>`;
-    if (!d) return `<table class="vals">${head}<tr><td colspan="3" class="meta">reading…</td></tr></table>`;
-    if (d.err) return `<table class="vals">${head}<tr class="err"><td colspan="3">${esc(d.err)}</td></tr></table>`;
+    const d = step.data[g], head = `<tr><th colspan="4">${esc(g)}</th></tr>`;
+    if (!d) return `<table class="vals">${head}<tr><td colspan="4" class="meta">reading…</td></tr></table>`;
+    if (d.err) return `<table class="vals">${head}<tr class="err"><td colspan="4">${esc(d.err)}</td></tr></table>`;
     const rows = d.rows.length ? d.rows.map(r =>
-      `<tr class="${r.changed ? 'changed' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}</td><td>${esc(r.unit || '')}</td></tr>`).join('')
-      : `<tr><td colspan="3" class="meta">no values</td></tr>`;
+      `<tr class="${r.changed ? 'changed' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}</td><td>${esc(r.unit || '')}</td><td class="sparkcell">${sparkline(r.hist)}</td></tr>`).join('')
+      : `<tr><td colspan="4" class="meta">no values</td></tr>`;
     return `<table class="vals">${head}${rows}</table>`;
   }).join('');
+}
+
+// A small inline-SVG line of a numeric parameter's recent samples, auto-scaled to its own range.
+function sparkline(h) {
+  if (!h || h.length < 2) return '';
+  const w = 90, ht = 18, min = Math.min(...h), max = Math.max(...h), span = max - min || 1;
+  const pts = h.map((v, i) => `${(i / (h.length - 1) * (w - 2) + 1).toFixed(1)},${(ht - 1 - (v - min) / span * (ht - 2)).toFixed(1)}`).join(' ');
+  return `<svg class="spark" width="${w}" height="${ht}" viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none">
+    <title>${h.length} samples · min ${min} · max ${max} · now ${h[h.length - 1]}</title><polyline points="${pts}"/></svg>`;
 }
 
 function liveStop() { const s = curStep(); if (s && s.live) { s.running = false; renderUnitDetail(); } }
