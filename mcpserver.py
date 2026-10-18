@@ -1,4 +1,5 @@
 # C:\ProgramData\OE\macros\mcpserver.py
+# -*- coding: utf-8 -*-
 # ODIS Jython TCP bridge for the external MCP server.
 # Do NOT put MCP server code in this file.
 #

@@ -1,4 +1,5 @@
 # C:\ProgramData\OE\macros\mcpserver_handlers.py
+# -*- coding: utf-8 -*-
 # Actions of the ODIS Jython TCP bridge. mcpserver.py runs the TCP server and reloads
 # this file whenever it changes, so actions can be added or fixed without restarting ODIS.
 #
@@ -1474,7 +1475,7 @@ def _experimental_job(kind, path):
     """The body of an experimental flash/dataset job: it reports progress without writing anything,
     then stops with a clear message, because the real ODIS flash/SVM API is not wired yet."""
     def job(progress):
-        for pct, msg in [(5, "Experimental %s — nothing is written to the unit." % kind),
+        for pct, msg in [(5, "Experimental %s - nothing is written to the unit." % kind),
                          (25, "Checking the file: %s" % path),
                          (55, "This is where a programming session would open."),
                          (80, "This is where the file would be transferred.")]:
