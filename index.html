@@ -460,7 +460,7 @@ function dtcGuidance(code, text) {
 function dtcGuidanceHTML(code, text, idx) {
   return `<div class="guide"><b>General guidance</b> <span class="meta">(generic, not ODIS guided fault finding)</span>
     <ul>${dtcGuidance(code, text).map(s => `<li>${esc(s)}</li>`).join('')}</ul>
-    <button onclick="odisGuidance('${esc(code)}', ${idx})">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
+    <button onclick="odisGuidance('${esc(code)}', '${idx}')">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
     <div id="guide${idx}" class="meta"></div></div>`;
 }
 async function odisGuidance(code, idx) {
@@ -479,7 +479,7 @@ async function odisGuidance(code, idx) {
     el.innerHTML = `ODIS has no guided documents yet — guided fault finding needs the vehicle identified and started in ODIS.
       <div class="meta">Detected vehicle project: <b>${esc(vp.current || 'none')}</b>${vp.change_allowed === false ? ' · locked (change it in ODIS)' : ''}</div>
       ${vp.change_allowed ? `<div class="bar"><input id="vp${idx}" placeholder="vehicle project, e.g. VW37X" value="${esc(vp.current || '')}">
-        <button onclick="setVehicle(${idx}, '${esc(code)}')">Set vehicle & retry</button></div>`
+        <button onclick="setVehicle('${idx}', '${esc(code)}')">Set vehicle & retry</button></div>`
         : '<div class="meta">In ODIS: identify the vehicle (or pick it manually) and open Guided Fault Finding, then retry.</div>'}`;
   } catch (e) { el.textContent = e.message; }
 }
@@ -1208,14 +1208,30 @@ function renderDtc() {
   if (odxLoc && !dtcList) html = `<div class="meta">Loading ${esc(odxLoc.label)}…</div>`;
   if (dtcList) {
     const real = dtcList.filter(d => d.code);
+    // Each DTC expands to the same guidance as the units event memory: general (code-based) steps
+    // and, on demand, ODIS guided fault finding. Guidance is built when a code is opened.
     html = `<h1>${esc(odxLoc.label)} <small class="meta">${real.length} trouble codes</small></h1>
       ${real.length ? '' : '<div class="meta">This data defines no trouble codes. Base data usually has none: pick a variant above.</div>'}
-      <input type="text" placeholder="Search code or text, e.g. P0122 or throttle" oninput="filterRows(this)">
-      <table class="vals"><tr><th>Code</th><th>Text</th><th>Level</th><th>Number</th></tr>${real.map(d => `<tr>
-        <td class="mono">${esc(d.code)}</td><td>${esc(d.text || '')}</td><td>${d.level}</td>
-        <td class="mono">${d.number} (0x${d.number.toString(16).toUpperCase()})</td></tr>`).join('')}</table>`;
+      <input type="text" placeholder="Search code or text, e.g. P0122 or throttle" oninput="filterDtc(this)">
+      <div class="dtclist">${real.map((d, i) => `<details class="event" ontoggle="dtcFill(this)"
+        data-code="${esc(d.code)}" data-text="${esc(d.text || '')}" data-idx="dtc${i}">
+        <summary><span class="mono">${esc(d.code)}</span> ${esc(d.text || '')}
+          <span class="meta">level ${d.level} · ${d.number} (0x${d.number.toString(16).toUpperCase()})</span></summary></details>`).join('')}</div>`;
   }
   $('#dtcBody').innerHTML = html;
+}
+// Fills a DTC's guidance the first time it is opened (the catalog can hold hundreds of codes).
+function dtcFill(el) {
+  if (el.open && !el.dataset.filled) {
+    el.dataset.filled = '1';
+    el.insertAdjacentHTML('beforeend', dtcGuidanceHTML(el.dataset.code, el.dataset.text, el.dataset.idx));
+  }
+}
+function filterDtc(input) {
+  const q = input.value.trim().toLowerCase();
+  input.nextElementSibling.querySelectorAll('details').forEach(d => {
+    d.hidden = q && !(d.querySelector('summary').textContent.toLowerCase().includes(q));
+  });
 }
 
 // Hides the rows of the table following the filter input that do not contain its text.

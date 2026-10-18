@@ -978,7 +978,7 @@ def maybe_login(diag, handle, cmd):
         if not mode:
             modes = list(diag.getShortNamesOfAccessModes(handle))
             mode = modes[0] if modes else ""
-        diag.securityAccess(handle, mode, unicode(code))
+        diag.securityAccess(handle, unicode(code), mode)
 
 
 def gated_connection(cmd):
@@ -1065,7 +1065,7 @@ def handle_login(cmd):
         modes = list(diag.getShortNamesOfAccessModes(h))
         mode = cmd.get("mode") or (modes[0] if modes else "")
         return {"ok": True, "mode": mode, "modes": [unicode(x) for x in modes],
-                "result": to_data(diag.securityAccess(h, mode, unicode(value)))}
+                "result": to_data(diag.securityAccess(h, unicode(value), mode))}
     # Open the link for the whole call; note the unlock is dropped when it closes, so a coding or
     # adaptation write must carry the login itself to be unlocked on its own connection.
     return with_open_connection(cmd, run)
