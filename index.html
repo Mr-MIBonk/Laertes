@@ -546,7 +546,7 @@ async function codingWrite() {
   if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
   step.writeMsg = 'Writing coding to the unit…'; step.writeErr = false; renderUnitDetail();
   try {
-    await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to});
+    await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to, login: loginCodes[u.id]});
     // Read the coding back from the unit and confirm it matches what we intended to write.
     step.writeMsg = 'Coding written. Reading it back to verify…'; renderUnitDetail();
     const res = await bridge({action: 'read_coding', address: u.id});
@@ -655,7 +655,7 @@ async function adaptWrite() {
   if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
   step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
   try {
-    await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values});
+    await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
     step.writeMsg = 'Adaptation written to the unit. Re-open the channel to confirm.';
   } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
   renderUnitDetail();
@@ -777,12 +777,14 @@ function openDtcCatalog() {
 function unitStart(i) { unitPath = []; unitRun(...UNIT_ACTIONS[i]); }
 // Security-access login: unlocks elevated mode so coding and adaptation writes are accepted.
 // The webpage only passes the login value; ODIS performs the access handshake for this unit.
+let loginCodes = {};  // per-unit login value, sent with each write so the unit unlocks on the same connection
 function unitLogin() {
   const u = units.find(u => u.index === unitSel);
-  const code = prompt(`Login value for ${u.sname} ${u.id}.\nODIS runs the security access for this unit and unlocks elevated mode.`, '');
+  const code = prompt(`Login value for ${u.sname} ${u.id}.\n\nIt is remembered and sent with each coding/adaptation write, so the unit is unlocked on the same connection as the write (a separate login does not persist — ODIS opens and closes a link per operation).\n\nLeave empty to clear.`, loginCodes[u.id] || '');
   if (code === null) return;
   const value = code.trim();
-  if (!value) { alert('Enter a login value.'); return; }
+  if (!value) { delete loginCodes[u.id]; alert('Login value cleared.'); return; }
+  loginCodes[u.id] = value;
   unitPath = []; unitRun({action: 'login', code: value}, 'Login');
 }
 function unitClearDtcs() {

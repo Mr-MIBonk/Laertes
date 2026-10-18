@@ -948,14 +948,57 @@ def handle__debug(cmd):
 # --- Writing coding and adaptation, security access ---------------------------------------
 # These change the control unit. The web UI confirms each change (old -> new) before calling.
 
+def with_open_connection(cmd, fn):
+    """Like with_connection, but keeps one link open for the whole call so a security-access
+    login and the operation that needs it run on the same connection. ODIS otherwise opens and
+    closes a fresh link per operation, which drops the unlock before the write."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    address = parse_address(cmd)
+    diag = Factory.getInstance()
+    handle = diag.connectToEcu(address).getConnectionHandle()
+    diag.openConnection(handle)
+    try:
+        return checked(fn(diag, handle))
+    finally:
+        try:
+            diag.closeConnection(handle)
+        except (Exception, Throwable):
+            pass
+
+
+def maybe_login(diag, handle, cmd):
+    """On an open connection: optional diagnostic-session switch, then security access, when the
+    command carries a login value. Lets a write unlock the unit on its own connection."""
+    session = cmd.get("session")
+    if session:
+        diag.switchSession(handle, session)
+    code = cmd.get("login")
+    if code is not None:
+        mode = cmd.get("mode")
+        if not mode:
+            modes = list(diag.getShortNamesOfAccessModes(handle))
+            mode = modes[0] if modes else ""
+        diag.securityAccess(handle, mode, unicode(code))
+
+
+def gated_connection(cmd):
+    """with_open_connection when a login/session is requested (so the unlock holds through the
+    write), otherwise the default per-operation with_connection."""
+    return with_open_connection if (cmd.get("login") is not None or cmd.get("session")) else with_connection
+
+
 def handle_write_byte_coding(cmd):
     """Writes byte coding to a subsystem. name is the subsystem (systemName from read_coding,
-    e.g. "master"); coding is the hex string in the same form read_coding returns."""
+    e.g. "master"); coding is the hex string in the same form read_coding returns. An optional
+    login (and optional mode/session) performs security access on the same connection first."""
     name = cmd.get("name") or "master"
     coding = cmd.get("coding")
     if not coding:
         return {"ok": False, "error": "missing coding hex string"}
-    return with_connection(cmd, lambda diag, h: {"ok": True, "result": to_data(diag.writeByteCoding(h, name, coding))})
+    def run(diag, h):
+        maybe_login(diag, h, cmd)
+        return {"ok": True, "result": to_data(diag.writeByteCoding(h, name, coding))}
+    return gated_connection(cmd)(cmd, run)
 
 
 def handle_read_adaptation_values(cmd):
@@ -976,7 +1019,10 @@ def handle_write_adaptation(cmd):
     m = HashMap()
     for k, v in values.items():
         m.put(k, v)
-    return with_connection(cmd, lambda diag, h: {"ok": True, "result": to_data(diag.writeAdaptation(h, channel, m))})
+    def run(diag, h):
+        maybe_login(diag, h, cmd)
+        return {"ok": True, "result": to_data(diag.writeAdaptation(h, channel, m))}
+    return gated_connection(cmd)(cmd, run)
 
 
 def handle_list_access_modes(cmd):
@@ -991,12 +1037,16 @@ def handle_login(cmd):
     if value is None:
         value = cmd.get("value") or ""
     def run(diag, h):
-        mode = cmd.get("mode")
-        if not mode:
-            modes = list(diag.getShortNamesOfAccessModes(h))
-            mode = modes[0] if modes else ""
-        return {"ok": True, "mode": mode, "result": to_data(diag.securityAccess(h, mode, unicode(value)))}
-    return with_connection(cmd, run)
+        session = cmd.get("session")
+        if session:
+            diag.switchSession(h, session)
+        modes = list(diag.getShortNamesOfAccessModes(h))
+        mode = cmd.get("mode") or (modes[0] if modes else "")
+        return {"ok": True, "mode": mode, "modes": [unicode(x) for x in modes],
+                "result": to_data(diag.securityAccess(h, mode, unicode(value)))}
+    # Open the link for the whole call; note the unlock is dropped when it closes, so a coding or
+    # adaptation write must carry the login itself to be unlocked on its own connection.
+    return with_open_connection(cmd, run)
 
 
 # --- Guided fault finding (GFS) -----------------------------------------------------------
