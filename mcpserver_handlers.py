@@ -1303,6 +1303,34 @@ def handle_reset_vci(cmd):
     return with_database(reset)
 
 
+def handle_ignition_change(cmd):
+    """Triggers an ODIS ignition change, which wakes the bus (the closest the automation API has to
+    a key turn; there is no set-to-position-0/1/2 call). Reports the clamp 15/30 state afterwards."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+
+    def run():
+        diag = Factory.getInstance()
+        out = {"ok": True, "changed": diag.performIgnitionChange()}
+        for k, fn in (("clamp15", diag.getClamp15State), ("clamp30", diag.getClamp30State)):
+            try:
+                out[k] = unicode(fn())
+            except (Exception, Throwable):
+                pass
+        return out
+    return with_database(run)
+
+
+def handle_doip_activation(cmd):
+    """Sets the DoIP activation line on or off (the DoIP wake-up for Ethernet-diagnosed cars)."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    on = bool(cmd.get("on", True))
+
+    def run():
+        Factory.getInstance().setDoIPActivationLine(on)
+        return {"ok": True, "doip_activation": on}
+    return with_database(run)
+
+
 def handle_vehicle_projects(cmd):
     """The current vehicle project and whether it can be changed, plus any selectable projects
     ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
@@ -1392,11 +1420,12 @@ def handle_service_methods(cmd):
             context.ungetService(ref)
 
 
-# --- Long-running jobs with progress (flash firmware, load dataset) ------------------------
+# --- Long-running jobs with progress (flash firmware / load dataset) -----------------------
 # These operations take minutes, so they run in a background thread and the web page polls
-# "job_status" for progress. One runs at a time on the vehicle (DIAG_LOCK), like every other
-# unit operation. EXPERIMENTAL: the flash/dataset ODIS API is not wired yet, so the job reports
-# progress and then stops without writing to the unit.
+# "job_status" for progress (percent, the text ODIS reports, and a phase). One runs at a time on
+# the vehicle (DIAG_LOCK). Flashing is driven through the ODIS programming API
+# (IProgrammingConfigReader + IProgrammingConfigExecutor). EXPERIMENTAL / UNTESTED: a wrong or
+# interrupted flash can leave a unit inoperable; recovery may need an online VW/ODIS SVM session.
 
 _JOBS = {}
 _JOBS_LOCK = threading.Lock()
@@ -1407,11 +1436,12 @@ def _new_job():
     with _JOBS_LOCK:
         _job_seq[0] += 1
         jid = "job%d" % _job_seq[0]
-        _JOBS[jid] = {"status": "running", "percent": 0, "message": "starting", "result": None, "error": None}
+        _JOBS[jid] = {"status": "running", "percent": 0, "message": "starting", "phase": "prepare",
+                      "result": None, "error": None, "cancel": False}
     return jid
 
 
-def _job_set(jid, percent=None, message=None):
+def _job_set(jid, percent=None, message=None, phase=None):
     with _JOBS_LOCK:
         j = _JOBS.get(jid)
         if j is None:
@@ -1420,6 +1450,14 @@ def _job_set(jid, percent=None, message=None):
             j["percent"] = percent
         if message is not None:
             j["message"] = message
+        if phase is not None:
+            j["phase"] = phase
+
+
+def _job_cancelled(jid):
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        return bool(j and j["cancel"])
 
 
 def _job_finish(jid, result=None, error=None):
@@ -1435,15 +1473,16 @@ def _job_finish(jid, result=None, error=None):
 
 
 def run_background(fn):
-    """Starts fn(progress) in a daemon thread and returns the job id. fn gets progress(percent,
-    message). The job holds DIAG_LOCK for its lifetime, so no other vehicle operation overlaps."""
+    """Starts fn(progress, job_id) in a daemon thread and returns the job id. progress(percent,
+    message, phase) updates it. The job holds DIAG_LOCK for its lifetime, so no other vehicle
+    operation overlaps."""
     jid = _new_job()
 
     def worker():
-        progress = lambda p, m=None: _job_set(jid, p, m)
+        progress = lambda p, m=None, ph=None: _job_set(jid, p, m, ph)
         DIAG_LOCK.acquire()
         try:
-            _job_finish(jid, result=fn(progress))
+            _job_finish(jid, result=fn(progress, jid))
         except (Exception, Throwable) as e:
             traceback.print_exc()
             _job_finish(jid, error=error_text(e))
@@ -1457,13 +1496,14 @@ def run_background(fn):
 
 
 def handle_job_status(cmd):
-    """Progress of a background job started by flash_firmware / upload_dataset."""
+    """Progress of a background job (flash_run): percent, the latest text from ODIS, phase and state."""
     jid = cmd.get("job_id")
     with _JOBS_LOCK:
         j = _JOBS.get(jid)
         if j is None:
             return {"ok": False, "error": "no such job: %s" % jid}
-        out = {"ok": True, "job_id": jid, "status": j["status"], "percent": j["percent"], "message": j["message"]}
+        out = {"ok": True, "job_id": jid, "status": j["status"], "percent": j["percent"],
+               "message": j["message"], "phase": j["phase"], "cancel_requested": j["cancel"]}
         if j["status"] == "done":
             out["result"] = j["result"]
         if j["status"] == "error":
@@ -1471,37 +1511,101 @@ def handle_job_status(cmd):
         return out
 
 
-def _experimental_job(kind, path):
-    """The body of an experimental flash/dataset job: it reports progress without writing anything,
-    then stops with a clear message, because the real ODIS flash/SVM API is not wired yet."""
-    def job(progress):
-        for pct, msg in [(5, "Experimental %s - nothing is written to the unit." % kind),
-                         (25, "Checking the file: %s" % path),
-                         (55, "This is where a programming session would open."),
-                         (80, "This is where the file would be transferred.")]:
-            progress(pct, msg)
-            time.sleep(0.4)
-        raise Exception("%s is not implemented in this build (experimental). The ODIS flash/SVM API "
-                        "must be wired before this can run for real; nothing was written." % kind)
-    return job
+def handle_flash_cancel(cmd):
+    """Requests cancellation of a flash job. It is honored only before the actual programming
+    starts; once the unit is being written, ODIS's executor cannot be interrupted safely, so the
+    flag is recorded but the flash runs to completion."""
+    jid = cmd.get("job_id")
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None:
+            return {"ok": False, "error": "no such job: %s" % jid}
+        j["cancel"] = True
+        return {"ok": True, "job_id": jid, "phase": j["phase"]}
 
 
-def handle_flash_firmware(cmd):
-    """EXPERIMENTAL / UNTESTED. Intended to flash firmware to the unit at "address" from the file
-    at "file" (a path on the ODIS PC). Not wired yet: reports progress and stops without writing."""
-    address, path = cmd.get("address"), cmd.get("file") or cmd.get("path")
-    if not address or not path:
-        return {"ok": False, "error": "flash_firmware needs address and file"}
-    return {"ok": True, "job_id": run_background(_experimental_job("Firmware flashing", path))}
+FLASH_READER = "de.volkswagen.odis.vaudas.diag.flash.IProgrammingConfigReader"
+FLASH_EXECUTOR = "de.volkswagen.odis.vaudas.diag.flash.IProgrammingConfigExecutor"
 
 
-def handle_upload_dataset(cmd):
-    """EXPERIMENTAL / UNTESTED. Intended to load a dataset into the unit at "address" from the file
-    at "file" (a path on the ODIS PC). Not wired yet: reports progress and stops without writing."""
-    address, path = cmd.get("address"), cmd.get("file") or cmd.get("path")
-    if not address or not path:
-        return {"ok": False, "error": "upload_dataset needs address and file"}
-    return {"ok": True, "job_id": run_background(_experimental_job("Dataset upload", path))}
+def _read_programming_config(context, path):
+    from java.io import File
+    reader, ref = gfs_service(context, FLASH_READER)
+    try:
+        if reader is None:
+            raise Exception("IProgrammingConfigReader not available")
+        f = File(path)
+        if not f.exists():
+            raise Exception("file not found on the ODIS PC: %s" % path)
+        return reader.read(f)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
+def handle_flash_config(cmd):
+    """Reads and validates an ODIS programming configuration file (read-only, nothing is written):
+    returns its diagnostic system and programming steps so the flash can be checked before running."""
+    path = cmd.get("file") or cmd.get("path")
+    if not path:
+        return {"ok": False, "error": "flash_config needs a file"}
+
+    def read():
+        content = _read_programming_config(get_context(), path)
+        return {"ok": True, "file": path, "content": to_data(content)}
+    return with_database(read)
+
+
+def handle_flash_run(cmd):
+    """EXPERIMENTAL / UNTESTED. Flashes the programming configuration file "file" to the current
+    vehicle through IProgrammingConfigExecutor.execute, reporting ODIS's progress text. The last
+    argument of execute (an int) is not documented; it defaults to 1 and can be set with
+    "repetitions". A wrong or interrupted flash can leave a unit inoperable."""
+    path = cmd.get("file") or cmd.get("path")
+    if not path:
+        return {"ok": False, "error": "flash_run needs a file"}
+    reps = int(cmd.get("repetitions", 1))
+
+    def job(progress, jid):
+        from java.io import File
+        from de.volkswagen.odis.vaudas.core.event import CallbackListener
+        context = get_context()
+        progress(3, "Reading programming configuration...", "prepare")
+        if _job_cancelled(jid):
+            return {"cancelled": True, "stage": "before reading"}
+        content = _read_programming_config(context, path)
+        if _job_cancelled(jid):
+            return {"cancelled": True, "stage": "after reading, before flashing"}
+        vehicle = session_vehicle()
+        executor, ref = gfs_service(context, FLASH_EXECUTOR)
+        try:
+            if executor is None:
+                raise Exception("IProgrammingConfigExecutor not available")
+            state = {"pct": 10}
+
+            class _Listener(CallbackListener):
+                def callbackPerformed(self, event):
+                    try:
+                        uo = event.getUserObject()
+                        text = unicode(uo)[:300] if uo is not None else "flashing..."
+                        state["pct"] = min(97, state["pct"] + 2)
+                        progress(state["pct"], text, "flashing")
+                    except (Exception, Throwable):
+                        pass
+
+                def handleException(self, e):
+                    progress(None, "ODIS reported: %s" % error_text(e), "flashing")
+
+            progress(10, "Starting programming. Do not switch off or disconnect.", "flashing")
+            result = executor.execute(vehicle, content, _Listener(), reps)
+            out = {"executed": True, "result": to_data(result)}
+            if _job_cancelled(jid):
+                out["cancel_requested"] = True
+            return out
+        finally:
+            if ref is not None:
+                context.ungetService(ref)
+    return {"ok": True, "job_id": run_background(job)}
 
 
 HANDLERS = {
@@ -1514,9 +1618,12 @@ HANDLERS = {
     "vin": handle_vin,
     "vci": handle_vci,
     "reset_vci": handle_reset_vci,
-    "flash_firmware": handle_flash_firmware,
-    "upload_dataset": handle_upload_dataset,
+    "flash_config": handle_flash_config,
+    "flash_run": handle_flash_run,
+    "flash_cancel": handle_flash_cancel,
     "job_status": handle_job_status,
+    "ignition_change": handle_ignition_change,
+    "doip_activation": handle_doip_activation,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "lookup_projects": handle_lookup_projects,

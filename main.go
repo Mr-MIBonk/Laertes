@@ -11,13 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.2.3"
+const version = "0.3.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -50,7 +51,7 @@ func main() {
 	if !*noBrowser {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 	}
-	log.Fatal(http.Serve(ln, sameOrigin(host, routes(store, *bridgeAddr))))
+	log.Fatal(http.Serve(ln, sameOrigin(host, routes(store, *bridgeAddr, filepath.Dir(*dbPath)))))
 }
 
 // adoptOldDatabase renames the database of the tool's former name (odishelper.db, with its
@@ -92,8 +93,73 @@ func sameOrigin(host string, next http.Handler) http.Handler {
 	})
 }
 
-func routes(store *Store, bridgeAddr string) http.Handler {
+func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
 	mux := http.NewServeMux()
+	// Browse the ODIS PC for a file to flash: lists one directory (folders first). Laertes runs
+	// on the same PC, so these are the paths the bridge can read.
+	mux.HandleFunc("GET /api/files", func(w http.ResponseWriter, r *http.Request) {
+		dir := r.URL.Query().Get("dir")
+		if dir == "" {
+			if h, err := os.UserHomeDir(); err == nil {
+				dir = h
+			} else {
+				dir = dataDir
+			}
+		}
+		dir = filepath.Clean(dir)
+		ents, err := os.ReadDir(dir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		type entry struct {
+			Name string `json:"name"`
+			Dir  bool   `json:"dir"`
+			Size int64  `json:"size"`
+		}
+		list := []entry{}
+		for _, e := range ents {
+			info, _ := e.Info()
+			var size int64
+			if info != nil {
+				size = info.Size()
+			}
+			list = append(list, entry{e.Name(), e.IsDir(), size})
+		}
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].Dir != list[j].Dir {
+				return list[i].Dir
+			}
+			return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name)
+		})
+		reply(w, map[string]any{"dir": dir, "parent": filepath.Dir(dir), "entries": list}, nil)
+	})
+	// Upload a file from the browser into <dataDir>/uploads and return its path on the PC, so it
+	// can be flashed. Streamed to disk; the file never has to exist on the PC beforehand.
+	mux.HandleFunc("POST /api/upload", func(w http.ResponseWriter, r *http.Request) {
+		name := filepath.Base(r.URL.Query().Get("name"))
+		if name == "" || name == "." || name == string(filepath.Separator) || strings.ContainsAny(name, `/\`) {
+			http.Error(w, "bad file name", http.StatusBadRequest)
+			return
+		}
+		up := filepath.Join(dataDir, "uploads")
+		if err := os.MkdirAll(up, 0o755); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		dst := filepath.Join(up, name)
+		f, err := os.Create(dst)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		if _, err := io.Copy(f, io.LimitReader(r.Body, 2<<30)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply(w, map[string]any{"path": dst, "name": name}, nil)
+	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)

@@ -163,6 +163,9 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 .units .progress.done > div { background:var(--on); }
 .units .progress.err > div { background:var(--warn); }
 .units .expform input { max-width:520px; margin:6px 0; }
+.units .browser { border:1px solid var(--line); border-radius:4px; padding:6px 8px; margin:6px 0; max-height:40vh; overflow:auto; background:var(--panel); }
+.units .browser > div { padding:1px 0; }
+.units .browser a { color:var(--accent); text-decoration:none; }
 .units pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; overflow:auto; max-height:70vh; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 </head>
@@ -184,6 +187,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span>
+  <button id="ignBtn" class="vcibtn" hidden onclick="ignitionChange()" title="Trigger an ODIS ignition change to wake the bus (ODIS has no set-to-position 0/1/2 call)">🔑 Ignition change</button>
   <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button>
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <span id="ver" class="ver" title="Laertes version"></span></nav>
@@ -312,6 +316,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="toast" class="toast" hidden></div>
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
 <input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
+<input type="file" id="flashUpload" hidden onchange="flashUploadFile(this)">
 <script>
 let work = [], labels = [], labelsKey = '';
 const $ = s => document.querySelector(s);
@@ -326,7 +331,8 @@ const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
 const label = (byte, lo, hi, value) => labels.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
 
 async function api(method, url, body) {
-  const res = await fetch(url, {method, body: typeof body === 'string' ? body : JSON.stringify(body)});
+  const raw = body == null || typeof body === 'string' || body instanceof Blob || body instanceof FormData || body instanceof ArrayBuffer;
+  const res = await fetch(url, {method, body: raw ? body : JSON.stringify(body)});
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -334,7 +340,7 @@ async function api(method, url, body) {
 // Settings, stored in the database (so they survive restarts and are shared by every browser that
 // opens Laertes). dtcCheck: read the fault memory before and after each coding/adaptation write and
 // show what changed. Loaded once at startup; defaults apply until then.
-const settings = {dtcCheck: true, hideDangerous: true};
+const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en'};
 async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
   if (currentTab() === 'settings') renderSettings();
@@ -379,17 +385,20 @@ function textOf(root) {
 // Translate (only when pressed) and shows the English text next to it; if the service cannot be
 // reached it opens translate.google.com instead.
 const trCache = {}, trTexts = [];
+const trLang = () => settings.transLang || 'en';
+const trKey = text => trLang() + '\n' + text;
 async function translate(text) {
-  if (!(text in trCache)) {
+  const key = trKey(text);
+  if (!(key in trCache)) {
     const res = await fetch('https://translate.googleapis.com/translate_a/single?' +
-      new URLSearchParams({client: 'gtx', sl: 'auto', tl: 'en', dt: 't', q: text}));
+      new URLSearchParams({client: 'gtx', sl: 'auto', tl: trLang(), dt: 't', q: text}));
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    trCache[text] = (await res.json())[0].map(p => p[0]).join('');
+    trCache[key] = (await res.json())[0].map(p => p[0]).join('');
   }
-  return trCache[text];
+  return trCache[key];
 }
-const trBtn = text => !text ? '' : `<button class="tr" title="Translate to English" onclick="event.preventDefault(); event.stopPropagation(); trShow(this, ${trTexts.push(String(text)) - 1})">🌐</button>`
-  + (String(text) in trCache ? `<span class="trout"> → ${esc(trCache[text])}</span>` : '');
+const trBtn = text => !text ? '' : `<button class="tr" title="Translate (${esc(trLang())})" onclick="event.preventDefault(); event.stopPropagation(); trShow(this, ${trTexts.push(String(text)) - 1})">🌐</button>`
+  + (trKey(text) in trCache ? `<span class="trout"> → ${esc(trCache[trKey(text)])}</span>` : '');
 async function trShow(btn, i) {
   const text = trTexts[i];
   let out = btn.nextElementSibling;
@@ -398,7 +407,7 @@ async function trShow(btn, i) {
   try { out.textContent = ' → ' + await translate(text); }
   catch (e) {
     out.remove();
-    window.open('https://translate.google.com/?' + new URLSearchParams({sl: 'auto', tl: 'en', op: 'translate', text}), '_blank', 'noopener');
+    window.open('https://translate.google.com/?' + new URLSearchParams({sl: 'auto', tl: trLang(), op: 'translate', text}), '_blank', 'noopener');
   }
 }
 
@@ -442,7 +451,7 @@ async function pingBridge() {
   try {
     await api('POST', '/api/bridge', {action: 'ping'});
     el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver.py).';
-    $('#stopBridge').hidden = false; $('#resetVci').hidden = false;
+    $('#stopBridge').hidden = false; $('#resetVci').hidden = false; $('#ignBtn').hidden = false;
     try {
       const v = await api('POST', '/api/bridge', {action: 'vehicle'});
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
@@ -457,7 +466,7 @@ async function pingBridge() {
     } catch (e) { $('#vci').hidden = true; }
   } catch (e) {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
-    $('#stopBridge').hidden = true; $('#resetVci').hidden = true;
+    $('#stopBridge').hidden = true; $('#resetVci').hidden = true; $('#ignBtn').hidden = true;
     veh.hidden = true; $('#vci').hidden = true;
   }
 }
@@ -471,6 +480,18 @@ function resetVci() {
   op('Restarting VCI', async () => {
     const r = await bridge({action: 'reset_vci'});
     toast('VCI restarted' + (r.state ? ': ' + r.state : '') + '.');
+    await pingBridge();
+  });
+}
+
+// Triggers an ODIS ignition change to wake the bus. ODIS's automation API has no set-to-position
+// 0/1/2 call and no raw CAN wake-up injection, so this is the closest available action.
+function ignitionChange() {
+  if (busy) { toast(`Busy: ${busy.label}. Wait for it to finish or press Stop.`, true); return; }
+  if (!confirm('Trigger an ignition change (wake the bus)?\n\nODIS has no set-to-position 0/1/2 call; this performs ODIS’s own ignition change, which wakes the bus.')) return;
+  op('Ignition change', async () => {
+    const r = await bridge({action: 'ignition_change'});
+    toast('Ignition change done' + (r.clamp15 ? ' (clamp 15 ' + r.clamp15 + ')' : '') + '.');
     await pingBridge();
   });
 }
@@ -700,6 +721,14 @@ function renderSettings() {
       <input type="checkbox" id="setDtcCheck" ${settings.dtcCheck ? 'checked' : ''} onchange="settings.dtcCheck = this.checked; saveSettings()">
       <span>Read the fault memory before and after each coding/adaptation write and show which faults are new or gone.
         <br><span class="meta">Turn this off to code/adapt faster without the fault check. You can still read a unit's fault memory yourself from Project units.</span></span>
+    </label>
+    <h2 class="sub">Translation</h2>
+    <label style="display:flex; gap:8px; align-items:center; max-width:640px">
+      <span>Translate fault and error texts (🌐) into:</span>
+      <select onchange="settings.transLang = this.value; saveSettings()">
+        ${[['en', 'English'], ['de', 'German'], ['cs', 'Czech'], ['sk', 'Slovak'], ['pl', 'Polish'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['nl', 'Dutch'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['tr', 'Turkish'], ['pt', 'Portuguese'], ['ro', 'Romanian'], ['hu', 'Hungarian']]
+          .map(([c, n]) => `<option value="${c}" ${settings.transLang === c ? 'selected' : ''}>${n}</option>`).join('')}
+      </select>
     </label>
     <h2 class="sub">Dangerous functions</h2>
     <label style="display:flex; gap:8px; align-items:flex-start; max-width:640px">
@@ -1610,52 +1639,111 @@ function cpFindHTML(step, u) {
 function cpOpen(name) { op(name, () => unitRun({action: 'read_adaptation', channel: name}, name, {cp: true})); }
 
 // --- Flash firmware / load dataset (EXPERIMENTAL, UNTESTED) ---------------------------------
-// Long operations run on the bridge as a background job; this page polls job_status and shows a
-// progress bar. The ODIS flash/dataset API is not wired yet, so these report progress and stop
-// without writing — they are marked experimental (orange) until that is connected and tested.
-const FLASH = {flash: {label: 'Flash firmware', action: 'flash_firmware', kind: 'firmware', what: 'a firmware file (flash container)'},
-  dataset: {label: 'Load dataset', action: 'upload_dataset', kind: 'dataset', what: 'a dataset file'}};
+// The file (an ODIS programming configuration) is chosen on the ODIS PC — browsed or uploaded —
+// then read/validated (read-only), then executed through IProgrammingConfigExecutor as a
+// background job whose text/percent progress this page polls. A wrong or interrupted flash can
+// leave a unit inoperable, so execute is staged behind validation and a typed confirmation, and
+// the cancel button must be confirmed once real programming has started.
+const FLASH = {flash: {label: 'Flash firmware', kind: 'firmware', what: 'a firmware programming configuration file'},
+  dataset: {label: 'Load dataset', kind: 'dataset', what: 'a dataset programming configuration file'}};
 function flashPanel(which) {
   unitReport = null;
-  unitPath = [{cmd: {action: 'flash_panel'}, which, label: FLASH[which].label + ' (experimental)'}];
+  unitPath = [{cmd: {action: 'flash_panel'}, which, label: FLASH[which].label + ' (experimental)', log: []}];
   renderUnitDetail();
 }
 function flashPanelHTML(step, u) {
   const f = FLASH[step.which], p = step.progress;
   let h = `<div class="warnbox"><b>Experimental and untested.</b> ${esc(f.label)} writes to ${esc(u.sname || 'the unit')} ${esc(u.id || '')}.
-    A wrong or interrupted write can leave the unit inoperable, and recovery may need an online VW/ODIS SVM session. Only on a unit you own.
-    <br>In this build the operation is <b>not wired yet</b>: it shows progress but does not write anything.</div>
-    <div class="expform"><div class="meta">Path to ${esc(f.what)} on the ODIS PC:</div>
-      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\file.odx" value="${esc(step.path || '')}" oninput="curStep().path = this.value">
-      <div class="bar"><button class="exp op" onclick="flashRun()">Start ${esc(f.label.toLowerCase())}…</button></div></div>`;
+    A wrong or interrupted flash can leave the unit inoperable, and recovery may need an online VW/ODIS SVM session. Only on a unit you own.</div>
+    <div class="expform"><div class="meta">${esc(f.what)} on the ODIS PC:</div>
+      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\config.xml" value="${esc(step.path || '')}" oninput="curStep().path = this.value" ${p && p.status === 'running' ? 'disabled' : ''}>
+      <div class="bar"><button onclick="flashBrowse(curStep().browseDir || '')">Browse…</button>
+        <button onclick="$('#flashUpload').click()">Upload…</button>
+        <button class="op" onclick="flashReadConfig()" ${step.path ? '' : 'disabled'}>Read / validate config</button></div></div>`;
+  if (step.browse) h += flashBrowserHTML(step);
+  if (step.config) {
+    const steps = (((step.config.content || {}).programmingSteps) != null) ? JSON.stringify(step.config.content.programmingSteps).length : 0;
+    h += `<h2 class="sub">Configuration (validated, nothing written)</h2>
+      ${valsTable([{name: 'File', value: step.config.file}, {name: 'Diagnostic system', value: (step.config.content || {}).diagnosticSystem || '—'}])}
+      <details class="rawjson"><summary>Full configuration JSON</summary>${jsonView(step.config.content)}</details>
+      <div class="bar"><button class="exp op" onclick="flashExecute()">⚠ Execute ${esc(f.label.toLowerCase())} — writes to the unit…</button></div>`;
+  }
   if (p) {
     const cls = p.status === 'done' ? 'done' : (p.status === 'error' || p.status === 'stopped') ? 'err' : '';
+    const secs = step.startedAt ? Math.round(((p.endedAt || Date.now()) - step.startedAt) / 1000) : 0;
+    const mmss = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
     h += `<h2 class="sub">Progress</h2>
       <div class="progress ${cls}"><div style="width:${p.percent || 0}%"></div></div>
-      <div class="status ${cls === 'err' ? 'err' : ''}">${p.percent || 0}% — ${esc(p.message || '')}${p.error ? ' — ' + esc(p.error) + ' ' + trBtn(p.error) : ''}</div>`;
+      <div class="status ${cls === 'err' ? 'err' : ''}">${p.percent || 0}% · ${esc(mmss)}${p.phase ? ' · ' + esc(p.phase) : ''} — ${esc(p.message || '')}${p.error ? ' — ' + esc(p.error) + ' ' + trBtn(p.error) : ''}</div>
+      ${p.status === 'running' ? `<div class="bar"><button class="warn" onclick="flashCancel()">Cancel</button>${p.phase === 'flashing' ? '<span class="meta">Cancelling during programming must be confirmed and may not be possible.</span>' : ''}</div>` : ''}
+      ${step.log && step.log.length ? `<h2 class="sub">ODIS messages ${copyBtn(step.log.join('\\n'), 'Copy the log')}</h2><pre class="report">${esc(step.log.join('\\n'))}</pre>` : ''}`;
   }
   return h;
 }
-function flashRun() {
+// Server-side file browser (Laertes runs on the ODIS PC): one directory at a time.
+async function flashBrowse(dir) {
+  const step = curStep(); step.browse = true;
+  try {
+    const r = await api('GET', '/api/files?' + new URLSearchParams(dir ? {dir} : {}));
+    step.browseList = r; step.browseDir = r.dir;
+  } catch (e) { toast('Cannot list folder: ' + e.message, true); step.browseList = null; }
+  if (curStep() === step) renderUnitDetail();
+}
+function flashBrowserHTML(step) {
+  const r = step.browseList;
+  if (!r) return '<div class="meta">Loading folder…</div>';
+  const row = (name, isDir, onclick) => `<div><a href="#" onclick="${onclick}; return false">${isDir ? '📁 ' : '📄 '}${esc(name)}</a></div>`;
+  const files = r.entries.filter(e => !e.dir), dirs = r.entries.filter(e => e.dir);
+  return `<div class="browser"><div class="meta mono">${esc(r.dir)} <button onclick="curStep().browse=false; renderUnitDetail()">Close</button></div>
+    ${row('.. (up)', true, `flashBrowse('${jsStr(r.parent)}')`)}
+    ${dirs.map(e => row(e.name, true, `flashBrowse('${jsStr(r.dir + '/' + e.name)}')`)).join('')}
+    ${files.map(e => row(e.name + ` (${(e.size / 1024).toFixed(0)} KB)`, false, `flashPick('${jsStr(r.dir + '/' + e.name)}')`)).join('')}</div>`;
+}
+const jsStr = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+function flashPick(path) { const step = curStep(); step.path = path; step.browse = false; step.config = null; renderUnitDetail(); }
+async function flashUploadFile(input) {
+  const step = curStep(), file = input.files[0]; input.value = '';
+  if (!file || !step) return;
+  op('Uploading ' + file.name, async () => {
+    const r = await api('POST', '/api/upload?' + new URLSearchParams({name: file.name}), file);
+    step.path = r.path; step.config = null;
+    toast('Uploaded to ' + r.path);
+    renderUnitDetail();
+  });
+}
+function flashReadConfig() {
+  const step = curStep(), path = (step.path || '').trim();
+  if (!path) { toast('Choose or upload a file first.', true); return; }
+  op('Reading config', async () => {
+    step.config = null; renderUnitDetail();
+    step.config = await bridge({action: 'flash_config', file: path});
+    renderUnitDetail();
+  });
+}
+function flashExecute() {
   const step = curStep(), u = units.find(u => u.index === unitSel), f = FLASH[step.which];
   const path = (step.path || '').trim();
-  if (!path) { toast('Enter the file path on the ODIS PC.', true); return; }
-  if (!confirm(`${f.label.toUpperCase()} — EXPERIMENTAL, UNTESTED.\n\n${u.sname} ${u.id}\nFile: ${path}\n\nThis can leave the unit inoperable; recovery may need an online VW/ODIS SVM session. In this build nothing is actually written.\n\nContinue?`)) return;
+  if (!path) { toast('Choose or upload a file first.', true); return; }
+  const ans = prompt(`${f.label.toUpperCase()} — EXPERIMENTAL, UNTESTED, WRITES TO THE UNIT.\n\n${u.sname} ${u.id}\nFile: ${path}\n\nA wrong or interrupted flash can leave the unit inoperable; recovery may need an online VW/ODIS SVM session. Do not switch off or disconnect during programming.\n\nType the unit name "${u.sname}" to start:`);
+  if (ans === null || ans.trim() !== String(u.sname || '').trim()) { toast('Flash cancelled.'); return; }
   op(f.label, async o => {
-    step.progress = {percent: 0, message: 'Starting…', status: 'running'}; renderUnitDetail();
+    step.log = []; step.startedAt = Date.now();
+    step.progress = {percent: 0, message: 'Starting…', status: 'running', phase: 'prepare'}; renderUnitDetail();
     let jid;
-    try { jid = (await bridge({action: f.action, address: u.id, file: path})).job_id; }
-    catch (e) { step.progress = {percent: 0, message: '', status: 'error', error: e.message}; renderUnitDetail(); throw e; }
-    o.onCancel = () => { step.watchStopped = true; };
+    try { jid = (await bridge({action: 'flash_run', address: u.id, file: path})).job_id; }
+    catch (e) { step.progress = {percent: 0, status: 'error', error: e.message, endedAt: Date.now()}; renderUnitDetail(); throw e; }
+    step.jobId = jid;
+    o.onCancel = () => flashCancel(true);  // top-bar Stop routes to the same confirmed-cancel rule
+    let last = '';
     while (true) {
-      if (step.watchStopped) { step.progress.status = 'stopped'; step.progress.message = 'Stopped watching — the unit may still be busy; do not disconnect.'; break; }
       let s;
       try { s = await bridge({action: 'job_status', job_id: jid}); }
-      catch (e) { step.progress = {...step.progress, status: 'error', error: e.message}; break; }
-      step.progress = {percent: s.percent, message: s.message, status: s.status, error: s.job_error};
+      catch (e) { step.progress = {...step.progress, status: 'error', error: e.message, endedAt: Date.now()}; break; }
+      if (s.message && s.message !== last) { step.log.push(s.message); last = s.message; }
+      step.progress = {percent: s.percent, message: s.message, status: s.status, phase: s.phase, error: s.job_error};
       opLabel(`${f.label} ${s.percent || 0}%`);
       if (curStep() === step) renderUnitDetail();
-      if (s.status !== 'running') break;
+      if (s.status !== 'running') { step.progress.endedAt = Date.now(); break; }
       await sleep(700);
     }
     recordChange({kind: f.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: path, oldValue: '', newValue: path,
@@ -1663,7 +1751,18 @@ function flashRun() {
     if (curStep() === step) renderUnitDetail();
   });
 }
+// Cancel: before programming starts it stops the job; once programming has started it must be
+// confirmed and may be refused by ODIS (the executor cannot be interrupted safely).
+async function flashCancel(fromStop) {
+  const step = curStep();
+  if (!step || !step.jobId) return;
+  const flashing = step.progress && step.progress.phase === 'flashing';
+  if (flashing && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
+  try { await bridge({action: 'flash_cancel', job_id: step.jobId}); toast(flashing ? 'Cancellation requested (may not stop programming).' : 'Cancelling…'); }
+  catch (e) { toast(e.message, true); }
+}
 
+// --- Scans ---------------------------------------------------------------------------------
 // --- Scans ---------------------------------------------------------------------------------
 // Scan all, Scan all unit DTCs and Full scan work on the units the list shows: tick
 // "responded only" to scan just the units that answered, untick it for the whole ODIS project.
