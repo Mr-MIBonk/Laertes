@@ -1,0 +1,68 @@
+# Builds a release when a version tag is pushed:  git tag v0.1.0 && git push origin v0.1.0
+# The release gets laertes.exe, the two bridge scripts, LICENSE and THIRD_PARTY_LICENSES.txt.
+#
+# Needs Gitea Actions enabled for the repository and a runner with the "ubuntu-latest" label that
+# can run containers. The job uses only shell steps (no node-based actions), so it runs in the
+# plain Go image. If the automatic token may not create releases on your instance, add a personal
+# access token with repository write access as the secret RELEASE_TOKEN.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.27
+    env:
+      TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITEA_TOKEN }}
+      SERVER: ${{ gitea.server_url }}
+      REPO: ${{ gitea.repository }}
+      TAG: ${{ gitea.ref_name }}
+    steps:
+      - name: Check out the tag
+        run: |
+          git init -q src
+          cd src
+          git -c http.extraHeader="Authorization: token $TOKEN" fetch -q --depth 1 "$SERVER/$REPO.git" "refs/tags/$TAG"
+          git checkout -q FETCH_HEAD
+
+      - name: Check that the tag matches the version in main.go
+        working-directory: src
+        run: |
+          v=$(sed -n 's/^const version = "\(.*\)"$/\1/p' main.go)
+          if [ "v$v" != "$TAG" ]; then
+            echo "Tag $TAG does not match version \"$v\" in main.go"
+            exit 1
+          fi
+
+      - name: Test and build
+        working-directory: src
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o laertes.exe .
+          GOOS=windows sh scripts/licenses.sh > THIRD_PARTY_LICENSES.txt
+
+      - name: Publish the release
+        working-directory: src
+        run: |
+          set -e
+          api="$SERVER/api/v1/repos/$REPO"
+          auth="Authorization: token $TOKEN"
+          # Reuse the release if this tag was published before (re-run), else create it.
+          id=$(curl -sf -H "$auth" "$api/releases/tags/$TAG" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2 || true)
+          if [ -z "$id" ]; then
+            body="Laertes $TAG for Windows. Copy the two mcpserver_*.py files to C:\\\\ProgramData\\\\OE\\\\macros\\\\, run mcpserver_test.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
+            id=$(curl -sf -H "$auth" -H "Content-Type: application/json" -X POST "$api/releases" \
+              -d "{\"tag_name\":\"$TAG\",\"name\":\"Laertes $TAG\",\"body\":\"$body\"}" |
+              grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          fi
+          [ -n "$id" ] || { echo "could not create the release"; exit 1; }
+          for f in laertes.exe mcpserver_test.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt; do
+            curl -sf -H "$auth" -F "attachment=@$f" "$api/releases/$id/assets?name=$f" > /dev/null
+            echo "uploaded $f"
+          done
