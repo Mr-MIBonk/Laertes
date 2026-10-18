@@ -10,21 +10,6 @@
 * { box-sizing:border-box; }
 [hidden] { display:none !important; }
 body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; height:100vh; }
-aside { width:290px; border-right:1px solid var(--line); overflow:auto; background:var(--panel); flex-shrink:0; }
-aside h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:12px; }
-.hist { padding:8px 12px; border-top:1px solid var(--line); cursor:pointer; }
-.hist:hover { background:var(--bg); }
-.hist.sel { border-left:3px solid var(--accent); background:var(--bg); }
-.hist small { color:var(--muted); display:block; }
-.hist { position:relative; }
-.hist .del { position:absolute; top:6px; right:8px; padding:0 6px; }
-aside h2 { display:flex; justify-content:space-between; align-items:center; }
-aside h2 .del { text-transform:none; font-size:12px; padding:2px 8px; }
-aside h2 span { flex:1; margin-left:8px; }
-#side { padding:0 6px; }
-body.collapsed aside { width:auto; }
-body.collapsed aside h2 { margin:12px 6px; }
-body.collapsed aside h2 > :not(#side), body.collapsed #hist { display:none; }
 main { flex:1; overflow:auto; padding:16px 20px; }
 h1 { font-size:18px; margin:0 0 4px; }
 .meta { color:var(--muted); margin-bottom:12px; }
@@ -146,7 +131,6 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 </style>
 </head>
 <body>
-<aside><h2><button id="side" onclick="toggleSide()"></button><span>Coding reads</span><button class="del" onclick="deleteReading(0)">Clear all</button></h2><div id="hist"></div></aside>
 <main>
 <nav class="tabs"><span class="brand" title="Laertes — father of Odis">
   <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
@@ -203,7 +187,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
       or another free port if that one is taken; the console window shows the address).</li>
     <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and <b>🔌 VCI connected</b>.
       Red “ODIS bridge offline” means the macro is not running — go back to step 2.</li>
-    <li>Optional switches: <code>-log</code> (path of ODIS <code>engine.log</code>), <code>-db</code> (database file),
+    <li>Optional switches: <code>-db</code> (database file),
       <code>-bridge</code> (bridge address), <code>-nobrowser</code>.</li>
     <li>Building from source: double-click <code>build.cmd</code> (needs <a href="https://go.dev/dl/">Go</a>); it runs the
       tests and produces <code>laertes.exe</code>.</li>
@@ -222,8 +206,8 @@ input[type=text]:focus { outline:1px solid var(--accent); }
       repair guidance. Each unit also links to its <i>DTC catalog (offline)</i>.</dd>
     <dt>Coding</dt>
     <dd>The large coding editor: bit grid, your <code>.lbl</code> labels and any variant's ODX definition (remembered).
-      Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), from ODIS coding reads
-      in the sidebar, or with <i>New coding</i> for bytes you type in.</dd>
+      Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), or with
+      <i>New coding</i> for bytes you type in.</dd>
     <dt>History</dt>
     <dd>Every coding and adaptation write with old → new value, unit, variant and result. Stored in the database, so it
       survives restarts.</dd>
@@ -236,9 +220,15 @@ input[type=text]:focus { outline:1px solid var(--accent); }
     <li>Writes change the control unit. Every write asks for confirmation and shows exactly what changes.</li>
     <li>ODIS guided fault finding documents appear only after the vehicle is identified and guided fault finding is
       started in ODIS; the general guidance works without it.</li>
-    <li>Your data (coding reads, labels, history, remembered choices) is in <code>laertes.db</code> next to
+    <li>Your data (labels, history, remembered choices) is in <code>laertes.db</code> next to
       <code>laertes.exe</code>.</li>
   </ul>
+
+  <h2 class="sub">License</h2>
+  <p>Laertes is free software under the MIT License; bundled open-source components are listed in
+    <code>THIRD_PARTY_LICENSES.txt</code>. It is not affiliated with Volkswagen AG or Ross-Tech, contains no ODIS
+    software or data, and works only with your own licensed ODIS installation. Writes to control units are at
+    your own risk.</p>
 </div>
 <div id="json" class="db" hidden>
   <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
@@ -251,15 +241,15 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
 <input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
 <script>
-let readings = [], selId = null, maxId = 0, work = [], labels = [], labelsKey = '';
+let work = [], labels = [], labelsKey = '';
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
 const bytesOf = h => h.match(/../g).map(x => parseInt(x, 16));
-let virtualReading = null;  // a live unit's coding opened in the Coding tab (not a log reading)
-let codingCleared = false;  // the user cleared the Coding tab; don't auto-select a log reading back
-const sel = () => virtualReading || readings.find(r => r.id === selId);
-const fmtTime = t => t.length >= 21 ? `${t.slice(6,8)}.${t.slice(4,6)}.${t.slice(0,4)} ${t.slice(9,17)}.${t.slice(18,21)}` : t;
+// The coding open in the Coding tab: a unit's coding opened from Project units (fromUnit) or a
+// custom coding typed in. null shows the empty scratchpad.
+let openCoding = null;
+const sel = () => openCoding;
 const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
 const label = (byte, lo, hi, value) => labels.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
 
@@ -267,18 +257,6 @@ async function api(method, url, body) {
   const res = await fetch(url, {method, body: typeof body === 'string' ? body : JSON.stringify(body)});
   if (!res.ok) throw new Error(await res.text());
   return res.json();
-}
-
-async function poll() {
-  try {
-    readings = await api('GET', '/api/readings');
-    const newest = readings.length ? readings[0].id : 0;
-    if (virtualReading) { if (newest > maxId) maxId = newest; renderHist(); }  // keep the live coding in view
-    else if (newest > maxId) { maxId = newest; await select(newest); }  // follow ODIS automatically
-    else if (!sel() && !codingCleared) await select(newest);  // selected reading was deleted
-    else renderHist();
-  } catch (e) {}
-  setTimeout(poll, 1000);
 }
 
 // Bridge connection indicator: pings the ODIS bridge (mcpserver_test.py) so a lost connection
@@ -315,47 +293,32 @@ async function loadLabels(force) {
   labelsKey = key;
 }
 
-async function select(id) {
-  virtualReading = null;  // choosing a log reading leaves the live-coding view
-  codingCleared = false;
-  selId = id;
-  if (!sel()) {
-    selId = null; renderHist();
-    renderEmptyCoding();
-    return;
-  }
-  work = bytesOf(sel().coding);
-  await loadLabels();
-  await applyCodingTabDef();
-  renderHist(); render();
-}
-
-// With nothing selected the Coding tab is a scratchpad: enter a custom coding to decode/edit it
-// with your .lbl labels. Opening a unit's coding from Project units uses this tab too.
+// With nothing open the Coding tab is a scratchpad: enter a custom coding to decode/edit it with
+// your .lbl labels. Opening a unit's coding from Project units uses this tab too.
 function renderEmptyCoding() {
-  $('#main').innerHTML = `<div class="empty">No coding selected — open a unit's coding from <b>Project units</b>, wait for ODIS to read one, or enter a custom coding below.</div>
+  $('#main').innerHTML = `<div class="empty">No coding open — open a unit's coding from <b>Project units</b> (Coding › Open in Coding tab), or enter a custom coding below.</div>
     <div class="code"><input id="customHex" placeholder="custom coding hex, e.g. 01 19 00 32" style="width:22em;font-family:Consolas, monospace">
       <button onclick="loadCustomCoding()">Load for editing</button></div>`;
 }
 function loadCustomCoding() {
   const h = ($('#customHex').value || '').replace(/[^0-9a-fA-F]/g, '');
   if (h.length < 2 || h.length % 2) { alert('Enter an even number of hex digits.'); return; }
-  virtualReading = {id: -1, time: '', ecu: 'Custom coding', variant: 'CUSTOM', subsystem: 'custom', coding: h.toUpperCase(), fromUnit: false};
-  selId = -1; work = bytesOf(virtualReading.coding); labelsKey = null;
+  openCoding = {id: -1, time: '', ecu: 'Custom coding', variant: 'CUSTOM', subsystem: 'custom', coding: h.toUpperCase(), fromUnit: false};
+  work = bytesOf(openCoding.coding); labelsKey = null;
   loadLabels(true).then(applyCodingTabDef).then(render);
 }
-// Clears the Coding tab back to the empty scratchpad so new bytes can be entered. It stays clear
-// until the user loads something or ODIS reads a new coding.
+// Clears the Coding tab back to the empty scratchpad so new bytes can be entered.
 function clearCoding() {
-  virtualReading = null; selId = null; work = []; codingDef = {}; codingCleared = true;
-  renderHist(); renderEmptyCoding();
+  openCoding = null; work = []; codingDef = {};
+  renderEmptyCoding();
   const input = $('#customHex'); if (input) input.focus();
 }
+// Undoes the edits in the Coding tab, back to the bytes the coding was opened with.
+function resetCoding() { if (sel()) { work = bytesOf(sel().coding); render(); } }
 
 // Returns to the Project units coding view the user opened the Coding tab from.
 function backToUnitCoding() {
-  virtualReading = null;
-  select(readings.length ? readings[0].id : null);  // restore the Coding tab to its normal view
+  clearCoding();
   showTab('units'); renderUnitDetail();
 }
 
@@ -411,12 +374,6 @@ async function codingDefPick(i) {
   render();
 }
 
-function renderHist() {
-  $('#hist').innerHTML = readings.map(r => `<div class="hist ${r.id === selId ? 'sel' : ''}" onclick="select(${r.id})">
-    <button class="del" title="Delete this reading" onclick="event.stopPropagation(); deleteReading(${r.id})">✕</button>
-    <b>${esc(r.ecu || r.subsystem)}</b><small>${esc(r.variant)}</small><small>${fmtTime(r.time)} · ${r.coding.length / 2} bytes</small></div>`).join('');
-}
-
 // Bit fields of one byte: [{lo, hi, options:[{value,text}]}], from the VCDS-style range labels.
 function fields(i) {
   const fs = {};
@@ -451,25 +408,18 @@ function render() {
       <td class="f"><input type="text" placeholder="byte label" value="${esc(bl ? bl.text : '')}" onchange="save({byte:${i},lo:0,hi:7,value:-1}, this.value)">${fieldHTML}</td>${cells}</tr>`;
   });
   const changed = work.some((b, i) => b !== orig[i]);
-  $('#main').innerHTML = `${virtualReading && virtualReading.fromUnit ? `<div class="bar"><button onclick="backToUnitCoding()">← Back to unit coding</button>
+  $('#main').innerHTML = `${openCoding && openCoding.fromUnit ? `<div class="bar"><button onclick="backToUnitCoding()">← Back to unit coding</button>
       <span class="meta">Live coding of ${esc(r.ecu)} — not a saved reading</span></div>` : ''}
     <h1>${esc(r.ecu || r.subsystem)}</h1>
-    <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)}${r.time ? ' · coding opened ' + fmtTime(r.time) : ''}
+    <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)}
       · <button onclick="$('#lbl').click()">Import .lbl labels</button>
       · <button onclick="clearCoding()" title="Close this coding and start with new bytes">New coding</button></div>
     ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
     Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
-    New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="select(selId)">Reset</button>
+    New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="resetCoding()">Reset</button>
       <span class="meta">To write to a unit, open it under Project units.</span></div>
     <table><tr><th>Byte</th><th>Byte label / bit fields</th>${[7,6,5,4,3,2,1,0].map(b => `<th>Bit ${b} (0x${hex(1 << b)})</th>`).join('')}</tr>${rows}</table>
     ${codingDefPanelHTML()}`;
-}
-
-async function deleteReading(id) {
-  if (!confirm(id ? 'Delete this reading?' : 'Delete all readings? Labels are kept.')) return;
-  try { await api('DELETE', '/api/readings' + (id ? '/' + id : '')); } catch (e) { alert('Delete failed: ' + e.message); return; }
-  readings = await api('GET', '/api/readings');
-  if (!sel()) await select(readings.length ? readings[0].id : null); else renderHist();
 }
 
 // Project units come from the ODIS Jython bridge (mcpserver_test.py) through /api/bridge.
@@ -520,7 +470,6 @@ function showTab(tab) {
   if (!TABS[tab]) tab = 'coding';
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   for (const [t, id] of Object.entries(TABS)) $('#' + id).hidden = t !== tab;
-  $('aside').hidden = tab !== 'coding';  // coding reads belong to the coding view
   try { localStorage.setItem('tab', tab); } catch (e) {}
   activeTab = tab;
   stopLive();  // a live measurement view only updates while the units tab shows it
@@ -814,8 +763,8 @@ function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(
 async function openUnitCodingInTab() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
   if (!step || !step.work) return;
-  virtualReading = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true};
-  selId = -1; work = step.work.slice(); labelsKey = null;
+  openCoding = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true};
+  work = step.work.slice(); labelsKey = null;
   showTab('coding');
   await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
   // Also carry the coding definition chosen in units (own or borrowed ODX) as labels for the grid.
@@ -827,7 +776,7 @@ async function openUnitCodingInTab() {
   } else {
     codingDef = {forVariant: step.unitVariant};
   }
-  renderHist(); render();
+  render();
 }
 // Converts an ODX textual coding table into VCDS-style labels (per-byte bit fields) so the chosen
 // definition shows in the Coding tab grid. Fields spanning more than one byte are skipped.
@@ -1496,14 +1445,6 @@ function jsonLast() {
   $('#jsonOut').innerHTML = jsonView(lastBridge.res);
 }
 
-// The sidebar's collapsed state is remembered per browser; it is only a convenience.
-function toggleSide(collapse = !document.body.classList.contains('collapsed')) {
-  document.body.classList.toggle('collapsed', collapse);
-  $('#side').textContent = collapse ? '»' : '«';
-  $('#side').title = collapse ? 'Show coding reads' : 'Hide coding reads';
-  try { localStorage.setItem('sideCollapsed', collapse ? '1' : ''); } catch (e) {}
-}
-
 function toggle(i, bit) { work[i] ^= 1 << bit; render(); }
 function setField(i, m, v) { work[i] = (work[i] & ~m) | v; render(); }
 function copy(t) { navigator.clipboard.writeText(t); }
@@ -1530,8 +1471,7 @@ initDatabaseTabs();
 let startTab = 'coding';
 try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
 showTab(startTab);
-try { toggleSide(localStorage.getItem('sideCollapsed') === '1'); } catch (e) { toggleSide(false); }
-poll();
+renderEmptyCoding();
 connPoll();
 api('GET', '/api/version').then(v => { $('#ver').textContent = 'v' + v; }).catch(() => {});
 </script>

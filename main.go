@@ -23,7 +23,6 @@ var indexHTML []byte
 
 func main() {
 	exe, _ := os.Executable()
-	logPath := flag.String("log", `C:\ProgramData\OE\log\engine.log`, "ODIS engine.log to follow")
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
 	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver_test.py) address")
@@ -35,22 +34,6 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 
-	p := &logParser{
-		emit: func(r *Reading) {
-			if err := store.AddReading(r); err != nil {
-				log.Printf("save reading: %v", err)
-				return
-			}
-			log.Printf("coding %s / %s: %s", r.Variant, r.Subsystem, r.Coding)
-		},
-		update: func(r *Reading) {
-			if err := store.SetReadingECU(r); err != nil {
-				log.Printf("save reading: %v", err)
-			}
-		},
-	}
-	go tailLog(*logPath, p)
-
 	ln, err := net.Listen("tcp", "127.0.0.1:23031")
 	if err != nil {
 		ln, err = net.Listen("tcp", "127.0.0.1:0")
@@ -60,7 +43,6 @@ func main() {
 	}
 	host := ln.Addr().String()
 	url := "http://" + host + "/"
-	log.Printf("following %s", *logPath)
 	log.Printf("database %s", *dbPath)
 	log.Printf("Laertes %s", version)
 	log.Printf("open %s", url)
@@ -117,21 +99,6 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 	})
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, version, nil)
-	})
-	mux.HandleFunc("GET /api/readings", func(w http.ResponseWriter, r *http.Request) {
-		rs, err := store.Readings(200)
-		reply(w, rs, err)
-	})
-	mux.HandleFunc("DELETE /api/readings/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil || id <= 0 {
-			http.Error(w, "bad id", http.StatusBadRequest)
-			return
-		}
-		reply(w, nil, store.DeleteReadings(id))
-	})
-	mux.HandleFunc("DELETE /api/readings", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, nil, store.DeleteReadings(0))
 	})
 	mux.HandleFunc("GET /api/labels", func(w http.ResponseWriter, r *http.Request) {
 		ls, err := store.Labels(r.URL.Query().Get("variant"), r.URL.Query().Get("subsystem"))

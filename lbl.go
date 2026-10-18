@@ -56,3 +56,12 @@ func parseLBL(src string) ([]Label, error) {
 	}
 	return out, nil
 }
+
+// latin1 decodes label files, which VCDS writes in Windows-1252; Latin-1 is close enough for text.
+func latin1(b []byte) string {
+	r := make([]rune, len(b))
+	for i, c := range b {
+		r[i] = rune(c)
+	}
+	return string(r)
+}

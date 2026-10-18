@@ -9,3 +9,6 @@ laertes.db-shm
 odishelper.db
 odishelper.db-wal
 odishelper.db-shm
+
+# Label files (third-party data, never shipped)
+*.lbl

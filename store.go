@@ -40,20 +40,9 @@ func openStore(path string) (*Store, error) {
 	return &Store{db}, nil
 }
 
+// migrate creates or upgrades the schema. Databases from versions that followed ODIS engine.log
+// also hold a "readings" table; it is no longer used and is left as it is.
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
-CREATE TABLE IF NOT EXISTS readings (
-	id        INTEGER PRIMARY KEY AUTOINCREMENT,
-	time      TEXT NOT NULL,
-	ecu       TEXT NOT NULL DEFAULT '',
-	variant   TEXT NOT NULL,
-	subsystem TEXT NOT NULL,
-	coding    TEXT NOT NULL,
-	UNIQUE (time, variant, subsystem, coding)
-);`)
-	if err != nil {
-		return err
-	}
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS changes (
 	id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,16 +78,6 @@ CREATE TABLE IF NOT EXISTS coding_pref (
 	borrow_base    TEXT NOT NULL DEFAULT ''
 );`); err != nil {
 		return err
-	}
-	// Deleted readings stay as hidden rows so re-reading the log does not bring them back.
-	var hasDeleted int
-	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('readings') WHERE name='deleted'`).Scan(&hasDeleted); err != nil {
-		return err
-	}
-	if hasDeleted == 0 {
-		if _, err := db.Exec(`ALTER TABLE readings ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return err
-		}
 	}
 	// Version 1 stored per-bit labels in "labels" with a "bit" column (-1 = whole byte).
 	var oldSchema int
@@ -139,45 +118,6 @@ DROP TABLE labels_v1;`); err != nil {
 	return tx.Commit()
 }
 
-// AddReading stores r and sets r.ID; re-reading the same log line is a no-op.
-func (s *Store) AddReading(r *Reading) error {
-	_, err := s.db.Exec(`INSERT OR IGNORE INTO readings (time, ecu, variant, subsystem, coding) VALUES (?,?,?,?,?)`,
-		r.Time, r.ECU, r.Variant, r.Subsystem, r.Coding)
-	if err != nil {
-		return err
-	}
-	return s.db.QueryRow(`SELECT id FROM readings WHERE time=? AND variant=? AND subsystem=? AND coding=?`,
-		r.Time, r.Variant, r.Subsystem, r.Coding).Scan(&r.ID)
-}
-
-func (s *Store) SetReadingECU(r *Reading) error {
-	_, err := s.db.Exec(`UPDATE readings SET ecu=? WHERE id=?`, r.ECU, r.ID)
-	return err
-}
-
-// DeleteReadings hides one reading, or all of them when id is 0.
-func (s *Store) DeleteReadings(id int64) error {
-	_, err := s.db.Exec(`UPDATE readings SET deleted=1 WHERE id=? OR ?=0`, id, id)
-	return err
-}
-
-func (s *Store) Readings(limit int) ([]Reading, error) {
-	rows, err := s.db.Query(`SELECT id, time, ecu, variant, subsystem, coding FROM readings WHERE deleted=0 ORDER BY id DESC LIMIT ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []Reading{}
-	for rows.Next() {
-		var r Reading
-		if err := rows.Scan(&r.ID, &r.Time, &r.ECU, &r.Variant, &r.Subsystem, &r.Coding); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
-
 func (s *Store) Labels(variant, subsystem string) ([]Label, error) {
 	rows, err := s.db.Query(`SELECT byte, lo, hi, value, text FROM labels WHERE variant=? AND subsystem=? ORDER BY byte, lo, hi, value`, variant, subsystem)
 	if err != nil {
@@ -199,10 +139,10 @@ func (s *Store) Labels(variant, subsystem string) ([]Label, error) {
 type Change struct {
 	ID       int64  `json:"id"`
 	Time     string `json:"time"`
-	Kind     string `json:"kind"`     // "coding" or "adaptation"
-	Address  string `json:"address"`  // unit id, e.g. 0x0001
-	Unit     string `json:"unit"`     // unit name
-	Target   string `json:"target"`   // subsystem (coding) or channel (adaptation)
+	Kind     string `json:"kind"`    // "coding" or "adaptation"
+	Address  string `json:"address"` // unit id, e.g. 0x0001
+	Unit     string `json:"unit"`    // unit name
+	Target   string `json:"target"`  // subsystem (coding) or channel (adaptation)
 	OldValue string `json:"oldValue"`
 	NewValue string `json:"newValue"`
 	Status   string `json:"status"` // verified, written, mismatch, error
