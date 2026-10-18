@@ -245,7 +245,7 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
       <b>Identification</b>, <b>Coding</b> (edit bytes or use the decoded tables' dropdowns, then <i>Write to unit…</i> —
       the coding is read back and verified, and the fault memory is read before and after so you see which faults
       are new or gone, active or passive; units that also code slave units, such as the gateway 19, offer each
-      coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified),
+      coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified, with the same before/after fault check as coding),
       <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Event memory</b> (faults with
       repair guidance), <b>Full scan</b> of the unit and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs
       elevated access.
@@ -890,7 +890,7 @@ function renderUnitDetail() {
         <details class="rawjson"><summary>JSON</summary>${jsonView(data)}</details>`
       : jsonView(data);
     if (step.cmd.action === 'read_adaptation')
-      body += adaptationEditorHTML(step);
+      body += adaptationEditorHTML(step) + dtcChangeHTML(step, u.id);
   }
   const crumbs = unitPath.map((s, i) => i === unitPath.length - 1 ? esc(s.label) : `<a href="#" onclick="unitBack(${i}); return false">${esc(s.label)}</a>`).join(' › ');
   const factsText = [u.id, u.sname, unitFacts(u, true)].filter(Boolean).join(' · ');
@@ -1169,7 +1169,7 @@ async function readFaults(u) {
 function dtcChangeHTML(step, addr) {
   const a = step.dtcAfter, b = step.dtcBefore;
   if (!b && !a) return '';
-  let h = `<h2 class="sub">Fault memory after the write <button class="op" onclick="op('Reading faults', codingDtcReload)">Read again</button></h2>`;
+  let h = `<h2 class="sub">Fault memory after the write <button class="op" onclick="op('Reading faults', stepDtcReload)">Read again</button></h2>`;
   if (!a) return h + '<div class="meta">Reading the fault memory…</div>';
   if (a.err) return h + `<div class="status err">${esc(a.err)} ${trBtn(a.err)}</div>`;
   const prev = b && b.faults ? b.faults : null, had = new Set((prev || []).map(dtcKey)), now = new Set(a.faults.map(dtcKey));
@@ -1184,12 +1184,14 @@ function dtcChangeHTML(step, addr) {
   return h + copyNext(`<table class="vals"><tr><th>Change</th><th>Code</th><th>Text</th><th>State</th></tr>${rows.map(({d, kind}) =>
     `<tr class="${kind}"><td>${label[kind]}</td><td class="mono">${esc(d.code || '—')}</td><td>${esc(d.text)} ${trBtn(d.text)}</td><td>${kind === 'gone' ? 'was ' : ''}${activeText(d)}</td></tr>`).join('')}</table>`, 'Copy fault changes');
 }
-async function codingDtcReload() {
-  const step = codingStep(), u = units.find(u => u.index === unitSel);
-  if (!step) return;
+// Reads the fault memory again for the coding or adaptation step shown, still compared with the
+// reading from before its write (some faults only set a few seconds later).
+async function stepDtcReload() {
+  const step = curStep(), u = units.find(u => u.index === unitSel);
+  if (!step || !step.dtcBefore) return;
   step.dtcAfter = null; renderUnitDetail();
   step.dtcAfter = await readFaults(u);
-  if (codingStep() === step) renderUnitDetail();
+  if (curStep() === step) renderUnitDetail();
 }
 
 // Decode the (edited) coding with the user's own .lbl labels, independent of the ODIS database.
@@ -1295,7 +1297,10 @@ async function adaptWrite() {
   // For the history: each changed parameter by its readable name, old → new.
   const details = params.filter(p => p.name in values).map(p =>
     `${p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name}: ${p.value} → ${values[p.name]}${p.unit ? ' ' + p.unit : ''} (${step.cmd.channel})`).join('\n');
-  step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
+  // Faults before the write, to show afterwards which ones the adaptation added or removed.
+  step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
+  step.dtcBefore = await readFaults(u); step.dtcAfter = null;
+  step.writeMsg = 'Writing adaptation…'; renderUnitDetail();
   try {
     await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
     // Read the channel back from the unit and confirm each written value took.
@@ -1318,6 +1323,8 @@ async function adaptWrite() {
     recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details, status: 'error', note: e.message});
   }
   renderUnitDetail();
+  step.dtcAfter = await readFaults(u);
+  if (curStep() === step) renderUnitDetail();
 }
 
 async function borrowList() {
