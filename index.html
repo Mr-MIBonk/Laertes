@@ -755,8 +755,21 @@ async function adaptWrite() {
   step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
-    step.writeMsg = 'Adaptation written to the unit. Re-open the channel to confirm.';
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'written'});
+    // Read the channel back from the unit and confirm each written value took.
+    step.writeMsg = 'Adaptation written. Reading it back to verify…'; renderUnitDetail();
+    const res = await bridge({action: 'read_adaptation', address: u.id, channel: step.cmd.channel});
+    const got = {};
+    ((res.adaptation && res.adaptation.adaptationValues) || []).map(v => v.adaptationValue).filter(Boolean)
+      .forEach(p => { got[p.name] = p.value; });
+    const bad = Object.keys(values).filter(k => String(got[k]) !== String(values[k]));
+    step.res = res; step.newVals = {};  // show the unit's actual current values now
+    if (!bad.length) {
+      step.writeMsg = `Verified: ${newV}.`; step.writeErr = false;
+    } else {
+      step.writeMsg = `Write did NOT match for ${bad.map(k => `${k} (unit reads ${got[k] === undefined ? '—' : got[k]})`).join(', ')}.`; step.writeErr = true;
+    }
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV,
+      status: bad.length ? 'mismatch' : 'verified', note: bad.length ? 'unit reads ' + bad.map(k => `${k}=${got[k]}`).join(', ') : ''});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
     recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'error', note: e.message});
