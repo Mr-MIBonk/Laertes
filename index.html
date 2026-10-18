@@ -116,7 +116,6 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .help code { font:12.5px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
 .db td.mono { font-family:Consolas, monospace; white-space:nowrap; }
 .db #odxBody > input, .db #dtcBody > input, .db .found > input { margin:8px 0 4px; max-width:420px; }
-#jsonIn { width:100%; font:13px Consolas, monospace; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px; margin:6px 0; }
 .units details.rawjson { margin-top:8px; font-size:12px; color:var(--muted); }
 .json { font:12px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; max-height:70vh; overflow:auto; position:relative; }
 .json > button { position:sticky; top:0; float:right; font-size:11px; padding:1px 6px; }
@@ -137,6 +136,10 @@ button.cp:hover, button.tr:hover { opacity:1; }
 body.busy button.op { opacity:.45; cursor:progress; }
 .tabs .busy { display:flex; align-items:center; gap:6px; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
 .tabs .busy button, .tabs .conn button { font-size:11px; padding:1px 6px; }
+.tabs button.vcibtn { border:1px solid var(--line); border-radius:4px; padding:2px 8px; margin-left:6px; align-self:center; color:var(--text); font-size:12px; white-space:nowrap; }
+/* The hourglass runs for a while, then turns over, like a real one. */
+.tabs .busy .hourglass { display:inline-block; animation:hourglass 2s ease-in-out infinite; }
+@keyframes hourglass { 0%, 70% { transform:rotate(0deg); } 100% { transform:rotate(180deg); } }
 .tabs .busy .time { font:12px Consolas, monospace; color:var(--muted); }
 .tabs .retro { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; }
 .toast { position:fixed; right:16px; bottom:16px; max-width:420px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:6px; padding:8px 12px; box-shadow:0 4px 14px rgba(0,0,0,.18); z-index:10; }
@@ -150,6 +153,8 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .units table.vals tr.old td { color:var(--muted); }
 .units table.vals tr.new td:first-child { color:var(--warn); font-weight:bold; }
 .units table.vals tr.gone td:first-child { color:var(--on); font-weight:bold; }
+.hdetails { font-family:system-ui, sans-serif; margin-top:3px; }
+.hdetails .setting { color:var(--chg); font-weight:bold; }
 pre.report { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px Consolas, monospace; overflow:auto; max-height:72vh; white-space:pre; margin:0; }
 .units pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; overflow:auto; max-height:70vh; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
@@ -166,14 +171,15 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
-  <span id="busy" class="busy" hidden>⏳ <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
   <span id="retro" class="retro" hidden></span>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span>
     <button id="stopBridge" class="warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">Stop bridge</button></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span>
-  <span id="ver" class="ver" title="Laertes version"></span></nav>
+  <span id="ver" class="ver" title="Laertes version"></span>
+  <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button></nav>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -267,8 +273,6 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
     <dd>Every coding and adaptation write with old → new value, unit, variant and result; for coding also each changed
       byte and bit and, where a coding definition or .lbl labels are known, each setting before → after. Search any
       text (unit, VIN, value, retrofit name) or pick a retrofit. Stored in the database, so it survives restarts.</dd>
-    <dt>JSON viewer</dt>
-    <dd>Send any command to the bridge and inspect the raw reply — for troubleshooting.</dd>
   </dl>
 
   <h2 class="sub">Tips</h2>
@@ -289,13 +293,6 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
     <code>THIRD_PARTY_LICENSES.txt</code>. It is not affiliated with Volkswagen AG or Ross-Tech, contains no ODIS
     software or data, and works only with your own licensed ODIS installation. Writes to control units are at
     your own risk.</p>
-</div>
-<div id="json" class="db" hidden>
-  <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
-  <textarea id="jsonIn" rows="5" spellcheck="false">{"action": "ping"}</textarea>
-  <div class="bar"><button class="op" onclick="op('Bridge command', jsonSend)">Send to bridge</button><button onclick="jsonShow()">View pasted JSON</button>
-    <button onclick="jsonLast()">Last bridge reply</button><span class="status" id="jsonMsg"></span></div>
-  <div id="jsonOut"></div>
 </div>
 </main>
 <div id="toast" class="toast" hidden></div>
@@ -415,14 +412,13 @@ function renderBusy() {
 }
 
 // Bridge connection indicator: pings the ODIS bridge (mcpserver.py) so a lost connection
-// shows in the top bar without having to run a command. ping goes through /api/bridge directly,
-// not through bridge(), to avoid overwriting the "Last bridge reply" of the JSON viewer.
+// shows in the top bar without having to run a command.
 async function pingBridge() {
   const el = $('#conn'), txt = el.querySelector('.txt'), veh = $('#veh');
   try {
     await api('POST', '/api/bridge', {action: 'ping'});
     el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver.py).';
-    $('#stopBridge').hidden = false;
+    $('#stopBridge').hidden = false; $('#resetVci').hidden = false;
     try {
       const v = await api('POST', '/api/bridge', {action: 'vehicle'});
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
@@ -437,11 +433,23 @@ async function pingBridge() {
     } catch (e) { $('#vci').hidden = true; }
   } catch (e) {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
-    $('#stopBridge').hidden = true;
+    $('#stopBridge').hidden = true; $('#resetVci').hidden = true;
     veh.hidden = true; $('#vci').hidden = true;
   }
 }
 async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
+
+// Restarts the VCI through ODIS, e.g. when it stops answering. Runs as an operation, so it never
+// cuts into a scan or a write; the top bar shows the VCI state again afterwards.
+function resetVci() {
+  if (busy) { toast(`Busy: ${busy.label}. Wait for it to finish or press Stop.`, true); return; }
+  if (!confirm('Restart the VCI?\n\nThe connection to the car drops for a moment; units must answer again afterwards.')) return;
+  op('Restarting VCI', async () => {
+    const r = await bridge({action: 'reset_vci'});
+    toast('VCI restarted' + (r.state ? ': ' + r.state : '') + '.');
+    await pingBridge();
+  });
+}
 
 // Ends the bridge macro inside ODIS, so ODIS itself can be operated again. Start the macro
 // again from the ODIS macro function to continue with Laertes.
@@ -488,8 +496,17 @@ function resetCoding() { if (sel()) { work = bytesOf(sel().coding); render(); } 
 
 // Returns to the Project units coding view the user opened the Coding tab from.
 function backToUnitCoding() {
+  syncCodingToUnit();
   clearCoding();
   showTab('units'); renderUnitDetail();
+}
+// A unit's coding opened in the Coding tab is edited there; leaving the tab hands the edited
+// bytes back to the unit's coding editor, so they show (highlighted) and can be written.
+function syncCodingToUnit() {
+  const step = openCoding && openCoding.fromUnit && openCoding.step;
+  if (!step || !step.orig || work.length !== step.orig.length) return false;
+  step.work = work.slice();
+  return true;
 }
 
 // Coding-tab ODX definition picker: decode with any variant's database definition, like the
@@ -633,17 +650,19 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', json: 'json', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
   if (!TABS[tab]) tab = 'coding';
+  const synced = activeTab === 'coding' && tab !== 'coding' && syncCodingToUnit();
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   for (const [t, id] of Object.entries(TABS)) $('#' + id).hidden = t !== tab;
   try { localStorage.setItem('tab', tab); } catch (e) {}
   activeTab = tab;
   stopLive();  // a live measurement view only updates while the units tab shows it
   if (tab === 'units' && !units) loadUnits();
+  else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
 }
 
@@ -960,6 +979,16 @@ function renderHistory() {
     <div id="histRows"></div>`;
   renderHistoryRows();
 }
+// A coding change's details: the settings it changed (from the ODIS coding definition or the
+// .lbl labels, e.g. "ACC: off → on") first and highlighted, then the raw byte lines.
+const isByteLine = l => /^Byte \d+: [0-9A-F]{2} → [0-9A-F]{2}/.test(l);
+function changeDetailsHTML(details) {
+  const lines = String(details || '').split('\n').filter(Boolean);
+  if (!lines.length) return '';
+  const settings = lines.filter(l => !isByteLine(l)), bytes = lines.filter(isByteLine);
+  return `<div class="hdetails">${settings.map(l => `<div class="setting">${esc(l)}</div>`).join('')}
+    ${bytes.length ? `<div class="meta">${bytes.map(esc).join('<br>')}</div>` : ''}</div>`;
+}
 // Only the rows re-render while typing in the search, so the input keeps its focus.
 function renderHistoryRows() {
   const cs = historyShown(), all = (changes || []).length;
@@ -971,7 +1000,7 @@ function renderHistoryRows() {
       <td class="small">${esc(fmtWhen(c.time))}</td><td>${esc(c.kind)}${c.retrofit ? `<br><small class="meta">🔧 ${esc(c.retrofit)}</small>` : ''}</td>
       <td>${unit}</td><td>${esc(c.target || '')}</td>
       <td class="mono"><span class="meta">${esc(c.oldValue || '')}</span><br>${diffNew(c.oldValue, c.newValue)}
-        ${c.details ? `<div class="meta" style="font-family:system-ui, sans-serif">${c.details.split('\n').map(esc).join('<br>')}</div>` : ''}</td>
+        ${changeDetailsHTML(c.details)}</td>
       <td>${esc(c.status || '')}${c.note ? `<br><small class="meta">${esc(c.note)}</small> ${trBtn(c.note)}` : ''}</td>
       <td><button class="cp" title="Copy this change" onclick="copyEl(this.closest('tr'))">⧉</button>
         <button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`;
@@ -1023,7 +1052,7 @@ function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(
 async function openUnitCodingInTab() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
   if (!step || !step.work) return;
-  openCoding = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true};
+  openCoding = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true, step};
   work = step.work.slice(); labelsKey = null;
   showTab('coding');
   await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
@@ -1105,8 +1134,8 @@ function codingDetails(step, oldB, newB) {
   const own = step.odx && step.odx.own, table = step.entry === 0 && (own || (step.borrow && step.borrow.table));
   if (table) {
     const was = decodeCoding(oldHex, table), now = decodeCoding(newHex, table);
-    const via = own ? '' : ` [definition of ${step.borrow.chosen.variant}]`;
-    now.forEach((p, k) => { if (p.raw !== was[k].raw) lines.push(`${p.name}: ${was[k].value} → ${p.value}${via}`); });
+    const via = own ? 'ODIS' : `ODIS, definition of ${step.borrow.chosen.variant}`;
+    now.forEach((p, k) => { if (p.raw !== was[k].raw) lines.push(`${p.name}: ${was[k].value} → ${p.value} (byte ${p.byte_pos}, ${via})`); });
   }
   const ls = step.unitLabels || [];
   newB.forEach((b, i) => {
@@ -1118,10 +1147,10 @@ function codingDetails(step, oldB, newB) {
       const m = mask(l.lo, l.hi), k = l.lo + '~' + l.hi;
       if (seen.has(k) || (b & m) === (o & m)) return;
       seen.add(k);
-      lines.push(`Byte ${i} bits ${l.lo}–${l.hi}: ${opt(l, o & m)} → ${opt(l, b & m)} [.lbl]`);
+      lines.push(`${opt(l, o & m)} → ${opt(l, b & m)} (byte ${i} bits ${l.lo}–${l.hi}, .lbl)`);
     });
     ls.filter(l => l.byte === i && l.value === -1 && l.lo === l.hi && ((b ^ o) >> l.lo) & 1)
-      .forEach(l => lines.push(`Byte ${i} bit ${l.lo} ${l.text}: ${(o >> l.lo) & 1 ? 'on' : 'off'} → ${(b >> l.lo) & 1 ? 'on' : 'off'} [.lbl]`));
+      .forEach(l => lines.push(`${l.text}: ${(o >> l.lo) & 1 ? 'on' : 'off'} → ${(b >> l.lo) & 1 ? 'on' : 'off'} (byte ${i} bit ${l.lo}, .lbl)`));
   });
   return lines.join('\n');
 }
@@ -1263,6 +1292,9 @@ async function adaptWrite() {
   if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
   const oldV = params.filter(p => p.name in values).map(p => `${p.name}=${p.value}`).join(', ');
   const newV = Object.entries(values).map(([k, v]) => `${k}=${v}`).join(', ');
+  // For the history: each changed parameter by its readable name, old → new.
+  const details = params.filter(p => p.name in values).map(p =>
+    `${p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name}: ${p.value} → ${values[p.name]}${p.unit ? ' ' + p.unit : ''} (${step.cmd.channel})`).join('\n');
   step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
@@ -1279,11 +1311,11 @@ async function adaptWrite() {
     } else {
       step.writeMsg = `Write did NOT match for ${bad.map(k => `${k} (unit reads ${got[k] === undefined ? '—' : got[k]})`).join(', ')}.`; step.writeErr = true;
     }
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV,
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details,
       status: bad.length ? 'mismatch' : 'verified', note: bad.length ? 'unit reads ' + bad.map(k => `${k}=${got[k]}`).join(', ') : ''});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'error', note: e.message});
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details, status: 'error', note: e.message});
   }
   renderUnitDetail();
 }
@@ -1316,6 +1348,17 @@ async function loadCodingPref(variant) {
   if (!variant) return null;
   try { const p = await api('GET', '/api/coding-pref?' + new URLSearchParams({variant})); return p && p.borrowVariant ? p : null; }
   catch (e) { return null; }
+}
+// Forgets the related variant chosen for this unit's variant: the coding is shown undecoded again
+// and no variant is applied automatically next time (here, in the Coding tab or on other cars).
+async function forgetCodingPref() {
+  const step = codingStep();
+  if (!step || !step.unitVariant) return;
+  try { await api('DELETE', '/api/coding-pref?' + new URLSearchParams({variant: step.unitVariant})); }
+  catch (e) { toast('Could not forget the choice: ' + e.message, true); return; }
+  step.borrow = null;
+  toast(`Forgot the decoding variant for ${step.unitVariant}.`);
+  renderUnitDetail();
 }
 // Applies a remembered borrowed-variant choice to the coding step, loading its definition table.
 async function applyCodingPref(step) {
@@ -1400,6 +1443,7 @@ function codingDefinitionHTML(step) {
       (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle
       before writing. Editing here changes the bytes above; review them and use Write to unit with care.</div>`;
     if (!b.list) html += `<button onclick="op('Searching variants', borrowList)">Decode with a different variant…</button>`;
+    if (step.unitVariant) html += ` <button onclick="forgetCodingPref()" title="Do not decode ${esc(step.unitVariant)} with ${esc(b.chosen.variant)} any more, here or next time">Forget which variant I selected</button>`;
     html += b.table ? decodedTable(coding, b.table, true) : '<div class="meta">Loading the definition…</div>';
   }
   return html;
@@ -1948,13 +1992,9 @@ function idVal(res, name) {
 // Unit database and Trouble codes read ODIS's ODX data through the bridge, without the vehicle.
 // Both tabs share one picker: a unit address gives its base data and variants, any other
 // text searches variant names (part numbers such as 04C906026, or GV_/EV_ names).
-let odxFound = null, odxLoc = null, odxUnit = null, odxTable = null, dtcList = null, lastBridge = null;
+let odxFound = null, odxLoc = null, odxUnit = null, odxTable = null, dtcList = null;
 
-async function bridge(cmd) {
-  const res = await api('POST', '/api/bridge', cmd);
-  lastBridge = {cmd, res};
-  return res;
-}
+function bridge(cmd) { return api('POST', '/api/bridge', cmd); }
 
 function initDatabaseTabs() {
   for (const p of ['odx', 'dtc']) {
@@ -2081,35 +2121,6 @@ function filterRows(input) {
   input.nextElementSibling.querySelectorAll('tr').forEach((tr, i) => {
     if (i > 0) tr.hidden = q && !tr.textContent.toLowerCase().includes(q);
   });
-}
-
-// --- JSON viewer tab ---------------------------------------------------------------------
-
-function jsonMsg(text, err) { const m = $('#jsonMsg'); m.textContent = text || ''; m.classList.toggle('err', !!err); }
-
-function jsonParse() {
-  try { return JSON.parse($('#jsonIn').value); } catch (e) { jsonMsg('Not valid JSON: ' + e.message, true); return undefined; }
-}
-
-async function jsonSend() {
-  const cmd = jsonParse();
-  if (cmd === undefined) return;
-  if (!cmd || typeof cmd !== 'object' || !cmd.action) { jsonMsg('A bridge command is a JSON object with an "action".', true); return; }
-  jsonMsg('Waiting for the bridge…');
-  try { const res = await bridge(cmd); jsonMsg(`Reply to ${cmd.action}`); $('#jsonOut').innerHTML = jsonView(res); }
-  catch (e) { jsonMsg(e.message, true); }
-}
-
-function jsonShow() {
-  const v = jsonParse();
-  if (v !== undefined) { jsonMsg('Pasted JSON'); $('#jsonOut').innerHTML = jsonView(v); }
-}
-
-function jsonLast() {
-  if (!lastBridge) { jsonMsg('No bridge reply yet.', true); return; }
-  $('#jsonIn').value = JSON.stringify(lastBridge.cmd, null, 2);
-  jsonMsg(`Last reply: ${lastBridge.cmd.action}`);
-  $('#jsonOut').innerHTML = jsonView(lastBridge.res);
 }
 
 function toggle(i, bit) { work[i] ^= 1 << bit; render(); }

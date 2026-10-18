@@ -340,6 +340,12 @@ func (s *Store) SetCodingPref(p CodingPref) error {
 	return err
 }
 
+// DeleteCodingPref forgets the saved preference for variant.
+func (s *Store) DeleteCodingPref(variant string) error {
+	_, err := s.db.Exec(`DELETE FROM coding_pref WHERE variant=?`, variant)
+	return err
+}
+
 // SetLabels saves labels in one transaction; an empty text removes that label.
 func (s *Store) SetLabels(variant, subsystem string, ls []Label) error {
 	tx, err := s.db.Begin()

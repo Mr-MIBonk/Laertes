@@ -231,6 +231,14 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 		}
 		reply(w, nil, store.SetCodingPref(p))
 	})
+	mux.HandleFunc("DELETE /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
+		variant := r.URL.Query().Get("variant")
+		if variant == "" {
+			http.Error(w, "variant is required", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.DeleteCodingPref(variant))
+	})
 	mux.HandleFunc("POST /api/bridge", func(w http.ResponseWriter, r *http.Request) {
 		var cmd struct {
 			Action string `json:"action"`

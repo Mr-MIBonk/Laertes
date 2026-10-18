@@ -90,3 +90,22 @@ func TestRetrofitChanges(t *testing.T) {
 		t.Errorf("start after end: %v", err)
 	}
 }
+
+func TestForgetCodingPref(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	s.SetCodingPref(CodingPref{Variant: "EV_A", BorrowVariant: "EV_B"})
+	s.SetCodingPref(CodingPref{Variant: "EV_C", BorrowVariant: "EV_D"})
+	if err := s.DeleteCodingPref("EV_A"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := s.CodingPref("EV_A"); p != nil {
+		t.Errorf("EV_A still remembered: %+v", p)
+	}
+	if p, _ := s.CodingPref("EV_C"); p == nil || p.BorrowVariant != "EV_D" {
+		t.Errorf("EV_C lost: %+v", p)
+	}
+}

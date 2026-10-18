@@ -699,6 +699,7 @@ def handle_odx_variants(cmd):
 
 
 def with_database(fn):
+    """Runs fn() under DIAG_LOCK, for jobs that use no unit connection (database, VCI)."""
     DIAG_LOCK.acquire()
     try:
         return checked(fn())
@@ -1282,6 +1283,23 @@ def handle_vci(cmd):
     return out
 
 
+def handle_reset_vci(cmd):
+    """Restarts the vehicle communication interface (VCI), then reports its state. Waits for any
+    running diagnostic job, since a reset in the middle of one would break it."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+
+    def reset():
+        diag = Factory.getInstance()
+        diag.resetVCI()
+        out = {"ok": True, "reset": True}
+        try:
+            out["state"] = unicode(diag.checkVciState())
+        except (Exception, Throwable) as e:
+            out["state_error"] = error_text(e)
+        return out
+    return with_database(reset)
+
+
 def handle_vehicle_projects(cmd):
     """The current vehicle project and whether it can be changed, plus any selectable projects
     ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
@@ -1380,6 +1398,7 @@ HANDLERS = {
     "vehicle": handle_vehicle,
     "vin": handle_vin,
     "vci": handle_vci,
+    "reset_vci": handle_reset_vci,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "lookup_projects": handle_lookup_projects,
