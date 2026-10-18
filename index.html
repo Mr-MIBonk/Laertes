@@ -576,15 +576,29 @@ function decodeLbl(work, ls) {
     const bl = find(i, 0, 7, -1);
     if (bl) rows += `<tr><th colspan="2">Byte ${i} (${hex(b)}) — ${esc(bl.text)}</th></tr>`;
     fieldsOf(i).forEach(f => {
-      const cur = b & mask(f.lo, f.hi), opt = f.options.find(o => o.value === cur);
-      rows += `<tr><td class="mono">Byte ${i} bits ${f.lo}–${f.hi}</td><td>${opt ? esc(opt.text) : `0x${hex(cur)} (unknown)`}</td></tr>`;
+      const m = mask(f.lo, f.hi), cur = b & m, known = f.options.some(o => o.value === cur);
+      const sel = `<select onchange="codingSetField(${i},${m},+this.value)">
+        ${known ? '' : `<option selected value="${cur}">0x${hex(cur)} (unknown)</option>`}
+        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}>${esc(o.text)} (0x${hex(o.value)})</option>`).join('')}</select>`;
+      rows += `<tr><td class="mono">Byte ${i} bits ${f.lo}–${f.hi}</td><td>${sel}</td></tr>`;
     });
     for (let bit = 7; bit >= 0; bit--) {
       const l = find(i, bit, bit, -1);
-      if (l && ((b >> bit) & 1)) rows += `<tr><td class="mono">Byte ${i} bit ${bit}</td><td>${esc(l.text)} (set)</td></tr>`;
+      if (l) {
+        const on = (b >> bit) & 1;
+        rows += `<tr><td class="mono">Byte ${i} bit ${bit}</td><td><label><input type="checkbox" ${on ? 'checked' : ''}
+          onchange="codingSetField(${i},${1 << bit},this.checked?${1 << bit}:0)"> ${esc(l.text)}</label></td></tr>`;
+      }
     }
   });
   return rows || `<tr><td colspan="2" class="meta">No labels match these bytes.</td></tr>`;
+}
+
+// Writes a single byte's bit field (mask m, value already in position) in the working coding.
+function codingSetField(bytePos, m, value) {
+  const step = codingStep(); if (!step) return;
+  step.work[bytePos] = ((step.work[bytePos] & ~m) | (value & m)) & 0xFF;
+  renderUnitDetail();
 }
 let pendingLblStep = null;
 function importUnitLBL() { pendingLblStep = codingStep(); if (pendingLblStep) $('#unitlbl').click(); }
@@ -723,9 +737,9 @@ function codingDefinitionHTML(step) {
   }
   if (b.chosen) {
     html += `<div class="warnbox">Decoded with the definition of <b>${esc(b.chosen.variant)}</b>, not of this unit
-      (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle,
-      and do not write coding based on it.</div>`;
-    html += b.table ? decodedTable(coding, b.table) : '<div class="meta">Loading the definition…</div>';
+      (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle
+      before writing. Editing here changes the bytes above; review them and use Write to unit with care.</div>`;
+    html += b.table ? decodedTable(coding, b.table, true) : '<div class="meta">Loading the definition…</div>';
   }
   return html;
 }
