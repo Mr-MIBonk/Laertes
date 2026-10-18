@@ -11,7 +11,7 @@ every change. The **Guide** tab in the web page explains setup and use.
 | Path | What it is |
 |---|---|
 | `laertes.exe` (built) | Web server and UI (Go, single file, SQLite database `laertes.db` next to it) |
-| `mcpserver_test.py` | Bridge macro: TCP server run from the ODIS macro function |
+| `mcpserver.py` | Bridge macro: TCP server run from the ODIS macro function |
 | `mcpserver_handlers.py` | Bridge actions, reloaded by the macro whenever the file changes |
 | `index.html` | The web page, embedded into `laertes.exe` |
 | `scripts/licenses.sh` | Generates `THIRD_PARTY_LICENSES.txt` for a release |

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// bridgeCall sends one command to the ODIS Jython TCP bridge (mcpserver_test.py), which speaks
+// bridgeCall sends one command to the ODIS Jython TCP bridge (mcpserver.py), which speaks
 // newline-delimited JSON objects, and returns its reply. A reply with "ok": false is an error.
 func bridgeCall(addr string, cmd json.RawMessage) (json.RawMessage, error) {
 	var line bytes.Buffer // one command per line, so it must not contain newlines
@@ -21,7 +21,7 @@ func bridgeCall(addr string, cmd json.RawMessage) (json.RawMessage, error) {
 
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("ODIS bridge at %s is not reachable (run mcpserver_test.py in ODIS): %w", addr, err)
+		return nil, fmt.Errorf("ODIS bridge at %s is not reachable (run mcpserver.py in ODIS): %w", addr, err)
 	}
 	defer conn.Close()
 	// Some actions read from the control unit, which can take a while.

@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Laertes</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='11' fill='%232563eb'/%3E%3Cpath fill='%23fff' d='M24 8 L34 37 L28.5 37 L24 23.5 L19.5 37 L14 37 Z'/%3E%3Cg fill='none' stroke='%23fbbf24' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 41 C5 35 4 24 8 14'/%3E%3Cpath d='M36 41 C43 35 44 24 40 14'/%3E%3C/g%3E%3C/svg%3E">
+<meta name="theme-color" content="#2563eb">
 <style>
 :root { --bg:#f6f7f9; --panel:#fff; --text:#1d2330; --muted:#6b7280; --line:#dde1e7; --accent:#2563eb; --on:#16a34a; --chg:#d97706; --warn:#dc2626; }
 @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --panel:#1d2128; --text:#e6e8eb; --muted:#9aa3ae; --line:#2e343d; --accent:#60a5fa; --on:#22c55e; --chg:#fbbf24; --warn:#f87171; } }
@@ -127,6 +129,28 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .json .s { color:var(--on); }
 .json .d, .json .b { color:var(--chg); }
 .json .n { color:var(--muted); font-style:italic; }
+button.cp, button.tr { font-size:11px; padding:0 5px; line-height:1.5; opacity:.75; }
+button.cp:hover, button.tr:hover { opacity:1; }
+.cpbox { position:relative; }
+.cpbox > button.cp { position:absolute; right:3px; top:3px; z-index:1; }
+.trout { color:var(--accent); font-style:italic; }
+body.busy button.op { opacity:.45; cursor:progress; }
+.tabs .busy { display:flex; align-items:center; gap:6px; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
+.tabs .busy button, .tabs .conn button { font-size:11px; padding:1px 6px; }
+.tabs .busy .time { font:12px Consolas, monospace; color:var(--muted); }
+.tabs .retro { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; }
+.toast { position:fixed; right:16px; bottom:16px; max-width:420px; background:var(--panel); color:var(--text); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:6px; padding:8px 12px; box-shadow:0 4px 14px rgba(0,0,0,.18); z-index:10; }
+.toast.err { border-left-color:var(--warn); }
+.retrobar { border:1px solid var(--chg); border-radius:4px; padding:6px 8px; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.retrobar b { color:var(--chg); }
+.units .delta { font:11px system-ui, sans-serif; margin-left:4px; }
+.units .delta .up { color:var(--warn); font-weight:bold; }
+.units .delta .down { color:var(--on); font-weight:bold; }
+.units td .old, .units .old { color:var(--muted); font-weight:normal; }
+.units table.vals tr.old td { color:var(--muted); }
+.units table.vals tr.new td:first-child { color:var(--warn); font-weight:bold; }
+.units table.vals tr.gone td:first-child { color:var(--on); font-weight:bold; }
+pre.report { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px Consolas, monospace; overflow:auto; max-height:72vh; white-space:pre; margin:0; }
 .units pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; overflow:auto; max-height:70vh; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 </head>
@@ -143,7 +167,10 @@ input[type=text]:focus { outline:1px solid var(--accent); }
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
   <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
-  <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
+  <span id="busy" class="busy" hidden>⏳ <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
+  <span id="retro" class="retro" hidden></span>
+  <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span>
+    <button id="stopBridge" class="warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">Stop bridge</button></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span>
   <span id="ver" class="ver" title="Laertes version"></span></nav>
@@ -151,8 +178,16 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <div id="units" class="units" hidden>
   <div class="list">
     <div class="bar"><input type="text" id="unitFilter" placeholder="Filter by address or name" oninput="renderUnitList()">
-      <label><input type="checkbox" id="unitIdentified" onchange="renderUnitList()"> identified only</label>
-      <button onclick="loadUnits()">Reload from ODIS</button><span class="status" id="unitsMsg"></span></div>
+      <label title="Units that answered: identified by ODIS or by a Laertes scan, and not failed since"><input type="checkbox" id="unitResponded" onchange="renderUnitList()"> responded only</label>
+      <button class="op" onclick="op('Loading units', loadUnits)">Reload from ODIS</button></div>
+    <div class="bar"><button class="op" onclick="quickScan()" title="Ask the gateway which units are installed, then identify only those (real cars)">Quick scan</button>
+      <button class="op" onclick="scanAll()" title="Read the identification of every listed unit">Scan all</button>
+      <button class="op" onclick="scanAllDtcs()" title="Read the fault memory of every listed unit and compare with the previous press">Scan all unit DTCs</button>
+      <button class="op" onclick="fullScan()" title="Identification, coding and faults of every listed unit, as a VCDS-style Auto-Scan log">Full scan</button>
+      <button class="op" id="retroStartBtn" onclick="retrofitStart()" title="Scan the car, then group all following changes under one name and ignore the faults found now">Start retrofit…</button>
+      <span class="status" id="unitsMsg"></span></div>
+    <div id="retroBar"></div>
+    <div class="meta"><button class="cp" title="Copy the unit list" onclick="copyEl(this.parentElement.nextElementSibling)">⧉ Copy list</button></div>
     <table class="unitlist"><thead><tr><th>Address</th><th>Unit</th><th>State</th><th>DTCs</th></tr></thead><tbody id="unitRows"></tbody></table>
   </div>
   <div class="detail" id="unitDetail"></div>
@@ -167,18 +202,22 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 
   <h2 class="sub">1. Install the bridge macros (once)</h2>
   <ol>
-    <li>Copy <code>mcpserver_test.py</code> and <code>mcpserver_handlers.py</code> from this repository to
+    <li>Copy <code>mcpserver.py</code> and <code>mcpserver_handlers.py</code> from this repository to
       <code>C:\ProgramData\OE\macros\</code>.</li>
-    <li>Updating later: replace <code>mcpserver_handlers.py</code> only. The bridge reloads it automatically when the
-      file changes, without restarting ODIS.</li>
+    <li>Updating later: replace <code>mcpserver_handlers.py</code>; the bridge reloads it automatically when the
+      file changes, without restarting ODIS. A new <code>mcpserver.py</code> takes effect the next time you start the macro.</li>
+    <li>Coming from an older version: the macro used to be called <code>mcpserver_test.py</code>. Delete that file and
+      run <code>mcpserver.py</code> instead (only the new one has <i>Stop bridge</i>).</li>
   </ol>
 
   <h2 class="sub">2. Start the bridge in ODIS</h2>
   <ol>
     <li>Start <b>ODIS</b> and open the diagnostic session as usual (connect the VCI and the car or bench unit).</li>
-    <li>Open the <b>macros</b> function in ODIS and run <code>mcpserver_test.py</code>.</li>
+    <li>Open the <b>macros</b> function in ODIS and run <code>mcpserver.py</code>.</li>
     <li>The macro keeps running and listens on <code>127.0.0.1:8765</code>. Leave it running; while it does, ODIS
       itself cannot be operated, which is why everything is done from this page.</li>
+    <li>To use ODIS itself again, press <b>Stop bridge</b> in the top bar: the macro ends and ODIS is free. Run
+      <code>mcpserver.py</code> again to continue with Laertes.</li>
   </ol>
 
   <h2 class="sub">3. Start Laertes</h2>
@@ -198,9 +237,25 @@ input[type=text]:focus { outline:1px solid var(--accent); }
     <dt>Project units</dt>
     <dd>The units of the vehicle (or the ODIS project offline). Select a unit, then:
       <b>Identification</b>, <b>Coding</b> (edit bytes or use the decoded tables' dropdowns, then <i>Write to unit…</i> —
-      the coding is read back and verified), <b>Adaptation channels</b> (pick a channel, change values, write, verified),
+      the coding is read back and verified, and the fault memory is read before and after so you see which faults
+      are new or gone, active or passive; units that also code slave units, such as the gateway 19, offer each
+      coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified),
       <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Event memory</b> (faults with
-      repair guidance) and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs elevated access.</dd>
+      repair guidance), <b>Full scan</b> of the unit and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs
+      elevated access.
+      <br>For many units at once, the buttons above the list work on the units the list shows (tick
+      <i>responded only</i> for those that answered, untick it for everything in the ODIS project).
+      On a real car start with <b>Quick scan</b>: it asks the gateway once which units are installed and
+      communicating, identifies only those and ticks <i>responded only</i>, so later scans skip the missing units
+      instead of waiting for their timeouts (without a gateway, e.g. on a bench, use <b>Scan all</b>):
+      <b>Scan all</b> reads their identification; <b>Scan all unit DTCs</b> reads their faults and shows, on every press,
+      how many are new (+) or gone (−) since the press before; <b>Full scan</b> writes identification, coding and faults
+      as a log in the layout of a VCDS Auto-Scan, to copy or download for tools that read those logs.</dd>
+    <dt>Retrofit mode</dt>
+    <dd><b>Start retrofit…</b> first scans the listed units and keeps that scan. While the retrofit is active (🔧 in the
+      top bar), every change is stored under its name (by default from the VIN) and the faults the units had before are
+      ignored in counts, scans and the coding fault check. Rename it or look at the scan from before at any time; end it
+      when the work is done. In History, pick the retrofit to see all its changes.</dd>
     <dt>Unit database / Trouble codes</dt>
     <dd>The ODIS database without a car: search a part number or variant, see its tables and every trouble code with
       repair guidance. Each unit also links to its <i>DTC catalog (offline)</i>.</dd>
@@ -209,8 +264,9 @@ input[type=text]:focus { outline:1px solid var(--accent); }
       Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), or with
       <i>New coding</i> for bytes you type in.</dd>
     <dt>History</dt>
-    <dd>Every coding and adaptation write with old → new value, unit, variant and result. Stored in the database, so it
-      survives restarts.</dd>
+    <dd>Every coding and adaptation write with old → new value, unit, variant and result; for coding also each changed
+      byte and bit and, where a coding definition or .lbl labels are known, each setting before → after. Search any
+      text (unit, VIN, value, retrofit name) or pick a retrofit. Stored in the database, so it survives restarts.</dd>
     <dt>JSON viewer</dt>
     <dd>Send any command to the bridge and inspect the raw reply — for troubleshooting.</dd>
   </dl>
@@ -218,6 +274,10 @@ input[type=text]:focus { outline:1px solid var(--accent); }
   <h2 class="sub">Tips</h2>
   <ul>
     <li>Writes change the control unit. Every write asks for confirmation and shows exactly what changes.</li>
+    <li>One operation runs at a time: while one runs (shown in the top bar), others are refused. <b>Stop</b> ends long
+      scans and live views after the current unit.</li>
+    <li>⧉ copies the text, table or fault next to it. 🌐 translates a fault or error text to English with Google
+      Translate — the text is sent to Google only when you press it.</li>
     <li>ODIS guided fault finding documents appear only after the vehicle is identified and guided fault finding is
       started in ODIS; the general guidance works without it.</li>
     <li>Your data (labels, history, remembered choices) is in <code>laertes.db</code> next to
@@ -233,11 +293,12 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <div id="json" class="db" hidden>
   <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
   <textarea id="jsonIn" rows="5" spellcheck="false">{"action": "ping"}</textarea>
-  <div class="bar"><button onclick="jsonSend()">Send to bridge</button><button onclick="jsonShow()">View pasted JSON</button>
+  <div class="bar"><button class="op" onclick="op('Bridge command', jsonSend)">Send to bridge</button><button onclick="jsonShow()">View pasted JSON</button>
     <button onclick="jsonLast()">Last bridge reply</button><span class="status" id="jsonMsg"></span></div>
   <div id="jsonOut"></div>
 </div>
 </main>
+<div id="toast" class="toast" hidden></div>
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
 <input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
 <script>
@@ -259,14 +320,109 @@ async function api(method, url, body) {
   return res.json();
 }
 
-// Bridge connection indicator: pings the ODIS bridge (mcpserver_test.py) so a lost connection
+let toastTimer;
+function toast(text, err) {
+  const el = $('#toast');
+  el.textContent = text; el.classList.toggle('err', !!err); el.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, err ? 4000 : 1500);
+}
+
+// --- Copy ----------------------------------------------------------------------------------
+// copyBtn copies a fixed text; copyNext copies what the element after the button shows (tables
+// tab-separated, chosen options instead of whole dropdowns, without buttons and .nocopy parts).
+const copyTexts = [];
+const copyBtn = (text, title = 'Copy') =>
+  `<button class="cp" title="${esc(title)}" onclick="event.preventDefault(); event.stopPropagation(); copy(copyTexts[${copyTexts.push(String(text)) - 1}])">⧉</button>`;
+const copyNext = (html, title = 'Copy') =>
+  `<div class="cpbox"><button class="cp" title="${esc(title)}" onclick="copyEl(this.nextElementSibling)">⧉</button>${html}</div>`;
+function copy(t) { navigator.clipboard.writeText(t).then(() => toast('Copied'), e => toast('Copy failed: ' + e.message, true)); }
+function copyEl(el, ev) { if (ev) { ev.preventDefault(); ev.stopPropagation(); } copy(textOf(el)); }
+function textOf(root) {
+  const walk = n => {
+    if (n.nodeType === 3) return n.textContent.replace(/\s+/g, ' ');
+    if (n.nodeType !== 1 || n.hidden || n.matches('button, script, style, .nocopy')) return '';
+    if (n.matches('select')) return n.selectedOptions[0] ? n.selectedOptions[0].text : '';
+    if (n.matches('input[type=checkbox]')) return n.checked ? '[x] ' : '[ ] ';
+    if (n.matches('input, textarea')) return n.value;
+    if (n.matches('br')) return '\n';
+    if (n.matches('table')) return [...n.rows].filter(r => !r.hidden)
+      .map(r => [...r.cells].map(c => walk(c).replace(/\s+/g, ' ').trim()).join('\t')).join('\n') + '\n';
+    const t = [...n.childNodes].map(walk).join('');
+    return /^(DIV|P|LI|TR|SUMMARY|DETAILS|H1|H2|UL|OL|PRE|DT|DD)$/.test(n.tagName) ? t + '\n' : t;
+  };
+  return walk(root).split('\n').map(l => l.replace(/ {2,}/g, ' ').replace(/ *\t */g, '\t').trim()).filter(Boolean).join('\n');
+}
+
+// --- Translate -----------------------------------------------------------------------------
+// Fault and error texts from ODIS are often German. The button sends the text to Google
+// Translate (only when pressed) and shows the English text next to it; if the service cannot be
+// reached it opens translate.google.com instead.
+const trCache = {}, trTexts = [];
+async function translate(text) {
+  if (!(text in trCache)) {
+    const res = await fetch('https://translate.googleapis.com/translate_a/single?' +
+      new URLSearchParams({client: 'gtx', sl: 'auto', tl: 'en', dt: 't', q: text}));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    trCache[text] = (await res.json())[0].map(p => p[0]).join('');
+  }
+  return trCache[text];
+}
+const trBtn = text => !text ? '' : `<button class="tr" title="Translate to English" onclick="event.preventDefault(); event.stopPropagation(); trShow(this, ${trTexts.push(String(text)) - 1})">🌐</button>`
+  + (String(text) in trCache ? `<span class="trout"> → ${esc(trCache[text])}</span>` : '');
+async function trShow(btn, i) {
+  const text = trTexts[i];
+  let out = btn.nextElementSibling;
+  if (!out || !out.classList.contains('trout')) { btn.insertAdjacentHTML('afterend', '<span class="trout"></span>'); out = btn.nextElementSibling; }
+  out.textContent = ' → …';
+  try { out.textContent = ' → ' + await translate(text); }
+  catch (e) {
+    out.remove();
+    window.open('https://translate.google.com/?' + new URLSearchParams({sl: 'auto', tl: 'en', op: 'translate', text}), '_blank', 'noopener');
+  }
+}
+
+// --- One operation at a time ---------------------------------------------------------------
+// Everything that talks to a control unit or the ODIS database runs through op(). While one
+// runs, starting another is refused; the top bar shows what runs and Stop cancels long scans
+// and live views after their current step.
+let busy = null;
+async function op(label, fn) {
+  if (busy) { toast(`Busy: ${busy.label}. Wait for it to finish or press Stop.`, true); return; }
+  const o = busy = {label, cancelled: false, onCancel: null, started: Date.now()};
+  const timer = setInterval(renderBusyTime, 1000);
+  renderBusy();
+  try { return await fn(o); }
+  catch (e) { toast(e.message, true); }
+  finally { clearInterval(timer); busy = null; renderBusy(); }
+}
+// Elapsed time of the running operation, m:ss (h:mm:ss after an hour).
+function renderBusyTime() {
+  if (!busy) return;
+  const s = Math.floor((Date.now() - busy.started) / 1000), p2 = n => String(n).padStart(2, '0');
+  $('#busy .time').textContent = s >= 3600 ? `${Math.floor(s / 3600)}:${p2(Math.floor(s / 60) % 60)}:${p2(s % 60)}` : `${Math.floor(s / 60)}:${p2(s % 60)}`;
+}
+function opLabel(text) { if (busy) { busy.label = text; renderBusy(); } }
+function cancelOp() {
+  if (!busy) return;
+  busy.cancelled = true;
+  if (busy.onCancel) busy.onCancel();
+  opLabel(busy.label + ' — stopping…');
+}
+function renderBusy() {
+  $('#busy').hidden = !busy;
+  if (busy) { $('#busy .txt').textContent = busy.label; renderBusyTime(); }
+  document.body.classList.toggle('busy', !!busy);
+}
+
+// Bridge connection indicator: pings the ODIS bridge (mcpserver.py) so a lost connection
 // shows in the top bar without having to run a command. ping goes through /api/bridge directly,
 // not through bridge(), to avoid overwriting the "Last bridge reply" of the JSON viewer.
 async function pingBridge() {
   const el = $('#conn'), txt = el.querySelector('.txt'), veh = $('#veh');
   try {
     await api('POST', '/api/bridge', {action: 'ping'});
-    el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver_test.py).';
+    el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver.py).';
+    $('#stopBridge').hidden = false;
     try {
       const v = await api('POST', '/api/bridge', {action: 'vehicle'});
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
@@ -281,10 +437,24 @@ async function pingBridge() {
     } catch (e) { $('#vci').hidden = true; }
   } catch (e) {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
+    $('#stopBridge').hidden = true;
     veh.hidden = true; $('#vci').hidden = true;
   }
 }
 async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
+
+// Ends the bridge macro inside ODIS, so ODIS itself can be operated again. Start the macro
+// again from the ODIS macro function to continue with Laertes.
+async function stopBridge() {
+  if (!confirm(`Stop the ODIS bridge macro?\n\nODIS can then be used again. To continue with Laertes, run mcpserver.py from the ODIS macro function again.${busy ? `\n\nStill running here: ${busy.label} — it will fail.` : ''}`)) return;
+  try {
+    await api('POST', '/api/bridge', {action: 'shutdown'});
+    toast('Bridge stopped. ODIS can be used again.');
+  } catch (e) {
+    toast(/Unknown action/.test(e.message) ? 'This bridge macro is too old to stop from here: install mcpserver.py (see Guide) and stop it in ODIS this time.' : e.message, true);
+  }
+  pingBridge();
+}
 
 async function loadLabels(force) {
   const r = sel(), key = r.variant + '\n' + r.subsystem;
@@ -345,10 +515,10 @@ function codingDefPanelHTML() {
     : '<button onclick="codingDefStart()">Decode with a variant’s definition…</button>';
   if (d.searching) {
     h += `<div class="bar"><input id="cdq" placeholder="part number or variant, e.g. 04C906026 or EV_ECM…" style="width:24em;font-family:Consolas, monospace"
-        onkeydown="if(event.key==='Enter')codingDefSearch()"><button onclick="codingDefSearch()">Search</button></div>`;
+        onkeydown="if(event.key==='Enter')op('Searching the database', codingDefSearch)"><button onclick="op('Searching the database', codingDefSearch)">Search</button></div>`;
     if (d.busy) h += '<div class="meta">Searching the ODIS database…</div>';
     if (d.err) h += `<div class="status err">${esc(d.err)}</div>`;
-    if (d.list) h += `<div class="names short">${d.list.map((v, i) => `<button onclick="codingDefPick(${i})">${esc(v.variant)}</button>`).join('')}</div>`;
+    if (d.list) h += `<div class="names short">${d.list.map((v, i) => `<button onclick="op('Loading the definition', () => codingDefPick(${i}))">${esc(v.variant)}</button>`).join('')}</div>`;
   }
   return h;
 }
@@ -422,7 +592,7 @@ function render() {
     ${codingDefPanelHTML()}`;
 }
 
-// Project units come from the ODIS Jython bridge (mcpserver_test.py) through /api/bridge.
+// Project units come from the ODIS Jython bridge (mcpserver.py) through /api/bridge.
 // Unit actions connect to the control unit by its address; list results drill down further.
 let units = null, unitSel = null, unitPath = [];
 const UNIT_ACTIONS = [
@@ -485,7 +655,7 @@ function reprFields(repr) {
   return f;
 }
 
-function unitsStatus(text, err) { const m = $('#unitsMsg'); m.textContent = text || ''; m.classList.toggle('err', !!err); }
+function unitsStatus(text, err) { const m = $('#unitsMsg'); m.textContent = text || ''; m.classList.toggle('err', !!err); if (err && text) m.insertAdjacentHTML('beforeend', ' ' + trBtn(text)); }
 
 // Units of the current ODIS session vehicle, with what ODIS identified (part numbers, versions,
 // ODX variant); without a vehicle session, the plain project plan.
@@ -502,61 +672,108 @@ async function loadUnits() {
     const known = units.filter(u => u.state && u.state !== 'NOT_READ' && u.swpnr && u.swpnr !== '---').length;
     unitsStatus(`${units.length} units from the ${source}, ${known} identified`);
   } catch (e) { units = units || []; unitsStatus(e.message, true); }
+  units.forEach(u => { const f = unitScan[u.id] && unitScan[u.id].faults; if (f) countFaults(u, f); });
   renderUnitList(); renderUnitDetail();
+}
+
+// What Laertes itself learned about each unit, by address, kept when the list is reloaded:
+// whether it answered the last request, its faults from the last fault-memory read and, after
+// "Scan all unit DTCs", how they changed since the press before.
+const unitScan = {};
+const scanOf = addr => unitScan[addr] || (unitScan[addr] = {});
+const responded = u => { const r = scanOf(u.id).responded; return r === undefined ? !!known(u.swpnr) : r; };
+function markResponded(u, ok) { scanOf(u.id).responded = ok; }
+// Records a fresh fault-memory read of the unit at addr and updates its count in the list.
+function markFaults(addr, faults) {
+  const sc = scanOf(addr); sc.faults = faults; sc.responded = true;
+  const u = (units || []).find(u => u.id === addr);
+  if (u) { countFaults(u, faults); renderUnitList(); }
+}
+function countFaults(u, faults) {
+  u.dtcs = faults.filter(d => !isOld(u.id, d)).length;
+  u.oldDtcs = faults.length - u.dtcs;
+}
+function dtcCell(u) {
+  if (u.dtcs === null || u.dtcs === undefined) return '';
+  const d = scanOf(u.id).delta;
+  return `${u.dtcs}${u.oldDtcs ? ` <span class="old" title="faults from before the retrofit, ignored">+${u.oldDtcs}</span>` : ''}${d && (d.added.length || d.removed.length)
+    ? `<span class="delta" title="since the previous DTC scan">${d.added.length ? `<span class="up">+${d.added.length}</span>` : ''} ${d.removed.length ? `<span class="down">−${d.removed.length}</span>` : ''}</span>` : ''}`;
 }
 
 const known = v => v && v !== '---' ? v : '';
 
 // One line of what ODIS identified about a unit: system · protocol · HW · SW · ODX variant.
-function unitFacts(u) {
+function unitFacts(u, plain) {
   return [known(u.system), known(u.name) !== 'UNKNOWN' && known(u.name),
     known(u.hwpnr) && `HW ${u.hwpnr} ${known(u.hwver)}`, known(u.swpnr) && `SW ${u.swpnr} ${known(u.swver)}`,
-    u.variant].filter(Boolean).map(esc).join(' · ');
+    u.variant].filter(Boolean).map(plain ? String : esc).join(' · ');
 }
 
 // Each unit takes two table rows: address, name, state and DTC count, then its identification
 // in small text, which keeps the list narrow next to the detail pane.
+// The units the list shows (filter and "responded only" applied); the scans work on these.
+function listedUnits() {
+  const q = $('#unitFilter').value.trim().toLowerCase(), onlyResp = $('#unitResponded').checked;
+  return (units || []).filter(u => (!q || (u.repr + ' ' + u.system + ' ' + u.variant).toLowerCase().includes(q)) && (!onlyResp || responded(u)));
+}
 function renderUnitList() {
-  const q = $('#unitFilter').value.trim().toLowerCase(), onlyKnown = $('#unitIdentified').checked;
   const table = $('table.unitlist');
   table.querySelectorAll('tbody.unit').forEach(b => b.remove());
-  const rows = (units || [])
-    .filter(u => (!q || (u.repr + ' ' + u.system + ' ' + u.variant).toLowerCase().includes(q)) && (!onlyKnown || known(u.swpnr)))
+  const rows = listedUnits()
     .map(u => {
       const facts = unitFacts(u);
+      const answer = scanOf(u.id).responded, state = answer === false ? 'no answer' : u.state;
       return `<tbody class="unit ${u.index === unitSel ? 'sel' : ''} ${known(u.swpnr) ? 'known' : ''}" onclick="selectUnit(${u.index})">
-        <tr><td>${esc(u.id || '')}</td><td>${esc(u.sname || u.repr)}</td><td class="small">${esc(u.state)}</td>
-          <td class="${u.dtcs ? 'bad' : ''}">${u.dtcs === null ? '' : u.dtcs}</td></tr>
+        <tr><td>${esc(u.id || '')}</td><td>${esc(u.sname || u.repr)}</td><td class="small ${answer === false ? 'bad' : ''}">${esc(state)}</td>
+          <td class="${u.dtcs ? 'bad' : ''}">${dtcCell(u)}</td></tr>
         ${facts ? `<tr class="facts"><td></td><td colspan="3">${facts}</td></tr>` : ''}</tbody>`;
     }).join('');
   table.insertAdjacentHTML('beforeend', rows);
 }
 
-function selectUnit(index) { unitSel = index; unitPath = []; renderUnitList(); renderUnitDetail(); }
+function selectUnit(index) { unitSel = index; unitPath = []; unitReport = null; renderUnitList(); renderUnitDetail(); }
 
 function valsTable(rows) {
-  return `<table class="vals">${rows.map(r => r.head ? `<tr><th colspan="3">${esc(r.head)}</th></tr>`
-    : `<tr class="${r.err ? 'err' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}</td><td>${esc(r.unit || '')}</td></tr>`).join('')}</table>`;
+  return copyNext(`<table class="vals">${rows.map(r => r.head ? `<tr><th colspan="3">${esc(r.head)}</th></tr>`
+    : `<tr class="${r.err ? 'err' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}${r.err ? ' ' + trBtn(r.value) : ''}</td><td>${esc(r.unit || '')}</td></tr>`).join('')}</table>`, 'Copy table');
 }
 
-// Event memory: one collapsible block per stored fault. The summary shows the DTC, its text and
-// whether it is active (status bit 0, test failed); opening it shows every set status bit, the
-// other event details and the environment data.
-function eventMemoryHTML(res) {
-  const m = res.event_memory, entries = m.eventMemoryEntries || [];
-  const blocks = entries.map((e, ei) => {
+// The stored faults of an event memory reply: code, text, active (status bit 0, test failed),
+// the set status bits and the detail rows (other event details and environment data).
+function dtcEntries(res) {
+  const m = (res && res.event_memory) || {};
+  return (m.eventMemoryEntries || []).map(e => {
     const infos = e.eventInfos || [], info = t => infos.find(i => i.eventInfoType === t);
     const code = (info('PCODE') || {}).translatedValue || '', err = info('ERROR_CODE') || {};
     const text = err.translatedValue || (err.translatedName || '').replace(/\s+/g, ' ');
-    const bits = (e.dtcStates || []).filter(b => b.bitSet), active = bits.some(b => b.bitPosition === 0);
-    const rows = [...bits.map(b => ({depth: 0, name: `Status bit ${b.bitPosition}`, value: b.bitValueText})),
-      ...resultRows(infos.filter(i => !['PCODE', 'ERROR_CODE'].includes(i.eventInfoType) && i.translatedValue)),
+    const bits = (e.dtcStates || []).filter(b => b.bitSet);
+    const details = [...resultRows(infos.filter(i => !['PCODE', 'ERROR_CODE'].includes(i.eventInfoType) && i.translatedValue)),
       ...resultRows(e.environmentData)];
-    return `<details class="event"><summary><span class="mono">${esc(code || '—')}</span> ${esc(text)}
-      <span class="${active ? 'bad' : 'meta'}">${active ? 'active' : 'passive'}</span></summary>${valsTable(rows)}${dtcGuidanceHTML(code, text, ei)}</details>`;
-  }).join('');
-  return `<div class="meta">${res.cleared ? 'Event memory cleared. ' : ''}${entries.length} stored fault${entries.length === 1 ? '' : 's'}</div>
-    ${m.errorMessage ? `<div class="status err">${esc(m.errorMessage)}</div>` : ''}${blocks}`;
+    return {code, text, bits, details, active: bits.some(b => b.bitPosition === 0)};
+  });
+}
+// Identifies a fault across reads, e.g. before and after a coding write.
+const dtcKey = d => `${d.code}|${d.text}`;
+const activeText = d => d.active ? 'active' : 'passive';
+
+// Event memory: one collapsible block per stored fault. The summary shows the DTC, its text and
+// whether it is active; opening it shows every set status bit, the other event details and the
+// environment data. During a retrofit, faults the unit had when it started are listed apart.
+function eventMemoryHTML(res, addr) {
+  const m = res.event_memory, all = dtcEntries(res);
+  const block = (d, ei) => {
+    const rows = [...d.bits.map(b => ({depth: 0, name: `Status bit ${b.bitPosition}`, value: b.bitValueText})), ...d.details];
+    return `<details class="event"><summary><span class="mono">${esc(d.code || '—')}</span> ${esc(d.text)} ${trBtn(d.text)}
+      <span class="${d.active ? 'bad' : 'meta'}">${activeText(d)}</span>
+      <button class="cp" title="Copy this fault with its details" onclick="copyEl(this.closest('details'), event)">⧉</button></summary>
+      ${valsTable(rows)}<div class="nocopy">${dtcGuidanceHTML(d.code, d.text, ei)}</div></details>`;
+  };
+  const fresh = all.filter(d => !isOld(addr, d)), old = all.filter(d => isOld(addr, d));
+  return `<div class="meta">${res.cleared ? 'Event memory cleared. ' : ''}${fresh.length} stored fault${fresh.length === 1 ? '' : 's'}${old.length ? ` (+${old.length} from before the retrofit, ignored)` : ''}
+      ${all.length ? `<button class="cp" title="Copy all faults" onclick="copyEl(this.parentElement.nextElementSibling)">⧉ Copy all</button>` : ''}</div>
+    ${m.errorMessage ? `<div class="status err">${esc(m.errorMessage)} ${trBtn(m.errorMessage)}</div>` : ''}
+    <div>${fresh.map(block).join('')}${old.length ? `<details class="event old"><summary class="old">${old.length} fault${old.length === 1 ? '' : 's'} from before the retrofit (ignored)</summary>
+      ${old.map((d, i) => block(d, 'old' + i)).join('')}</details>` : ''}</div>`;
 }
 
 // General repair guidance for a DTC, derived from its standardised OBD-II code structure and
@@ -581,7 +798,7 @@ function dtcGuidance(code, text) {
 function dtcGuidanceHTML(code, text, idx) {
   return `<div class="guide"><b>General guidance</b> <span class="meta">(generic, not ODIS guided fault finding)</span>
     <ul>${dtcGuidance(code, text).map(s => `<li>${esc(s)}</li>`).join('')}</ul>
-    <button onclick="odisGuidance('${esc(code)}', '${idx}')">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
+    <button onclick="op('ODIS guidance', () => odisGuidance('${esc(code)}', '${idx}'))">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
     <div id="guide${idx}" class="meta"></div></div>`;
 }
 async function odisGuidance(code, idx) {
@@ -600,7 +817,7 @@ async function odisGuidance(code, idx) {
     el.innerHTML = `ODIS has no guided documents yet — guided fault finding needs the vehicle identified and started in ODIS.
       <div class="meta">Detected vehicle project: <b>${esc(vp.current || 'none')}</b>${vp.change_allowed === false ? ' · locked (change it in ODIS)' : ''}</div>
       ${vp.change_allowed ? `<div class="bar"><input id="vp${idx}" placeholder="vehicle project, e.g. VW37X" value="${esc(vp.current || '')}">
-        <button onclick="setVehicle('${idx}', '${esc(code)}')">Set vehicle & retry</button></div>`
+        <button onclick="op('Setting the vehicle', () => setVehicle('${idx}', '${esc(code)}'))">Set vehicle & retry</button></div>`
         : '<div class="meta">In ODIS: identify the vehicle (or pick it manually) and open Guided Fault Finding, then retry.</div>'}`;
   } catch (e) { el.textContent = e.message; }
 }
@@ -618,13 +835,14 @@ async function setVehicle(idx, code) {
 
 function renderUnitDetail() {
   const u = (units || []).find(u => u.index === unitSel);
+  if (unitReport) { $('#unitDetail').innerHTML = reportHTML(unitReport); return; }
   if (!u) { $('#unitDetail').innerHTML = '<div class="empty">Select a unit.</div>'; return; }
   const step = unitPath[unitPath.length - 1];
   let body = '';
   if (step && step.live) {
     body = liveHTML(step);
   } else if (step && step.res && step.res.names && step.cmd.action === 'list_measurement_groups') {
-    body = `<div class="bar"><button onclick="liveStart()">Show live</button>
+    body = `<div class="bar"><button class="op" onclick="liveStart()">Show live</button>
         <button onclick="measSelectAll(true)">All</button><button onclick="measSelectAll(false)">None</button>
         <span class="meta">Tick groups to watch, then Show live.</span></div>
       <input type="text" placeholder="Filter" oninput="filterNames(this)">
@@ -634,9 +852,17 @@ function renderUnitDetail() {
     const next = UNIT_NEXT[step.cmd.action];
     body = `<input type="text" placeholder="Filter" oninput="filterNames(this)">
       <div class="names">${step.res.names.map((n, i) => next
-      ? `<button onclick="unitOpen(${i})">${esc(n)}</button>` : `<span>${esc(n)}</span>`).join('')}</div>`;
+      ? `<button class="op" onclick="unitOpen(${i})">${esc(n)}</button>` : `<span>${esc(n)}</span>`).join('')}</div>
+      <div class="meta">${copyBtn(step.res.names.join('\n'), 'Copy all names')} copy the list</div>`;
   } else if (step && step.res && step.res.event_memory) {
-    body = eventMemoryHTML(step.res) + `<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
+    body = eventMemoryHTML(step.res, u.id) + `<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
+  } else if (step && step.res && step.cmd.action === 'read_coding') {
+    // Only the way to change it: the editor starts from the unit's current coding.
+    body = step.codings && step.codings.length ? codingEditorHTML(step) + dtcChangeHTML(step, u.id)
+        + (step.entry === 0 ? `<h2 class="sub">Coding definition (ODIS database)</h2>${codingDefinitionHTML(step)}`
+          : '<div class="meta">The ODIS database coding definition is shown for the master coding only.</div>')
+        + `<h2 class="sub">Decode with your .lbl labels</h2>${lblDecodeHTML(step)}`
+      : '<div class="meta">The unit returned no coding.</div>';
   } else if (step && step.res) {
     const rows = resultRows(step.res);
     // Method lists are the same long Java reflection dump for every object; show only their size.
@@ -644,21 +870,20 @@ function renderUnitDetail() {
     body = rows.length ? `${valsTable(rows)}
         <details class="rawjson"><summary>JSON</summary>${jsonView(data)}</details>`
       : jsonView(data);
-    if (step.cmd.action === 'read_coding')
-      body += codingEditorHTML(step)
-        + `<h2 class="sub">Coding definition (ODIS database)</h2>${codingDefinitionHTML(step)}`
-        + `<h2 class="sub">Decode with your .lbl labels</h2>${lblDecodeHTML(step)}`;
     if (step.cmd.action === 'read_adaptation')
       body += adaptationEditorHTML(step);
   }
   const crumbs = unitPath.map((s, i) => i === unitPath.length - 1 ? esc(s.label) : `<a href="#" onclick="unitBack(${i}); return false">${esc(s.label)}</a>`).join(' › ');
+  const factsText = [u.id, u.sname, unitFacts(u, true)].filter(Boolean).join(' · ');
   $('#unitDetail').innerHTML = `<h1>${esc(u.sname || '')} <small class="meta">${esc(u.id || '')}</small></h1>
-    <div class="facts">${unitFacts(u) || esc(u.state)} · <a href="#" onclick="openInDatabase(); return false">open in unit database</a>
+    <div class="facts">${unitFacts(u) || esc(u.state)} ${copyBtn(factsText, 'Copy address, name and identification')}
+      · <a href="#" onclick="openInDatabase(); return false">open in unit database</a>
       · <a href="#" onclick="openDtcCatalog(); return false">DTC catalog (offline)</a></div>
-    <div class="acts">${UNIT_ACTIONS.map(([, label], i) => `<button onclick="unitStart(${i})">${esc(label)}</button>`).join('')}
-      <button onclick="unitLogin()">Login…</button>
-      <button class="warn" onclick="unitClearDtcs()">Clear DTCs</button></div>
-    ${step ? `<div class="status ${step.err ? 'err' : ''}">${crumbs}${step.busy ? ' …' : ''}${step.err ? ': ' + esc(step.err) : ''}
+    <div class="acts">${UNIT_ACTIONS.map(([, label], i) => `<button class="op" onclick="unitStart(${i})">${esc(label)}</button>`).join('')}
+      <button class="op" onclick="unitLogin()">Login…</button>
+      <button class="op" onclick="fullScanUnit()" title="Identification, coding and faults of this unit as a VCDS-style log">Full scan</button>
+      <button class="warn op" onclick="unitClearDtcs()">Clear DTCs</button></div>
+    ${step ? `<div class="status ${step.err ? 'err' : ''}">${crumbs}${step.busy ? ' …' : ''}${step.err ? ': ' + esc(step.err) + ' ' + trBtn(step.err) + copyBtn(step.err) : ''}
       ${step.res && step.res.names ? ` (${step.res.names.length})` : ''}</div>${body}` : ''}`;
 }
 
@@ -700,6 +925,7 @@ async function recordChange(c) {
 }
 async function loadHistory() {
   try { changes = await api('GET', '/api/history'); } catch (e) { changes = []; }
+  await loadRetrofits();
   renderHistory();
 }
 // A local, human-readable date/time from the stored ISO timestamp.
@@ -710,26 +936,49 @@ function diffNew(oldStr, newStr) {
   return String(newStr || '').split(/(\s+)/).map((tok, i) =>
     /^\s*$/.test(tok) ? tok : (tok !== (o[i] || '') ? `<span class="chg">${esc(tok)}</span>` : esc(tok))).join('');
 }
+// History filters: free text over every field (retrofit names included) and one retrofit.
+let histQ = '', histRetro = '', histBaseline = null;
+function historyShown() {
+  const q = histQ.trim().toLowerCase();
+  return (changes || []).filter(c => (histRetro === '' || String(c.retrofitId) === histRetro)
+    && (!q || Object.values(c).join(' ').toLowerCase().includes(q)));
+}
 function renderHistory() {
   const el = $('#history');
   if (!el) return;
-  const cs = changes || [];
+  const rf = retrofits.find(r => String(r.id) === histRetro);
+  el.innerHTML = `<div class="bar"><button onclick="loadHistory()">Reload</button>
+      <input type="text" id="histQ" placeholder="Search unit, VIN, value, retrofit name…" value="${esc(histQ)}" oninput="histQ = this.value; renderHistoryRows()" style="max-width:300px">
+      <select onchange="histRetro = this.value; histBaseline = null; renderHistory()" style="max-width:280px">
+        <option value="">All changes</option><option value="0" ${histRetro === '0' ? 'selected' : ''}>Outside a retrofit</option>
+        ${retrofits.map(r => `<option value="${r.id}" ${String(r.id) === histRetro ? 'selected' : ''}>${esc(r.name)}${r.ended ? '' : ' (active)'}</option>`).join('')}</select>
+      <button class="warn" onclick="deleteChange(0)">Clear all</button></div>
+    ${rf ? `<div class="retrobar"><b>${esc(rf.name)}</b><span class="meta">${rf.vin ? 'VIN ' + esc(rf.vin) + ' · ' : ''}${esc(fmtWhen(rf.started))} – ${rf.ended ? esc(fmtWhen(rf.ended)) : 'active'}</span>
+      <button onclick="retrofitRename(${rf.id})">Rename…</button><button onclick="retrofitBaseline(${rf.id})">Scan before the retrofit</button>
+      ${rf.ended ? '' : `<button class="warn" onclick="retrofitEnd()">End retrofit</button>`}</div>` : ''}
+    ${histBaseline ? reportHTML(histBaseline, 'histBaseline = null; renderHistory()') : ''}
+    <div id="histRows"></div>`;
+  renderHistoryRows();
+}
+// Only the rows re-render while typing in the search, so the input keeps its focus.
+function renderHistoryRows() {
+  const cs = historyShown(), all = (changes || []).length;
   const rows = cs.map(c => {
     const unit = [esc(c.unit || ''), c.address ? `<small class="meta">${esc(c.address)}</small>` : '',
       c.variant ? `<small class="meta">${esc(c.variant)}</small>` : '',
       c.vin ? `<small class="meta">VIN ${esc(c.vin)}</small>` : ''].filter(Boolean).join('<br>');
     return `<tr class="${c.status === 'error' || c.status === 'mismatch' ? 'err' : ''}">
-      <td class="small">${esc(fmtWhen(c.time))}</td><td>${esc(c.kind)}</td>
+      <td class="small">${esc(fmtWhen(c.time))}</td><td>${esc(c.kind)}${c.retrofit ? `<br><small class="meta">🔧 ${esc(c.retrofit)}</small>` : ''}</td>
       <td>${unit}</td><td>${esc(c.target || '')}</td>
-      <td class="mono"><span class="meta">${esc(c.oldValue || '')}</span><br>${diffNew(c.oldValue, c.newValue)}</td>
-      <td>${esc(c.status || '')}${c.note ? `<br><small class="meta">${esc(c.note)}</small>` : ''}</td>
-      <td><button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`;
+      <td class="mono"><span class="meta">${esc(c.oldValue || '')}</span><br>${diffNew(c.oldValue, c.newValue)}
+        ${c.details ? `<div class="meta" style="font-family:system-ui, sans-serif">${c.details.split('\n').map(esc).join('<br>')}</div>` : ''}</td>
+      <td>${esc(c.status || '')}${c.note ? `<br><small class="meta">${esc(c.note)}</small> ${trBtn(c.note)}` : ''}</td>
+      <td><button class="cp" title="Copy this change" onclick="copyEl(this.closest('tr'))">⧉</button>
+        <button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`;
   }).join('');
-  el.innerHTML = `<div class="bar"><button onclick="loadHistory()">Reload</button>
-      <button class="warn" onclick="deleteChange(0)">Clear all</button>
-      <span class="meta">${cs.length} change${cs.length === 1 ? '' : 's'} written to control units (stored in the database)</span></div>
-    ${cs.length ? `<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`
-      : '<div class="empty">No coding or adaptation changes recorded yet.</div>'}`;
+  $('#histRows').innerHTML = `<div class="meta">${cs.length === all ? `${all} change${all === 1 ? '' : 's'}` : `${cs.length} of ${all} changes`} written to control units (stored in the database)</div>
+    ${cs.length ? copyNext(`<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`, 'Copy the shown changes')
+      : `<div class="empty">${all ? 'No change matches.' : 'No coding or adaptation changes recorded yet.'}</div>`}`;
 }
 async function deleteChange(id) {
   if (!confirm(id ? 'Delete this history entry?' : 'Clear all change history?')) return;
@@ -744,14 +993,25 @@ function codingEditorHTML(step) {
   const newHex = step.work.map((b, i) => b !== step.orig[i] ? `<span class="chg">${hex(b)}</span>` : hex(b)).join(' ');
   const inputs = step.work.map((b, i) =>
     `<input class="${b !== step.orig[i] ? 'chg' : ''}" maxlength="2" value="${hex(b)}" title="Byte ${i}" onchange="codingByte(${i}, this.value)">`).join('');
-  return `<h2 class="sub">Edit coding (${esc(step.sysName)})</h2>
-    <div class="meta">Original <span class="mono">${step.orig.map(hex).join(' ')}</span></div>
+  const subs = step.codings.length > 1 ? `<div class="meta">This unit has ${step.codings.length} codings (master and slaves/subsystems):</div>
+    <div class="names short">${step.codings.map((c, i) => `<button class="${i === step.entry ? 'on' : ''}" onclick="codingPick(${i})">${esc(c.systemName || 'master')}</button>`).join('')}</div>` : '';
+  return `${subs}<h2 class="sub">Change coding (${esc(step.sysName)})</h2>
+    <div class="meta">Starts from <span class="mono">${step.orig.map(hex).join(' ')}</span> ${copyBtn(step.orig.map(hex).join(''), 'Copy the unit’s coding')}</div>
     <div class="byteedit">${inputs}</div>
-    <div class="code"><span class="mono">${newHex}</span><button onclick="codingReset()">Reset</button>
-      <button class="warn" ${changed ? '' : 'disabled'} onclick="codingWrite()">Write to unit…</button>
+    <div class="code"><span class="mono">${newHex}</span>${copyBtn(step.work.map(hex).join(''), 'Copy the new coding')}<button onclick="codingReset()">Reset</button>
+      <button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing coding', codingWrite)">Write to unit…</button>
       <button onclick="openUnitCodingInTab()" title="Open this coding in the Coding tab for the full bit grid and label editing">Open in Coding tab</button>
-      ${step.writeMsg ? `<div class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</div>` : ''}</div>`;
+      ${step.writeMsg ? `<div class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}${step.writeErr ? ' ' + trBtn(step.writeMsg) + copyBtn(step.writeMsg) : ''}</div>` : ''}</div>`;
 }
+// Shows one of the unit's codings (master or a slave/subsystem) in the editor.
+async function codingSelect(step, i) {
+  const c = step.codings[i] || {};
+  step.entry = i; step.sysName = c.systemName || 'master';
+  step.orig = c.byteCoding ? bytesOf(c.byteCoding.replace(/\s/g, '')) : [];
+  step.work = step.orig.slice(); step.writeMsg = ''; step.dtcBefore = step.dtcAfter = null;
+  step.unitLabels = await loadUnitLabels(step.unitVariant, step.sysName);
+}
+async function codingPick(i) { const step = codingStep(); if (step) { await codingSelect(step, i); renderUnitDetail(); } }
 function codingByte(i, v) {
   const step = codingStep(); if (!step) return;
   const b = parseInt(v, 16);
@@ -794,12 +1054,16 @@ function odxToLabels(table) {
 }
 async function codingWrite() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
-  const want = step.work.slice();
-  const to = want.map(hex).join(' '), from = step.orig.map(hex).join(' ');
-  const diff = want.map((b, i) => b !== step.orig[i] ? `  byte ${i}: ${hex(step.orig[i])} → ${hex(b)}` : null).filter(Boolean);
+  const want = step.work.slice(), before = step.orig.slice();
+  const to = want.map(hex).join(' '), from = before.map(hex).join(' ');
+  const diff = want.map((b, i) => b !== before[i] ? `  byte ${i}: ${hex(before[i])} → ${hex(b)}` : null).filter(Boolean);
   if (!diff.length) return;
   if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
-  step.writeMsg = 'Writing coding to the unit…'; step.writeErr = false; renderUnitDetail();
+  const details = codingDetails(step, before, want);
+  // Faults before the write, to show afterwards which ones the new coding added or removed.
+  step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
+  step.dtcBefore = await readFaults(u); step.dtcAfter = null;
+  step.writeMsg = 'Writing coding to the unit…'; renderUnitDetail();
   try {
     await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to, login: loginCodes[u.id]});
     // Read the coding back from the unit and confirm it matches what we intended to write.
@@ -808,6 +1072,7 @@ async function codingWrite() {
     const entry = (res.coding || []).find(c => c.systemName === step.sysName) || (res.coding || [])[0] || {};
     const got = entry.byteCoding ? bytesOf(entry.byteCoding.replace(/\s/g, '')) : [];
     step.orig = got.slice();  // the unit's actual coding now
+    if (step.codings[step.entry]) step.codings[step.entry].byteCoding = got.map(hex).join(' ');
     const same = got.length === want.length && got.every((b, i) => b === want[i]);
     if (same) {
       step.work = got.slice();
@@ -817,13 +1082,85 @@ async function codingWrite() {
       step.writeErr = true;  // step.work stays at the intended value so the diff is visible
     }
     recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName,
-      oldValue: from, newValue: to, status: same ? 'verified' : 'mismatch',
+      oldValue: from, newValue: to, status: same ? 'verified' : 'mismatch', details,
       note: same ? '' : 'unit reads ' + (got.map(hex).join(' ') || '(empty)')});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
-    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', note: e.message});
+    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', details, note: e.message});
   }
   renderUnitDetail();
+  step.dtcAfter = await readFaults(u);
+  if (codingStep() === step) renderUnitDetail();
+}
+
+// What a coding change does, one line each, for the history: every changed byte with its
+// bits and, where known, each setting of the ODIS coding definition and of the .lbl labels.
+function codingDetails(step, oldB, newB) {
+  const lines = [], oldHex = oldB.map(hex).join(' '), newHex = newB.map(hex).join(' ');
+  newB.forEach((b, i) => {
+    if (b === oldB[i]) return;
+    const bits = [7, 6, 5, 4, 3, 2, 1, 0].filter(k => ((b ^ oldB[i]) >> k) & 1);
+    lines.push(`Byte ${i}: ${hex(oldB[i])} → ${hex(b)} (bit${bits.length > 1 ? 's' : ''} ${bits.join(', ')})`);
+  });
+  const own = step.odx && step.odx.own, table = step.entry === 0 && (own || (step.borrow && step.borrow.table));
+  if (table) {
+    const was = decodeCoding(oldHex, table), now = decodeCoding(newHex, table);
+    const via = own ? '' : ` [definition of ${step.borrow.chosen.variant}]`;
+    now.forEach((p, k) => { if (p.raw !== was[k].raw) lines.push(`${p.name}: ${was[k].value} → ${p.value}${via}`); });
+  }
+  const ls = step.unitLabels || [];
+  newB.forEach((b, i) => {
+    const o = oldB[i];
+    if (b === o) return;
+    const opt = (l, v) => { const x = ls.find(y => y.byte === i && y.lo === l.lo && y.hi === l.hi && y.value === v); return x ? x.text : `0x${hex(v)}`; };
+    const seen = new Set();
+    ls.filter(l => l.byte === i && l.value >= 0).forEach(l => {
+      const m = mask(l.lo, l.hi), k = l.lo + '~' + l.hi;
+      if (seen.has(k) || (b & m) === (o & m)) return;
+      seen.add(k);
+      lines.push(`Byte ${i} bits ${l.lo}–${l.hi}: ${opt(l, o & m)} → ${opt(l, b & m)} [.lbl]`);
+    });
+    ls.filter(l => l.byte === i && l.value === -1 && l.lo === l.hi && ((b ^ o) >> l.lo) & 1)
+      .forEach(l => lines.push(`Byte ${i} bit ${l.lo} ${l.text}: ${(o >> l.lo) & 1 ? 'on' : 'off'} → ${(b >> l.lo) & 1 ? 'on' : 'off'} [.lbl]`));
+  });
+  return lines.join('\n');
+}
+
+// Reads the unit's fault memory: {faults} or {err}. Also updates the unit's count in the list.
+async function readFaults(u) {
+  try {
+    const faults = dtcEntries(await bridge({action: 'read_event_memory', address: u.id}));
+    markFaults(u.id, faults);
+    return {faults};
+  } catch (e) { return {err: e.message}; }
+}
+
+// The fault memory after a coding write next to the one before it: new faults, faults that are
+// gone and those still there, each active or passive. Faults from before a retrofit are ignored.
+function dtcChangeHTML(step, addr) {
+  const a = step.dtcAfter, b = step.dtcBefore;
+  if (!b && !a) return '';
+  let h = `<h2 class="sub">Fault memory after the write <button class="op" onclick="op('Reading faults', codingDtcReload)">Read again</button></h2>`;
+  if (!a) return h + '<div class="meta">Reading the fault memory…</div>';
+  if (a.err) return h + `<div class="status err">${esc(a.err)} ${trBtn(a.err)}</div>`;
+  const prev = b && b.faults ? b.faults : null, had = new Set((prev || []).map(dtcKey)), now = new Set(a.faults.map(dtcKey));
+  const rows = [
+    ...a.faults.map(d => ({d, kind: isOld(addr, d) ? 'old' : !prev ? '' : had.has(dtcKey(d)) ? 'still' : 'new'})),
+    ...(prev || []).filter(d => !now.has(dtcKey(d))).map(d => ({d, kind: isOld(addr, d) ? 'old' : 'gone'})),
+  ];
+  const n = k => rows.filter(r => r.kind === k).length;
+  const label = {new: 'NEW', gone: 'gone', still: 'still there', old: 'before retrofit (ignored)', '': ''};
+  h += `<div class="meta">${a.faults.filter(d => !isOld(addr, d)).length} stored · ${prev ? `${n('new')} new · ${n('gone')} gone` : 'no reading from before the write to compare with'}</div>`;
+  if (!rows.length) return h + '<div class="meta">No faults stored.</div>';
+  return h + copyNext(`<table class="vals"><tr><th>Change</th><th>Code</th><th>Text</th><th>State</th></tr>${rows.map(({d, kind}) =>
+    `<tr class="${kind}"><td>${label[kind]}</td><td class="mono">${esc(d.code || '—')}</td><td>${esc(d.text)} ${trBtn(d.text)}</td><td>${kind === 'gone' ? 'was ' : ''}${activeText(d)}</td></tr>`).join('')}</table>`, 'Copy fault changes');
+}
+async function codingDtcReload() {
+  const step = codingStep(), u = units.find(u => u.index === unitSel);
+  if (!step) return;
+  step.dtcAfter = null; renderUnitDetail();
+  step.dtcAfter = await readFaults(u);
+  if (codingStep() === step) renderUnitDetail();
 }
 
 // Decode the (edited) coding with the user's own .lbl labels, independent of the ODIS database.
@@ -903,8 +1240,8 @@ function adaptationEditorHTML(step) {
   const changed = params.some(p => (p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value));
   return `<h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
     <table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th></tr>${rows}</table>
-    <div class="bar"><button class="warn" ${changed ? '' : 'disabled'} onclick="adaptWrite()">Write to unit…</button>
-      ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</span>` : ''}</div>`;
+    <div class="bar"><button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing adaptation', adaptWrite)">Write to unit…</button>
+      ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}${step.writeErr ? ' ' + trBtn(step.writeMsg) + copyBtn(step.writeMsg) : ''}</span>` : ''}</div>`;
 }
 // A dropdown of the channel's enumerated options (from ODX) when it has them, else a free input.
 function adaptControl(step, name, nv) {
@@ -1050,19 +1387,19 @@ function codingDefinitionHTML(step) {
   if (odx.own) return `<div class="meta">Decoded with ${esc(odx.own.location || 'its own')} ODX data. Change a value below to edit the coding bytes.</div>${decodedTable(coding, odx.own, true)}`;
   let html = `<div class="meta">${esc(odx.note)}</div>`;
   const b = step.borrow;
-  if (!b) return html + '<button onclick="borrowList()">Decode with a related variant…</button>';
+  if (!b) return html + `<button onclick="op('Searching variants', borrowList)">Decode with a related variant…</button>`;
   if (b.busy) return html + '<div class="meta">Searching the unit family for variants that define textual coding…</div>';
   if (b.err) html += `<div class="status err">${esc(b.err)}</div>`;
   if (b.list) {
     html += `<div class="meta">${b.list.length} variants of this unit family define textual coding (closest names first):</div>
       ${b.list.length > 20 ? '<input type="text" placeholder="Filter variants" oninput="filterNames(this)">' : ''}
-      <div class="names short">${b.list.map((v, i) => `<button class="${b.chosen && b.chosen.variant === v.variant ? 'on' : ''}" onclick="borrowPick(${i})">${esc(v.variant)} (${v.params})</button>`).join('')}</div>`;
+      <div class="names short">${b.list.map((v, i) => `<button class="${b.chosen && b.chosen.variant === v.variant ? 'on' : ''}" onclick="op('Loading the definition', () => borrowPick(${i}))">${esc(v.variant)} (${v.params})</button>`).join('')}</div>`;
   }
   if (b.chosen) {
     html += `<div class="warnbox">Decoded with the definition of <b>${esc(b.chosen.variant)}</b>${b.remembered ? ' <span class="meta">(remembered for ' + esc(step.unitVariant || 'this variant') + ')</span>' : ''}, not of this unit
       (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle
       before writing. Editing here changes the bytes above; review them and use Write to unit with care.</div>`;
-    if (!b.list) html += '<button onclick="borrowList()">Decode with a different variant…</button>';
+    if (!b.list) html += `<button onclick="op('Searching variants', borrowList)">Decode with a different variant…</button>`;
     html += b.table ? decodedTable(coding, b.table, true) : '<div class="meta">Loading the definition…</div>';
   }
   return html;
@@ -1072,7 +1409,7 @@ function openInDatabase() {
   const u = units.find(u => u.index === unitSel);
   showTab('odx');
   $('#odxQ').value = u.variant || u.id;
-  odxFind('odx');
+  op('Searching the database', () => odxFind('odx'));
 }
 
 // Browse the unit's DTCs from the ODIS database without a vehicle connected: the Trouble codes
@@ -1082,10 +1419,10 @@ function openDtcCatalog() {
   const u = units.find(u => u.index === unitSel);
   showTab('dtc');
   $('#dtcQ').value = u.variant || u.id;
-  odxFind('dtc');
+  op('Searching the database', () => odxFind('dtc'));
 }
 
-function unitStart(i) { unitPath = []; unitRun(...UNIT_ACTIONS[i]); }
+function unitStart(i) { op(UNIT_ACTIONS[i][1], () => { unitPath = []; unitReport = null; return unitRun(...UNIT_ACTIONS[i]); }); }
 // Security-access login: unlocks elevated mode so coding and adaptation writes are accepted.
 // The webpage only passes the login value; ODIS performs the access handshake for this unit.
 let loginCodes = {};  // per-unit login value, sent with each write so the unit unlocks on the same connection
@@ -1096,14 +1433,321 @@ function unitLogin() {
   const value = code.trim();
   if (!value) { delete loginCodes[u.id]; alert('Login value cleared.'); return; }
   loginCodes[u.id] = value;
-  unitPath = []; unitRun({action: 'login', code: value}, 'Login');
+  op('Login', () => { unitPath = []; return unitRun({action: 'login', code: value}, 'Login'); });
 }
 function unitClearDtcs() {
   const u = units.find(u => u.index === unitSel);
+  if (busy) { toast(`Busy: ${busy.label}.`, true); return; }
   if (!confirm(`Clear the event memory (all stored DTCs) of ${u.sname} ${u.id} in the vehicle?`)) return;
-  unitPath = []; unitRun({action: 'clear_event_memory'}, 'Clear DTCs');
+  op('Clearing DTCs', () => { unitPath = []; return unitRun({action: 'clear_event_memory'}, 'Clear DTCs'); });
 }
-function unitOpen(i) { const s = unitPath[unitPath.length - 1]; unitRun(...UNIT_NEXT[s.cmd.action](s.res.names[i], s.res)); }
+function unitOpen(i) { const s = unitPath[unitPath.length - 1]; op(s.res.names[i], () => unitRun(...UNIT_NEXT[s.cmd.action](s.res.names[i], s.res))); }
+
+// --- Scans ---------------------------------------------------------------------------------
+// Scan all, Scan all unit DTCs and Full scan work on the units the list shows: tick
+// "responded only" to scan just the units that answered, untick it for the whole ODIS project.
+function scanList() {
+  const list = listedUnits();
+  if (!list.length) toast('No units listed: reload the units or change the filter.', true);
+  return list;
+}
+function scanAll() {
+  op('Scan all', async o => {
+    const list = scanList(); let ok = 0, i = 0;
+    for (const u of list) {
+      if (o.cancelled) break;
+      opLabel(`Scan all ${++i}/${list.length}: ${u.id} ${u.sname || ''}`);
+      try { applyIdent(u, await bridge({action: 'read_identification', address: u.id})); ok++; }
+      catch (e) { markResponded(u, false); renderUnitList(); }
+    }
+    unitsStatus(`Scan all${o.cancelled ? ' (stopped)' : ''}: ${ok} of ${i} units responded`);
+    renderUnitDetail();
+  });
+}
+// Quick scan asks the gateway for its list of installed units (one request) instead of trying
+// every address of the ODIS project, then reads identification only from the units it reports
+// as present. Units it does not list, or lists as not communicating, are marked "no answer"
+// without waiting for their timeouts, and "responded only" is ticked.
+function quickScan() {
+  op('Quick scan', async o => {
+    const gw = (units || []).find(u => /gatew/i.test(u.sname || '')) || (units || []).find(u => parseInt(u.id, 16) === 0x19);
+    const gwAddr = gw ? gw.id : '0x0019';
+    opLabel(`Quick scan: asking the gateway ${gwAddr}…`);
+    let res;
+    try { res = await bridge({action: 'read_gateway_component_list', address: gwAddr}); }
+    catch (e) {
+      unitsStatus(`Quick scan: the gateway ${gwAddr} did not answer (${e.message}). Use Scan all instead.`, true);
+      return;
+    }
+    if (gw) markResponded(gw, true);
+    const comps = gatewayComponents(res);
+    if (!comps.length) {
+      unitsStatus('Quick scan: the gateway list could not be read. Its raw reply is shown; use Scan all for now.', true);
+      showReport({title: 'Gateway component list (not understood)', text: JSON.stringify(res, null, 2), file: 'Gateway-list'});
+      return;
+    }
+    const byAddr = new Map(comps.map(c => [c.addr, c]));
+    const present = [], absent = [];
+    for (const u of units || []) {
+      if (gw && u === gw) { present.push(u); continue; }
+      const c = byAddr.get(parseInt(u.id, 16));
+      if (c && c.ok !== false && c.installed !== false) present.push(u);
+      else { markResponded(u, false); absent.push(u); }
+    }
+    $('#unitResponded').checked = true; renderUnitList();
+    let ok = 0, i = 0;
+    for (const u of present) {
+      if (o.cancelled) break;
+      opLabel(`Quick scan ${++i}/${present.length}: ${u.id} ${u.sname || ''}`);
+      try { applyIdent(u, await bridge({action: 'read_identification', address: u.id})); ok++; }
+      catch (e) { markResponded(u, false); renderUnitList(); }
+    }
+    const known = new Set((units || []).map(u => parseInt(u.id, 16)));
+    const extra = comps.filter(c => !known.has(c.addr));
+    unitsStatus(`Quick scan${o.cancelled ? ' (stopped)' : ''}: gateway lists ${comps.length} units, ${ok} identified, ${absent.length} project units skipped`);
+    const hex4 = n => '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+    const yn = v => v === true ? 'yes' : v === false ? 'no' : '?';
+    const lines = [`Gateway ${gwAddr} component list: ${comps.length} units`, '', 'Address\tName\tCommunicating\tInstalled\tFaults',
+      ...comps.map(c => `${hex4(c.addr)}\t${c.name}\t${yn(c.ok)}\t${yn(c.installed)}\t${yn(c.dtc)}`)];
+    if (extra.length) lines.push('', `Not in the ODIS project: ${extra.map(c => hex4(c.addr)).join(' ')}`);
+    lines.push('', 'Raw reply of the gateway:', JSON.stringify(res, null, 2));
+    showReport({title: `Quick scan: ${ok} units identified`, text: lines.join('\n'), file: 'Gateway-list'});
+  });
+}
+// The units in a gateway component list reply: every object with an address field, with what it
+// says about the unit. The reply's layout is not documented, so fields are recognised by name:
+// address (*addr*), communicating (*commun*, *reach*, *respon*, or a state/status text), installed
+// (*install*, *coded*, *present*) and fault flag (*dtc*, *fault*, *error*). null = not stated.
+function gatewayComponents(res) {
+  const out = new Map();
+  const addrOf = v => {
+    if (typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= 0xFFFF) return v;
+    const t = typeof v === 'string' ? v.trim() : '';
+    return /^(0x)?[0-9a-f]{1,4}$/i.test(t) && parseInt(t, 16) > 0 ? parseInt(t, 16) : null;
+  };
+  const truth = v => {
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v !== 'string') return null;
+    if (/\b(not|no|kein|nicht)\b|^(false|0|off)$|not_|_not|fail|error|absent|missing|offline|timeout|no_?resp/i.test(v)) return false;
+    if (/^(true|1|on|yes|ja)$|ok|commun|online|present|respond|reach|avail|install|coded/i.test(v)) return true;
+    return null;
+  };
+  const flag = (o, re, not = /^$/) => {
+    for (const [k, v] of Object.entries(o)) if (re.test(k) && !not.test(k) && !/text|name|desc/i.test(k)) { const t = truth(v); if (t !== null) return t; }
+    return null;
+  };
+  const faultKey = /dtc|fault|error|event/i;
+  const walk = v => {
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (!v || typeof v !== 'object') return;
+    const key = Object.keys(v).find(k => /addr/i.test(k) && addrOf(v[k]) !== null);
+    if (key) {
+      const addr = addrOf(v[key]);
+      const ok = flag(v, /commun|reach|respon|online|alive/i, faultKey) ?? flag(v, /^(state|status)$|state$|status$/i, faultKey);
+      const name = Object.entries(v).find(([k, x]) => /name/i.test(k) && typeof x === 'string' && x.trim() && x !== '---');
+      out.set(addr, {addr, ok, installed: flag(v, /install|coded|present|expect|config/i, faultKey), dtc: flag(v, faultKey),
+        name: name ? name[1].trim() : ''});
+    }
+    for (const [k, x] of Object.entries(v)) if (k !== 'parent' && x && typeof x === 'object') walk(x);
+  };
+  walk(res && res.components !== undefined ? res.components : res);
+  return [...out.values()].sort((a, b) => a.addr - b.addr);
+}
+// Every press compares each unit's faults with the press before, so new and cleared faults
+// show as +n / −n in the list and in the summary. Faults from before a retrofit do not count.
+const dtcSnap = {};
+function scanAllDtcs() {
+  op('Scan all unit DTCs', async o => {
+    const list = scanList(), lines = [];
+    let total = 0, added = 0, removed = 0, failed = 0, compared = 0, i = 0;
+    for (const u of list) {
+      if (o.cancelled) break;
+      opLabel(`DTC scan ${++i}/${list.length}: ${u.id} ${u.sname || ''}`);
+      const r = await readFaults(u);
+      if (r.err) { markResponded(u, false); failed++; renderUnitList(); continue; }
+      const now = r.faults.filter(d => !isOld(u.id, d)), prev = dtcSnap[u.id], sc = scanOf(u.id);
+      total += now.length;
+      sc.delta = prev ? {added: now.filter(d => !prev.some(p => dtcKey(p) === dtcKey(d))), removed: prev.filter(p => !now.some(d => dtcKey(d) === dtcKey(p)))} : null;
+      dtcSnap[u.id] = now;
+      if (sc.delta) { compared++; added += sc.delta.added.length; removed += sc.delta.removed.length; }
+      if (now.length || (sc.delta && sc.delta.removed.length)) {
+        lines.push(`${u.id} ${u.sname || ''}: ${now.length} fault${now.length === 1 ? '' : 's'}`);
+        now.forEach(d => lines.push(`   ${sc.delta && sc.delta.added.includes(d) ? 'NEW  ' : '     '}${d.code} ${d.text} (${activeText(d)})`));
+        (sc.delta ? sc.delta.removed : []).forEach(d => lines.push(`   GONE ${d.code} ${d.text}`));
+      }
+      renderUnitList();
+    }
+    const summary = `${total} fault${total === 1 ? '' : 's'} in ${i - failed} units${compared ? ` · ${added} new, ${removed} gone since the previous scan` : ''}${failed ? ` · ${failed} did not answer` : ''}${retrofit ? ' · faults from before the retrofit ignored' : ''}${o.cancelled ? ' (stopped)' : ''}`;
+    unitsStatus('DTC scan: ' + summary);
+    showReport({title: 'Scan all unit DTCs', text: [`DTC scan ${new Date().toLocaleString()}: ${summary}`, '', ...lines].join('\n'), file: 'DTC-scan'});
+  });
+}
+function fullScan() { op('Full scan', async o => showReport(await fullScanRun(scanList(), o))); }
+function fullScanUnit() {
+  const u = units.find(u => u.index === unitSel);
+  op('Full scan ' + u.id, async o => showReport(await fullScanRun([u], o)));
+}
+// Reads identification, coding and fault memory of each unit and writes them as a log in the
+// layout of a VCDS Auto-Scan, so tools made for those logs can read it.
+async function fullScanRun(list, o) {
+  const started = new Date(), results = [];
+  const project = await bridge({action: 'vehicle'}).then(v => v.project || '').catch(() => '');
+  const vin = await getVin();
+  for (const u of list) {
+    if (o.cancelled) break;
+    opLabel(`Full scan ${results.length + 1}/${list.length}: ${u.id} ${u.sname || ''}`);
+    const r = {u};
+    try { r.ident = await bridge({action: 'read_identification', address: u.id}); applyIdent(u, r.ident); }
+    catch (e) { r.err = e.message; markResponded(u, false); renderUnitList(); results.push(r); continue; }
+    try { r.coding = ((await bridge({action: 'read_coding', address: u.id})).coding || []).filter(c => c && c.byteCoding); }
+    catch (e) { r.codingErr = e.message; }
+    const f = await readFaults(u);
+    if (f.err) r.faultErr = f.err; else r.faults = f.faults;
+    results.push(r);
+  }
+  const title = list.length === 1 ? `Full scan of ${list[0].id} ${list[0].sname || ''}` : `Full scan of ${results.length} units`;
+  return {title: title + (o.cancelled ? ' (stopped)' : ''), results, vin,
+    text: vcdsLog({started, ended: new Date(), project, vin, results}), file: 'Log-' + (vin || 'scan')};
+}
+
+// VCDS addresses are the low byte of the ODIS address in hex ("0x0019" → "19").
+const vcdsAddr = u => { const n = parseInt(u.id, 16); return isNaN(n) ? String(u.id) : n.toString(16).toUpperCase().padStart(n > 0xFF ? 4 : 2, '0'); };
+const VCDS_NAMES = {'01': 'Engine', '02': 'Auto Trans', '03': 'Brakes 1', '08': 'Auto HVAC', '09': 'Cent. Elect.', '13': 'Auto Dist. Reg',
+  '15': 'Airbags', '16': 'Steering wheel', '17': 'Instruments', '19': 'CAN Gateway', '42': 'Door Elect, Driver', '44': 'Steering Assist',
+  '52': 'Door Elect, Pass.', '5F': 'Information Electr.', '6C': 'Back-up Cam.', 'A5': 'Front Sensors Drive'};
+const vcdsName = u => VCDS_NAMES[vcdsAddr(u)] || known(u.system) || u.sname || '';
+// Part numbers as VCDS prints them: "04L906026AB" → "04L 906 026 AB".
+const vwPart = p => { const m = /^([0-9A-Z]{3})([0-9A-Z]{3})([0-9A-Z]{3})([A-Z]{0,3})$/.exec(String(p || '').replace(/\s/g, '')); return m ? m.slice(1).filter(Boolean).join(' ') : String(p || ''); };
+function vcdsLog(s) {
+  const p2 = n => String(n).padStart(2, '0'), d = s.started, L = [];
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const status = r => r.err ? 'Cannot be reached 1100' : r.faults && r.faults.length ? 'Malfunction 0010' : 'OK 0000';
+  L.push(`${DAYS[d.getDay()]},${p2(d.getDate())},${MONTHS[d.getMonth()]},${d.getFullYear()},${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}:${String(d.getMilliseconds()).padStart(5, '0')}`);
+  L.push(`Laertes ${laertesVersion} -- ODIS based scan in the VCDS Auto-Scan log layout`, `Data version: ODIS ${s.project}`, '', '');
+  L.push(`VIN: ${s.vin}   License Plate: `, 'Mileage:    Repair Order: ', '', '', '');
+  L.push('-'.repeat(80), '-'.repeat(80), '', '');
+  L.push(`Chassis Type: ${s.project}`, `Scan: ${s.results.map(r => vcdsAddr(r.u)).join(' ')}`, '', `VIN: ${s.vin}   Mileage: `, '');
+  s.results.forEach(r => L.push(`${vcdsAddr(r.u)}-${vcdsName(r.u)} -- Status: ${status(r)}`));
+  L.push('');
+  s.results.filter(r => !r.err).forEach(r => {
+    const u = r.u, g = re => idFind(r.ident, re) || '';
+    const asam = [u.variant || g(/ASAMODXFileIdent/i), g(/ASAMODXFileVersi/i)].filter(Boolean).join(' ');
+    L.push('-'.repeat(79), `Address ${vcdsAddr(u)}: ${vcdsName(u)} (${u.sname || ''})       Labels:| None`);
+    L.push(`   Part No SW: ${vwPart(u.swpnr)}    HW: ${vwPart(u.hwpnr)}`);
+    L.push(`   Component: ${known(u.system)}  ${known(u.hwver)} ${known(u.swver)}`);
+    const serial = g(/seria/i); if (serial) L.push(`   Serial number: ${serial}`);
+    const master = (r.coding || [])[0];
+    if (master) L.push(`   Coding: ${master.byteCoding.replace(/\s/g, '')}`);
+    else if (r.codingErr) L.push(`   Coding: (not read: ${r.codingErr})`);
+    const shop = g(/RepaiShop|Werkst|workshop/i); if (shop) L.push(`   Shop #: ${shop}`);
+    if (asam) L.push(`   ASAM Dataset: ${asam}`, `   ROD: ${(u.variant || asam.split(' ')[0])}.rod`);
+    (r.coding || []).slice(1).forEach((c, i) => L.push('', `   Subsystem ${i + 1} - Component: ${c.systemName || ''}`, `   Coding: ${c.byteCoding.replace(/\s/g, '')}`));
+    L.push('');
+    if (r.faultErr) L.push(`Fault memory not read: ${r.faultErr}`);
+    else if (!r.faults.length) L.push('No fault code found.');
+    else {
+      L.push(`${r.faults.length} Fault${r.faults.length === 1 ? '' : 's'} Found:`);
+      r.faults.forEach(f => {
+        const bit = n => f.bits.some(b => b.bitPosition === n);  // UDS status: bit 3 confirmed, bit 4 not tested since clear
+        L.push(`${f.code} - ${f.text}`, `          ${bit(3) ? 'Confirmed' : 'Intermittent'} - ${bit(4) ? 'Not Tested' : 'Tested'} Since Memory Clear`);
+        if (f.details.length) {
+          L.push('             Freeze Frame:');
+          f.details.filter(x => !x.head).forEach(x => L.push(`                    ${x.name}: ${x.value}${x.unit ? ' ' + x.unit : ''}`));
+        }
+        L.push('');
+      });
+    }
+    L.push('');
+  });
+  const secs = Math.round((s.ended - s.started) / 1000);
+  L.push(`End${'-'.repeat(25)}(Elapsed Time: ${p2(Math.floor(secs / 60))}:${p2(secs % 60)})${'-'.repeat(26)}`);
+  return L.join('\n');
+}
+
+// A text report (scan log) in the unit pane, with copy and download.
+let unitReport = null;
+const reportTexts = [];
+function showReport(r) { unitReport = r; showTab('units'); renderUnitDetail(); }
+function reportHTML(r, close = 'unitReport = null; renderUnitDetail()') {
+  const id = reportTexts.push(r) - 1;
+  return `<h1>${esc(r.title)}</h1>
+    <div class="bar">${copyBtn(r.text, 'Copy the log')}<button onclick="downloadReport(${id})">Download .txt</button><button onclick="${close}">Close</button></div>
+    <pre class="report">${esc(r.text)}</pre>`;
+}
+function downloadReport(id) {
+  const r = reportTexts[id], d = new Date(), p2 = n => String(n).padStart(2, '0');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([r.text.replace(/\n/g, '\r\n')], {type: 'text/plain'}));
+  a.download = `${r.file || 'Laertes'}-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.txt`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// --- Retrofit mode -------------------------------------------------------------------------
+// Starting a retrofit scans the listed units (the baseline); until it ends, every change is
+// stored under its name and the faults the units had at the start are ignored.
+let retrofits = [], retrofit = null;
+async function loadRetrofits() {
+  try { retrofits = await api('GET', '/api/retrofits'); } catch (e) { return; }
+  retrofit = retrofits.find(r => !r.ended) || null;
+  renderRetrofit();
+}
+const isOld = (addr, d) => !!(retrofit && ((retrofit.baselineDtcs || {})[addr] || []).includes(dtcKey(d)));
+function renderRetrofit() {
+  const top = $('#retro');
+  top.hidden = !retrofit;
+  if (retrofit) { top.textContent = '🔧 ' + retrofit.name; top.title = 'Retrofit mode: changes are stored under this name; faults from before it are ignored'; }
+  $('#retroStartBtn').hidden = !!retrofit;
+  const n = retrofit ? Object.values(retrofit.baselineDtcs || {}).reduce((a, x) => a + x.length, 0) : 0;
+  $('#retroBar').innerHTML = !retrofit ? '' : `<div class="retrobar">🔧 Retrofit <b>${esc(retrofit.name)}</b>
+    <span class="meta">since ${esc(fmtWhen(retrofit.started))} · ${n} fault${n === 1 ? '' : 's'} from before ignored</span>
+    <button onclick="retrofitRename(${retrofit.id})">Rename…</button><button onclick="retrofitBaseline(${retrofit.id})">Scan before</button>
+    <button class="warn" onclick="retrofitEnd()">End retrofit</button></div>`;
+  (units || []).forEach(u => { const f = scanOf(u.id).faults; if (f) countFaults(u, f); });
+  if (units) renderUnitList();
+}
+function retrofitStart() {
+  op('Retrofit', async o => {
+    await loadRetrofits();
+    if (retrofit) { toast('A retrofit is already active.', true); return; }
+    const vin = await getVin(), day = new Date().toISOString().slice(0, 10);
+    const auto = vin ? `Retrofit ${vin} ${day}` : `Retrofit ${day}`;
+    const name = prompt('Name of the retrofit (History finds all its changes by it):', auto);
+    if (name === null) return;
+    const list = scanList();
+    if (!list.length) return;
+    if (!confirm(`Retrofit mode first scans the ${list.length} listed units (identification, coding, faults) and keeps the result as the state before the retrofit. Faults found now are ignored while the retrofit is active.\n\nStart the scan?`)) return;
+    const scan = await fullScanRun(list, o);
+    if (o.cancelled) { toast('Scan stopped: retrofit not started.', true); return; }
+    const baselineDtcs = {};
+    scan.results.forEach(r => { if (r.faults) baselineDtcs[r.u.id] = r.faults.map(dtcKey); });
+    await api('POST', '/api/retrofits', {name: name.trim() || auto, vin, baseline: scan.text, baselineDtcs});
+    await loadRetrofits();
+    Object.keys(dtcSnap).forEach(k => delete dtcSnap[k]);  // DTC deltas start again without the old faults
+    showReport({...scan, title: `Retrofit ${retrofit ? retrofit.name : ''} started — scan before the retrofit`});
+  });
+}
+async function retrofitRename(id) {
+  const r = retrofits.find(r => r.id === id); if (!r) return;
+  const name = prompt('New name of the retrofit:', r.name);
+  if (!name || !name.trim()) return;
+  try { await api('PATCH', '/api/retrofits/' + id, {name: name.trim()}); } catch (e) { toast(e.message, true); return; }
+  await loadRetrofits(); changes = null;
+  if (currentTab() === 'history') loadHistory();
+}
+async function retrofitEnd() {
+  if (!retrofit || !confirm(`End retrofit "${retrofit.name}"?\n\nLater changes are no longer stored under it, and faults from before it count again.`)) return;
+  try { await api('PATCH', '/api/retrofits/' + retrofit.id, {end: true}); } catch (e) { toast(e.message, true); return; }
+  await loadRetrofits();
+  if (currentTab() === 'history') renderHistory();
+}
+async function retrofitBaseline(id) {
+  let r;
+  try { r = await api('GET', '/api/retrofits/' + id); } catch (e) { toast(e.message, true); return; }
+  const rep = {title: `${r.name} — scan before the retrofit`, text: r.baseline || '(no scan stored)', file: 'Log-' + (r.vin || 'retrofit')};
+  if (currentTab() === 'history') { histBaseline = rep; renderHistory(); } else showReport(rep);
+}
 
 // Live measurements: watch several measurement groups at once, re-reading them on an interval.
 // Each group is read with the same read_measurement_group action as the single-group drill-down;
@@ -1116,12 +1760,15 @@ function measSelectAll(on) { document.querySelectorAll('.measpick').forEach(c =>
 function liveStart() {
   const groups = [...document.querySelectorAll('.measpick:checked')].map(c => curStep().res.names[+c.value]);
   if (!groups.length) { alert('Tick at least one measurement group.'); return; }
-  stopLive();
-  const step = {cmd: {action: 'measurement_live'}, label: `Live · ${groups.length} group${groups.length > 1 ? 's' : ''}`,
-    live: true, running: true, interval: 1000, groups, data: {}, history: {}};
-  unitPath = [...unitPath, step];
-  renderUnitDetail();
-  liveLoop(step);
+  op('Live measurements', o => {
+    stopLive();
+    const step = {cmd: {action: 'measurement_live'}, label: `Live · ${groups.length} group${groups.length > 1 ? 's' : ''}`,
+      live: true, running: true, interval: 1000, groups, data: {}, history: {}};
+    unitPath = [...unitPath, step];
+    renderUnitDetail();
+    o.onCancel = liveStop;
+    return liveLoop(step);
+  });
 }
 
 async function liveLoop(step) {
@@ -1167,6 +1814,7 @@ function liveHTML(step) {
       ${step.running ? '<button onclick="liveStop()">Stop</button>' : '<button onclick="liveResume()">Start</button>'}
       <label class="meta">Interval <input type="number" min="200" step="100" value="${step.interval}" style="width:5em" onchange="liveSetInterval(this.value)"> ms</label>
       <span class="meta">${step.running ? 'updating…' : 'paused'}</span></div>
+    <div class="meta"><button class="cp" title="Copy the current values" onclick="copyEl(this.parentElement.nextElementSibling)">⧉ Copy values</button></div>
     <div id="liveOut">${liveTable(step)}</div>`;
 }
 
@@ -1192,7 +1840,10 @@ function sparkline(h) {
 }
 
 function liveStop() { const s = curStep(); if (s && s.live) { s.running = false; renderUnitDetail(); } }
-function liveResume() { const s = curStep(); if (s && s.live && !s.running) { s.running = true; renderUnitDetail(); liveLoop(s); } }
+function liveResume() {
+  const s = curStep();
+  if (s && s.live && !s.running) op('Live measurements', o => { o.onCancel = liveStop; s.running = true; renderUnitDetail(); return liveLoop(s); });
+}
 function liveSetInterval(v) { const s = curStep(); if (s && s.live) s.interval = Math.max(200, +v || 1000); }
 // Collapsible JSON viewer. A node's children are rendered when it is first opened, so huge
 // replies stay fast; nodes holding an ODIS value preview its name and value.
@@ -1229,17 +1880,16 @@ function unitBack(i) { unitPath = unitPath.slice(0, i + 1); renderUnitDetail(); 
 async function unitRun(cmd, label) {
   const u = units.find(u => u.index === unitSel), step = {cmd, label, busy: true}, path = unitPath = [...unitPath, step];
   renderUnitDetail();
-  try { step.res = await bridge({...cmd, address: u.id}); }
+  try { step.res = await bridge({...cmd, address: u.id}); markResponded(u, true); }
   catch (e) { step.err = e.message; }
   step.busy = false;
   if (step.res && cmd.action === 'read_coding') {
+    // The first entry is the master's coding, then one per slave/subsystem (the gateway, for
+    // example, codes the units behind it); each can be picked and written on its own.
     step.unitVariant = u.variant;
-    const master = (step.res.coding || [])[0] || {};
-    step.sysName = master.systemName || 'master';
-    step.orig = master.byteCoding ? bytesOf(master.byteCoding.replace(/\s/g, '')) : [];
-    step.work = step.orig.slice();
+    step.codings = (step.res.coding || []).filter(c => c && c.byteCoding);
+    await codingSelect(step, 0);
     step.odx = await codingDefinition(u);
-    step.unitLabels = await loadUnitLabels(u.variant, step.sysName);
     if (step.odx && !step.odx.own) await applyCodingPref(step);  // reuse a remembered related variant
     if (unitPath === path) renderUnitDetail();
   }
@@ -1251,20 +1901,35 @@ async function unitRun(cmd, label) {
     } catch (e) { step.options = {}; }
     if (unitPath === path) renderUnitDetail();
   }
-  if (step.res && cmd.action === 'read_identification') {  // refresh the unit's row with what ODIS just identified
-    const g = n => idVal(step.res, n);
-    const set = (k, v) => { if (v !== undefined && v !== null && v !== '') u[k] = String(v).trim(); };
-    set('swpnr', g('Param_VWSparePartNumbe')); set('swver', g('Param_VWAppliSoftwVersiNumbe'));
-    set('hwpnr', g('Param_VWECUHardwNumbe')); set('hwver', g('Param_VWECUHardwVersiNumbe'));
-    set('variant', g('Param_ASAMODXFileIdent')); set('system', g('Param_VWSysteNameOrEnginType'));
-    if (known(u.swpnr) && (!u.state || u.state === 'NOT_READ')) u.state = 'IDENTIFIED';
-    renderUnitList();
-  }
-  if (step.res && step.res.event_memory) {  // a fresh read updates the unit's count in the list
-    u.dtcs = (step.res.event_memory.eventMemoryEntries || []).length;
-    renderUnitList();
-  }
+  if (step.res && cmd.action === 'read_identification') applyIdent(u, step.res);
+  if (step.res && step.res.event_memory) markFaults(u.id, dtcEntries(step.res));  // updates the unit's count in the list
   if (unitPath === path) renderUnitDetail();
+}
+
+// Refreshes the unit's row with what an identification read returned.
+function applyIdent(u, res) {
+  const g = n => idVal(res, n);
+  const set = (k, v) => { if (v !== undefined && v !== null && v !== '') u[k] = String(v).trim(); };
+  set('swpnr', g('Param_VWSparePartNumbe')); set('swver', g('Param_VWAppliSoftwVersiNumbe'));
+  set('hwpnr', g('Param_VWECUHardwNumbe')); set('hwver', g('Param_VWECUHardwVersiNumbe'));
+  set('variant', g('Param_ASAMODXFileIdent')); set('system', g('Param_VWSysteNameOrEnginType'));
+  if (known(u.swpnr) && (!u.state || u.state === 'NOT_READ')) u.state = 'IDENTIFIED';
+  markResponded(u, true);
+  renderUnitList();
+}
+
+// The first identification value whose short or translated name matches re.
+function idFind(res, re) {
+  const find = arr => {
+    for (const v of arr || []) {
+      if (v && (re.test(v.name || '') || re.test(v.translatedName || ''))) {
+        const x = v.translatedValue !== undefined ? v.translatedValue : v.value;
+        if (x !== undefined && x !== null && String(x).trim() && String(x).trim() !== '---') return String(x).trim();
+      }
+      if (v && v.children) { const r = find(v.children); if (r !== undefined) return r; }
+    }
+  };
+  return find(res && res.identification);
 }
 
 // The translated value of an identification parameter (e.g. Param_VWSparePartNumbe), searched
@@ -1295,7 +1960,7 @@ function initDatabaseTabs() {
   for (const p of ['odx', 'dtc']) {
     $('#' + p).innerHTML = `<div class="bar"><input type="text" class="wide" id="${p}Q"
         placeholder="Unit address (0x0001) or part number / variant (04C906026, GV_ECM10…)"
-        onkeydown="if (event.key === 'Enter') odxFind('${p}')"><button onclick="odxFind('${p}')">Find</button>
+        onkeydown="if (event.key === 'Enter') op('Searching the database', () => odxFind('${p}'))"><button onclick="op('Searching the database', () => odxFind('${p}'))">Find</button>
       <span class="status" id="${p}Msg"></span></div><div class="found" id="${p}Found"></div><div id="${p}Body"></div>`;
   }
 }
@@ -1323,8 +1988,8 @@ async function odxFind(p) {
 function renderFound() {
   const f = odxFound, sel = odxLoc && odxLoc.cmd;
   const html = !f ? '' : `${f.variants.length > 20 ? '<input type="text" placeholder="Filter variants" oninput="filterNames(this)">' : ''}
-    <div class="names">${f.address ? `<button class="${sel && sel.address ? 'on' : ''}" onclick="odxSelect(-1)">Base data ${esc(f.address)}</button>` : ''}
-    ${f.variants.map((v, i) => `<button class="${sel && sel.variant === v.variant ? 'on' : ''}" title="${esc(v.base)}" onclick="odxSelect(${i})">${esc(v.variant)}</button>`).join('')}</div>`;
+    <div class="names">${f.address ? `<button class="${sel && sel.address ? 'on' : ''}" onclick="op('Loading unit data', () => odxSelect(-1))">Base data ${esc(f.address)}</button>` : ''}
+    ${f.variants.map((v, i) => `<button class="${sel && sel.variant === v.variant ? 'on' : ''}" title="${esc(v.base)}" onclick="op('Loading unit data', () => odxSelect(${i}))">${esc(v.variant)}</button>`).join('')}</div>`;
   $('#odxFound').innerHTML = $('#dtcFound').innerHTML = html;
 }
 
@@ -1353,16 +2018,16 @@ function renderOdx() {
       <div class="meta">${esc([u.long_name, u.protocol, u.location, `${u.dtc_count} trouble codes`].filter(Boolean).join(' · '))}
         · <a href="#" onclick="showTab('dtc'); return false">show trouble codes</a></div>
       <div class="names">${u.tables.map(x => `<button class="${t && t.table === x.name ? 'on' : ''}" title="${esc(x.name)}"
-        onclick="odxOpenTable('${esc(x.name)}')">${esc(x.long_name || x.name)} (${x.rows})</button>`).join('')}</div>`;
+        onclick="op('Loading the table', () => odxOpenTable('${esc(x.name)}'))">${esc(x.long_name || x.name)} (${x.rows})</button>`).join('')}</div>`;
   }
   if (t && t.busy) html += `<div class="meta">Loading ${esc(t.table)}…</div>`;
   if (t && t.rows) {
     html += `<h2 class="sub">${esc(t.long_name || t.table)} <small class="meta">${t.count} rows</small></h2>
       <input type="text" placeholder="Filter rows" oninput="filterRows(this)">
-      <table class="vals"><tr><th>Name</th><th>Identifier</th><th>Values</th></tr>${t.rows.map(r => `<tr>
+      ${copyNext(`<table class="vals"><tr><th>Name</th><th>Identifier</th><th>Values</th></tr>${t.rows.map(r => `<tr>
         <td>${esc(r.long_name || r.name)}</td><td class="mono">${esc(r.name)}</td>
         <td>${r.params.map(p => `<div>${esc(p.long_name || p.name)}${p.unit ? ` [${esc(p.unit)}]` : ''}${p.choices && p.choices.length
-          ? `: <span class="meta">${p.choices.map(esc).join(' · ')}</span>` : ''}</div>`).join('')}</td></tr>`).join('')}</table>`;
+          ? `: <span class="meta">${p.choices.map(esc).join(' · ')}</span>` : ''}</div>`).join('')}</td></tr>`).join('')}</table>`, 'Copy the shown rows')}`;
   }
   $('#odxBody').innerHTML = html;
 }
@@ -1386,11 +2051,13 @@ function renderDtc() {
     // and, on demand, ODIS guided fault finding. Guidance is built when a code is opened.
     html = `<h1>${esc(odxLoc.label)} <small class="meta">${real.length} trouble codes</small></h1>
       ${real.length ? '' : '<div class="meta">This data defines no trouble codes. Base data usually has none: pick a variant above.</div>'}
+      <div class="meta"><button class="cp" title="Copy the shown trouble codes" onclick="copyEl(this.parentElement.nextElementSibling.nextElementSibling)">⧉ Copy list</button></div>
       <input type="text" placeholder="Search code or text, e.g. P0122 or throttle" oninput="filterDtc(this)">
       <div class="dtclist">${real.map((d, i) => `<details class="event" ontoggle="dtcFill(this)"
         data-code="${esc(d.code)}" data-text="${esc(d.text || '')}" data-idx="dtc${i}">
-        <summary><span class="mono">${esc(d.code)}</span> ${esc(d.text || '')}
-          <span class="meta">level ${d.level} · ${d.number} (0x${d.number.toString(16).toUpperCase()})</span></summary></details>`).join('')}</div>`;
+        <summary><span class="mono">${esc(d.code)}</span> ${esc(d.text || '')} ${trBtn(d.text)}
+          <span class="meta">level ${d.level} · ${d.number} (0x${d.number.toString(16).toUpperCase()})</span>
+          ${copyBtn(`${d.code} ${d.text || ''}`, 'Copy code and text')}</summary></details>`).join('')}</div>`;
   }
   $('#dtcBody').innerHTML = html;
 }
@@ -1398,7 +2065,7 @@ function renderDtc() {
 function dtcFill(el) {
   if (el.open && !el.dataset.filled) {
     el.dataset.filled = '1';
-    el.insertAdjacentHTML('beforeend', dtcGuidanceHTML(el.dataset.code, el.dataset.text, el.dataset.idx));
+    el.insertAdjacentHTML('beforeend', `<div class="nocopy">${dtcGuidanceHTML(el.dataset.code, el.dataset.text, el.dataset.idx)}</div>`);
   }
 }
 function filterDtc(input) {
@@ -1473,7 +2140,9 @@ try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
 showTab(startTab);
 renderEmptyCoding();
 connPoll();
-api('GET', '/api/version').then(v => { $('#ver').textContent = 'v' + v; }).catch(() => {});
+let laertesVersion = '';
+api('GET', '/api/version').then(v => { laertesVersion = v; $('#ver').textContent = 'v' + v; }).catch(() => {});
+loadRetrofits();
 </script>
 </body>
 </html>

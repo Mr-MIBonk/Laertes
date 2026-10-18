@@ -1,9 +1,9 @@
 # C:\ProgramData\OE\macros\mcpserver_handlers.py
-# Actions of the ODIS Jython TCP bridge. mcpserver_test.py runs the TCP server and reloads
+# Actions of the ODIS Jython TCP bridge. mcpserver.py runs the TCP server and reloads
 # this file whenever it changes, so actions can be added or fixed without restarting ODIS.
 #
 # Every handler takes the request dict and returns a JSON-serializable dict with "ok".
-# DIAG_LOCK is provided by mcpserver_test.py; it serializes access to the control units.
+# DIAG_LOCK is provided by mcpserver.py; it serializes access to the control units.
 # Do NOT put MCP server code in this file.
 
 import json
@@ -955,15 +955,22 @@ def with_open_connection(cmd, fn):
     from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
     address = parse_address(cmd)
     diag = Factory.getInstance()
-    handle = diag.connectToEcu(address).getConnectionHandle()
-    diag.openConnection(handle)
+    DIAG_LOCK.acquire()  # like with_connection: one job at a time, writes included
     try:
-        return checked(fn(diag, handle))
-    finally:
+        handle = diag.connectToEcu(address).getConnectionHandle()
+        diag.openConnection(handle)
         try:
-            diag.closeConnection(handle)
-        except (Exception, Throwable):
-            pass
+            return checked(fn(diag, handle))
+        finally:
+            try:
+                diag.closeConnection(handle)
+            except (Exception, Throwable):
+                pass
+    except (Exception, Throwable) as e:
+        traceback.print_exc()
+        return {"ok": False, "error": error_text(e), "exception_type": e.__class__.__name__}
+    finally:
+        DIAG_LOCK.release()
 
 
 def maybe_login(diag, handle, cmd):

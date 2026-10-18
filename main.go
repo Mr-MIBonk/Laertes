@@ -12,11 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.1.0"
+const version = "0.2.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -25,7 +26,7 @@ func main() {
 	exe, _ := os.Executable()
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
-	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver_test.py) address")
+	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver.py) address")
 	flag.Parse()
 	adoptOldDatabase(*dbPath)
 
@@ -161,6 +162,54 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 	})
 	mux.HandleFunc("DELETE /api/history", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, store.DeleteChanges(0))
+	})
+	mux.HandleFunc("GET /api/retrofits", func(w http.ResponseWriter, r *http.Request) {
+		rs, err := store.Retrofits()
+		reply(w, rs, err)
+	})
+	mux.HandleFunc("GET /api/retrofits/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad id", http.StatusBadRequest)
+			return
+		}
+		rf, err := store.Retrofit(id)
+		if err == nil && rf == nil {
+			http.Error(w, "no such retrofit", http.StatusNotFound)
+			return
+		}
+		reply(w, rf, err)
+	})
+	mux.HandleFunc("POST /api/retrofits", func(w http.ResponseWriter, r *http.Request) {
+		var rf Retrofit
+		// The baseline is a full-scan log of the whole car, so allow a large body.
+		if err := json.NewDecoder(io.LimitReader(r.Body, 32<<20)).Decode(&rf); err != nil || rf.Name == "" ||
+			(len(rf.BaselineDTCs) > 0 && !json.Valid(rf.BaselineDTCs)) {
+			http.Error(w, "a retrofit needs a name", http.StatusBadRequest)
+			return
+		}
+		rf.Started, rf.Ended = time.Now().Format(time.RFC3339), ""
+		if err := store.StartRetrofit(&rf); err == errRetrofitActive {
+			http.Error(w, err.Error(), http.StatusConflict)
+		} else {
+			reply(w, &rf, err)
+		}
+	})
+	mux.HandleFunc("PATCH /api/retrofits/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		var req struct {
+			Name string `json:"name"`
+			End  bool   `json:"end"`
+		}
+		if err != nil || json.NewDecoder(r.Body).Decode(&req) != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		ended := ""
+		if req.End {
+			ended = time.Now().Format(time.RFC3339)
+		}
+		reply(w, nil, store.UpdateRetrofit(id, strings.TrimSpace(req.Name), ended))
 	})
 	mux.HandleFunc("GET /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
 		p, err := store.CodingPref(r.URL.Query().Get("variant"))

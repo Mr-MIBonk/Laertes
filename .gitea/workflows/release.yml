@@ -56,13 +56,13 @@ jobs:
           # Reuse the release if this tag was published before (re-run), else create it.
           id=$(curl -sf -H "$auth" "$api/releases/tags/$TAG" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2 || true)
           if [ -z "$id" ]; then
-            body="Laertes $TAG for Windows. Copy the two mcpserver_*.py files to C:\\\\ProgramData\\\\OE\\\\macros\\\\, run mcpserver_test.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
+            body="Laertes $TAG for Windows. Copy the two mcpserver_*.py files to C:\\\\ProgramData\\\\OE\\\\macros\\\\, run mcpserver.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
             id=$(curl -sf -H "$auth" -H "Content-Type: application/json" -X POST "$api/releases" \
               -d "{\"tag_name\":\"$TAG\",\"name\":\"Laertes $TAG\",\"body\":\"$body\"}" |
               grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
           fi
           [ -n "$id" ] || { echo "could not create the release"; exit 1; }
-          for f in laertes.exe mcpserver_test.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt; do
+          for f in laertes.exe mcpserver.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt; do
             curl -sf -H "$auth" -F "attachment=@$f" "$api/releases/$id/assets?name=$f" > /dev/null
             echo "uploaded $f"
           done

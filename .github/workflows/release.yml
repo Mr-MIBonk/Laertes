@@ -40,10 +40,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          files="laertes.exe mcpserver_test.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt"
+          files="laertes.exe mcpserver.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt"
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" $files --clobber   # re-run: replace the files
           else
             gh release create "$GITHUB_REF_NAME" $files --title "Laertes $GITHUB_REF_NAME" --notes \
-              "Laertes $GITHUB_REF_NAME for Windows. Copy the two mcpserver_*.py files to C:\\ProgramData\\OE\\macros\\, run mcpserver_test.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
+              "Laertes $GITHUB_REF_NAME for Windows. Copy the two mcpserver_*.py files to C:\\ProgramData\\OE\\macros\\, run mcpserver.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
           fi

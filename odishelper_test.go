@@ -56,3 +56,37 @@ func TestMigrateV1Labels(t *testing.T) {
 		t.Errorf("migrated %+v", ls)
 	}
 }
+
+func TestRetrofitChanges(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "r.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	before := Change{Time: "t0", Kind: "coding"}
+	s.AddChange(&before)
+	rf := Retrofit{Name: "Retrofit VIN1", Started: "t1", Baseline: "scan", BaselineDTCs: []byte(`{"0x0019":["U1113|x"]}`)}
+	if err := s.StartRetrofit(&rf); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartRetrofit(&Retrofit{Name: "second", Started: "t2"}); err != errRetrofitActive {
+		t.Errorf("second active retrofit: %v", err)
+	}
+	during := Change{Time: "t2", Kind: "coding", Details: "Byte 1: 00 → 04"}
+	s.AddChange(&during)
+	s.UpdateRetrofit(rf.ID, "Renamed", "t3")
+	after := Change{Time: "t4", Kind: "coding"}
+	s.AddChange(&after)
+
+	cs, _ := s.Changes(10)
+	if len(cs) != 3 || cs[0].RetrofitID != 0 || cs[1].RetrofitID != rf.ID || cs[1].Retrofit != "Renamed" || cs[1].Details != "Byte 1: 00 → 04" || cs[2].RetrofitID != 0 {
+		t.Errorf("changes %+v", cs)
+	}
+	got, _ := s.Retrofit(rf.ID)
+	if got == nil || got.Ended != "t3" || got.Baseline != "scan" || string(got.BaselineDTCs) != `{"0x0019":["U1113|x"]}` {
+		t.Errorf("retrofit %+v", got)
+	}
+	if err := s.StartRetrofit(&Retrofit{Name: "next", Started: "t5"}); err != nil {
+		t.Errorf("start after end: %v", err)
+	}
+}

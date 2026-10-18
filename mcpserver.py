@@ -1,4 +1,4 @@
-# C:\ProgramData\OE\macros\mcpserver_test.py
+# C:\ProgramData\OE\macros\mcpserver.py
 # ODIS Jython TCP bridge for the external MCP server.
 # Do NOT put MCP server code in this file.
 #
@@ -10,6 +10,7 @@ import os
 import socket
 import threading
 import json
+import re
 import traceback
 
 from java.lang import Throwable
@@ -22,6 +23,9 @@ HANDLERS_FILE = os.path.join(MACRO_DIR, "mcpserver_handlers.py")
 
 # Shared with the handlers: one diagnostic job at a time on the vehicle.
 DIAG_LOCK = threading.Lock()
+
+# Set by the "shutdown" action: the accept loop ends and the macro returns control to ODIS.
+_stop = threading.Event()
 
 _loaded = {"mtime": None, "handlers": None, "error": None}
 _load_lock = threading.Lock()
@@ -60,6 +64,11 @@ def handle_request(cmd):
             "error": "Missing action"
         }
 
+    if action == "shutdown":
+        # Handled here, not in the handlers: the server owns its own lifetime.
+        _stop.set()
+        return {"ok": True, "stopping": True}
+
     handlers, load_error = get_handlers()
     handler = handlers.get(action)
 
@@ -95,6 +104,11 @@ def client_loop(conn):
                 if not line.strip():
                     continue
 
+                # A web page can send an HTTP request to this port; its request line is not JSON.
+                # Drop such connections so a page cannot slip a command in through the body.
+                if re.match(r"^[A-Z]+ \S+ HTTP/", line):
+                    return
+
                 try:
                     cmd = json.loads(line)
                     response = handle_request(cmd)
@@ -119,6 +133,14 @@ def client_loop(conn):
                     traceback.print_exc()
                     return
 
+                if _stop.isSet():
+                    # Wake the accept loop so main() returns.
+                    try:
+                        socket.create_connection((HOST, PORT)).close()
+                    except Exception:
+                        pass
+                    return
+
     except Exception as e:
         traceback.print_exc()
 
@@ -137,10 +159,20 @@ def main():
 
     print("ODIS Jython bridge listening on %s:%d" % (HOST, PORT))
 
-    while True:
-        conn, addr = server.accept()
-        print("Client connected:", addr)
-        threading.Thread(target=client_loop, args=(conn,)).start()
+    try:
+        while not _stop.isSet():
+            conn, addr = server.accept()
+            if _stop.isSet():
+                conn.close()
+                break
+            print("Client connected:", addr)
+            # Daemon threads: a stopped bridge must not keep the macro running.
+            t = threading.Thread(target=client_loop, args=(conn,))
+            t.setDaemon(True)
+            t.start()
+    finally:
+        server.close()
+    print("ODIS bridge stopped; ODIS can be used again.")
 
 
 main()
