@@ -151,7 +151,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span></nav>
@@ -657,7 +657,25 @@ async function openUnitCodingInTab() {
   virtualReading = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join('')};
   selId = -1; work = step.work.slice(); labelsKey = null;
   showTab('coding');
-  await loadLabels(true); renderHist(); render();
+  await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
+  // Also carry the coding definition chosen in units (own or borrowed ODX) as labels for the grid.
+  const table = step.odx && step.odx.own ? step.odx.own : (step.borrow && step.borrow.table);
+  if (table) labels = labels.concat(odxToLabels(table));
+  renderHist(); render();
+}
+// Converts an ODX textual coding table into VCDS-style labels (per-byte bit fields) so the chosen
+// definition shows in the Coding tab grid. Fields spanning more than one byte are skipped.
+function odxToLabels(table) {
+  const out = [];
+  (table.rows || []).flatMap(r => r.params).forEach(p => {
+    if (p.byte_pos === undefined || !p.bit_length) return;
+    const lo = p.bit_pos || 0, hi = lo + p.bit_length - 1;
+    if (hi > 7) return;
+    (p.values || []).filter(c => Number(c.low) === Number(c.high)).forEach(c => {
+      out.push({byte: p.byte_pos, lo, hi, value: (Number(c.low) << lo) & 0xFF, text: c.text});
+    });
+  });
+  return out;
 }
 async function codingWrite() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
