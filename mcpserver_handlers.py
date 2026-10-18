@@ -945,8 +945,92 @@ def handle__debug(cmd):
         context.ungetService(ref)
 
 
+# --- Guided fault finding (GFS) -----------------------------------------------------------
+# ODIS-S guided fault finding ("Gefuehrte Fehlersuche") hangs off an IGfs session, created for
+# the vehicle and held by GfsManager. These actions report its state and, from it, the repair
+# guidance (test programs, documents) for a fault, so a DTC can be shown with what to check.
+
+def gfs_methods(obj):
+    from java.lang import Class
+    if obj is None:
+        return None
+    sigs = []
+    for m in Class.getMethods(obj.getClass()):
+        sig = re.sub(r"[\w$]+\.", "", m.toString().replace("public ", "").replace("abstract ", "").replace("final ", ""))
+        if not re.search(r" (wait|notify|notifyAll|hashCode|equals|getClass|toString)\(", sig):
+            sigs.append(sig)
+    return sorted(set(sigs))
+
+
+def gfs_service(context, name):
+    ref = context.getServiceReference(name)
+    return (context.getService(ref) if ref is not None else None), ref
+
+
+def current_gfs(context):
+    """The current IGfs guided-diagnosis session, or None. getGfs() is static on GfsManager
+    (the ISessionGfsDataProvider impl), so it is called by reflection on that class."""
+    from java.lang import Class
+    mgr, ref = gfs_service(context, "de.volkswagen.odis.vaudas.session.ISessionGfsDataProvider")
+    try:
+        if mgr is None:
+            return None
+        return Class.getMethod(mgr.getClass(), "getGfs", []).invoke(None, [])
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
+def handle_gfs_explore(cmd):
+    """Read-only: reports whether a diagnosis session is active and, if so, the current IGfs
+    object with the methods available on it and on the GFS search service. Used to design the
+    fault-guidance action; takes no connection to the vehicle."""
+    out = {"ok": True}
+    context = get_context()
+    info, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.systemtest.IDiagnosisSessionInfoService")
+    try:
+        if info is not None:
+            out["diagnosis_active"] = info.isDiagnosisActive()
+            out["diagnosis_started"] = info.isDiagnosisStarted()
+            out["diagnosis_state"] = unicode(info.getDiagnosisState())
+            out["vehicle_name"] = info.getVehicleName()
+            out["brand"] = info.getBrand()
+    except (Exception, Throwable) as e:
+        out["session_error"] = error_text(e)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    try:
+        gfs = current_gfs(context)
+        out["gfs_class"] = gfs.getClass().getName() if gfs is not None else None
+        out["gfs_methods"] = gfs_methods(gfs)
+        if gfs is not None:
+            try:
+                plan = gfs.getInitialTestPlan()
+                out["plan_class"] = plan.getClass().getName() if plan is not None else None
+                out["plan_methods"] = gfs_methods(plan)
+            except (Exception, Throwable) as e:
+                out["plan_error"] = error_text(e)
+            try:
+                kb = gfs.getKnowledgeBase()
+                out["kb_class"] = kb.getClass().getName() if kb is not None else None
+                out["kb_methods"] = gfs_methods(kb)
+            except (Exception, Throwable) as e:
+                out["kb_error"] = error_text(e)
+    except (Exception, Throwable) as e:
+        out["gfs_error"] = error_text(e)
+    search, ref3 = gfs_service(context, "de.volkswagen.odis.vaudas.gfs.search.IGfsSearchService")
+    try:
+        out["search_methods"] = gfs_methods(search)
+    finally:
+        if ref3 is not None:
+            context.ungetService(ref3)
+    return out
+
+
 HANDLERS = {
     "_debug": handle__debug,
+    "gfs_explore": handle_gfs_explore,
     "ping": handle_ping,
     "list_project_ecus": handle_list_project_ecus,
     "list_vehicle_ecus": handle_list_vehicle_ecus,
