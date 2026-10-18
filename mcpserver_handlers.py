@@ -1258,6 +1258,23 @@ def handle_vin(cmd):
     return out
 
 
+def handle_vci(cmd):
+    """The vehicle communication interface (VCI) state/type, for the top-bar status."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    diag = Factory.getInstance()
+    out = {"ok": True}
+    for k, fn in (("state", diag.checkVciState), ("clamp15", diag.getClamp15State), ("clamp30", diag.getClamp30State)):
+        try:
+            out[k] = unicode(fn())
+        except (Exception, Throwable):
+            pass
+    try:
+        out["doip"] = [unicode(x) for x in (diag.getDoIPVCIs() or [])]
+    except (Exception, Throwable):
+        pass
+    return out
+
+
 def handle_vehicle_projects(cmd):
     """The current vehicle project and whether it can be changed, plus any selectable projects
     ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
@@ -1340,6 +1357,7 @@ HANDLERS = {
     "list_services": handle_list_services,
     "vehicle": handle_vehicle,
     "vin": handle_vin,
+    "vci": handle_vci,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "api_methods": handle_api_methods,

@@ -64,6 +64,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .tabs .conn.off { color:var(--warn); }
 .tabs .conn.off .dot { background:var(--warn); }
 .tabs .veh { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--text); padding:0 6px; white-space:nowrap; }
+.tabs .veh.off { color:var(--warn); }
 .units { display:flex; gap:16px; align-items:flex-start; }
 .units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
 .units .bar label { white-space:nowrap; }
@@ -152,7 +153,8 @@ input[type=text]:focus { outline:1px solid var(--accent); }
   <span class="name">Laertes<small>father of Odis</small></span></span>
   <button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
-  <span id="veh" class="veh" hidden></span></nav>
+  <span id="veh" class="veh" hidden></span>
+  <span id="vci" class="veh" hidden></span></nav>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -219,9 +221,16 @@ async function pingBridge() {
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
       veh.title = v.project ? 'Vehicle project loaded in ODIS' : 'No vehicle project loaded in ODIS';
     } catch (e) { veh.hidden = true; }
+    try {
+      const vci = $('#vci'), c = await api('POST', '/api/bridge', {action: 'vci'});
+      const state = (c.state || '').toLowerCase(), on = state === 'connected' || state === 'on';
+      vci.hidden = false; vci.textContent = '🔌 VCI ' + (c.state || '?');
+      vci.classList.toggle('off', !on);
+      vci.title = `VCI ${c.state || '?'}${c.clamp15 ? ' · clamp 15 ' + c.clamp15 : ''}${c.clamp30 ? ' · clamp 30 ' + c.clamp30 : ''}${(c.doip && c.doip.length) ? ' · DoIP: ' + c.doip.join(', ') : ''}`;
+    } catch (e) { $('#vci').hidden = true; }
   } catch (e) {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
-    veh.hidden = true;
+    veh.hidden = true; $('#vci').hidden = true;
   }
 }
 async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
