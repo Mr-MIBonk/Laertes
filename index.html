@@ -99,6 +99,10 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units .names.check { flex-direction:column; flex-wrap:nowrap; gap:1px; max-height:60vh; }
 .units .names.check label { display:flex; gap:6px; align-items:center; font:12px system-ui, sans-serif; padding:1px 0; }
 .units table.vals tr.changed td { color:var(--chg); font-weight:bold; }
+.units .byteedit { display:flex; flex-wrap:wrap; gap:3px; margin:4px 0; }
+.units .byteedit input { width:2.6em; font:13px Consolas, monospace; text-align:center; text-transform:uppercase; padding:3px 0; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:3px; }
+.units .byteedit input.chg { border-color:var(--chg); color:var(--chg); font-weight:bold; }
+.units .mono { font-family:Consolas, monospace; }
 .units table.vals td.sparkcell { padding:1px 4px; width:94px; }
 .units svg.spark { display:block; }
 .units svg.spark polyline { fill:none; stroke:var(--accent); stroke-width:1; vector-effect:non-scaling-stroke; }
@@ -149,6 +153,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 </div>
 </main>
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
+<input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
 <script>
 let readings = [], selId = null, maxId = 0, work = [], labels = [], labelsKey = '', odisMsg = null;
 const $ = s => document.querySelector(s);
@@ -433,7 +438,11 @@ function renderUnitDetail() {
         <details class="rawjson"><summary>JSON</summary>${jsonView(data)}</details>`
       : jsonView(data);
     if (step.cmd.action === 'read_coding')
-      body += `<h2 class="sub">Coding definition (ODIS database)</h2>${codingDefinitionHTML(step)}`;
+      body += codingEditorHTML(step)
+        + `<h2 class="sub">Coding definition (ODIS database)</h2>${codingDefinitionHTML(step)}`
+        + `<h2 class="sub">Decode with your .lbl labels</h2>${lblDecodeHTML(step)}`;
+    if (step.cmd.action === 'read_adaptation')
+      body += adaptationEditorHTML(step);
   }
   const crumbs = unitPath.map((s, i) => i === unitPath.length - 1 ? esc(s.label) : `<a href="#" onclick="unitBack(${i}); return false">${esc(s.label)}</a>`).join(' › ');
   $('#unitDetail').innerHTML = `<h1>${esc(u.sname || '')} <small class="meta">${esc(u.id || '')}</small></h1>
@@ -465,6 +474,124 @@ async function codingDefinition(u) {
 
 // The coding step currently shown in the unit pane.
 const codingStep = () => { const s = unitPath[unitPath.length - 1]; return s && s.cmd.action === 'read_coding' ? s : null; };
+
+// --- Units coding editor: edit the byte coding and write it to the unit via the bridge ------
+function codingEditorHTML(step) {
+  if (!step.work || !step.work.length) return '';
+  const changed = step.work.some((b, i) => b !== step.orig[i]);
+  const newHex = step.work.map((b, i) => b !== step.orig[i] ? `<span class="chg">${hex(b)}</span>` : hex(b)).join(' ');
+  const inputs = step.work.map((b, i) =>
+    `<input class="${b !== step.orig[i] ? 'chg' : ''}" maxlength="2" value="${hex(b)}" title="Byte ${i}" onchange="codingByte(${i}, this.value)">`).join('');
+  return `<h2 class="sub">Edit coding (${esc(step.sysName)})</h2>
+    <div class="meta">Original <span class="mono">${step.orig.map(hex).join(' ')}</span></div>
+    <div class="byteedit">${inputs}</div>
+    <div class="code"><span class="mono">${newHex}</span><button onclick="codingReset()">Reset</button>
+      <button class="warn" ${changed ? '' : 'disabled'} onclick="codingWrite()">Write to unit…</button>
+      ${step.writeMsg ? `<div class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</div>` : ''}</div>`;
+}
+function codingByte(i, v) {
+  const step = codingStep(); if (!step) return;
+  const b = parseInt(v, 16);
+  if (!isNaN(b) && b >= 0 && b <= 255) step.work[i] = b;
+  renderUnitDetail();
+}
+function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(); s.writeMsg = ''; renderUnitDetail(); } }
+async function codingWrite() {
+  const step = codingStep(), u = units.find(u => u.index === unitSel);
+  const to = step.work.map(hex).join(' '), from = step.orig.map(hex).join(' ');
+  const diff = step.work.map((b, i) => b !== step.orig[i] ? `  byte ${i}: ${hex(step.orig[i])} → ${hex(b)}` : null).filter(Boolean);
+  if (!diff.length) return;
+  if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
+  step.writeMsg = 'Writing coding to the unit…'; step.writeErr = false; renderUnitDetail();
+  try {
+    await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to});
+    step.orig = step.work.slice();
+    step.writeMsg = 'Coding written to the unit.';
+  } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
+  renderUnitDetail();
+}
+
+// Decode the (edited) coding with the user's own .lbl labels, independent of the ODIS database.
+async function loadUnitLabels(variant, subsystem) {
+  try { return await api('GET', '/api/labels?' + new URLSearchParams({variant: variant || '', subsystem: subsystem || ''})); }
+  catch (e) { return []; }
+}
+function lblDecodeHTML(step) {
+  const ls = step.unitLabels || [], where = `${esc(step.unitVariant || '?')} / ${esc(step.sysName)}`;
+  const btn = `<button onclick="importUnitLBL()">Import .lbl for ${where}…</button>`;
+  if (!ls.length) return `<div class="meta">No .lbl labels stored for ${where}.</div>${btn}`;
+  return `<div class="meta">${ls.length} labels for ${where}. ${btn}</div>
+    <table class="vals"><tr><th>Byte / bits</th><th>Value</th></tr>${decodeLbl(step.work, ls)}</table>`;
+}
+function decodeLbl(work, ls) {
+  const find = (byte, lo, hi, value) => ls.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
+  const fieldsOf = i => {
+    const fs = {};
+    ls.filter(l => l.byte === i && l.value >= 0).forEach(l => { const k = l.lo + '~' + l.hi; (fs[k] = fs[k] || {lo: l.lo, hi: l.hi, options: []}).options.push(l); });
+    return Object.values(fs);
+  };
+  let rows = ls.filter(l => l.byte === -1).sort((a, b) => a.lo - b.lo).map(n => `<tr><td colspan="2" class="meta">${esc(n.text)}</td></tr>`).join('');
+  work.forEach((b, i) => {
+    const bl = find(i, 0, 7, -1);
+    if (bl) rows += `<tr><th colspan="2">Byte ${i} (${hex(b)}) — ${esc(bl.text)}</th></tr>`;
+    fieldsOf(i).forEach(f => {
+      const cur = b & mask(f.lo, f.hi), opt = f.options.find(o => o.value === cur);
+      rows += `<tr><td class="mono">Byte ${i} bits ${f.lo}–${f.hi}</td><td>${opt ? esc(opt.text) : `0x${hex(cur)} (unknown)`}</td></tr>`;
+    });
+    for (let bit = 7; bit >= 0; bit--) {
+      const l = find(i, bit, bit, -1);
+      if (l && ((b >> bit) & 1)) rows += `<tr><td class="mono">Byte ${i} bit ${bit}</td><td>${esc(l.text)} (set)</td></tr>`;
+    }
+  });
+  return rows || `<tr><td colspan="2" class="meta">No labels match these bytes.</td></tr>`;
+}
+let pendingLblStep = null;
+function importUnitLBL() { pendingLblStep = codingStep(); if (pendingLblStep) $('#unitlbl').click(); }
+async function onUnitLBL(input) {
+  const file = input.files[0], step = pendingLblStep; input.value = '';
+  if (!file || !step) return;
+  try {
+    const n = await api('POST', '/api/labels/import?' + new URLSearchParams({variant: step.unitVariant || '', subsystem: step.sysName}), await file.text());
+    step.unitLabels = await loadUnitLabels(step.unitVariant, step.sysName);
+    alert(`Imported ${n} labels for ${step.unitVariant} / ${step.sysName}`);
+    renderUnitDetail();
+  } catch (e) { alert('Import failed: ' + e.message); }
+}
+
+// --- Adaptation editor: change a channel's parameter values and write them to the unit ------
+function adaptationEditorHTML(step) {
+  const ad = step.res.adaptation;
+  const params = ad ? (ad.adaptationValues || []).map(v => v.adaptationValue).filter(Boolean) : [];
+  if (!params.length) return '';
+  step.newVals = step.newVals || {};
+  const rows = params.map(p => {
+    const nv = (p.name in step.newVals) ? step.newVals[p.name] : p.value;
+    return `<tr class="${String(nv) !== String(p.value) ? 'changed' : ''}">
+      <td>${esc(p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name)}</td>
+      <td class="mono">${esc(p.value)}${p.unit ? ' ' + esc(p.unit) : ''}</td>
+      <td><input value="${esc(nv)}" onchange="adaptSet('${esc(p.name)}', this.value)"></td></tr>`;
+  }).join('');
+  const changed = params.some(p => (p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value));
+  return `<h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
+    <table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th></tr>${rows}</table>
+    <div class="bar"><button class="warn" ${changed ? '' : 'disabled'} onclick="adaptWrite()">Write to unit…</button>
+      ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</span>` : ''}</div>`;
+}
+function adaptSet(name, v) { const s = curStep(); if (s) { (s.newVals = s.newVals || {})[name] = v; renderUnitDetail(); } }
+async function adaptWrite() {
+  const step = curStep(), u = units.find(u => u.index === unitSel), ad = step.res.adaptation;
+  const params = (ad.adaptationValues || []).map(v => v.adaptationValue).filter(Boolean);
+  const values = {}, diffs = [];
+  params.forEach(p => { if ((p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value)) { values[p.name] = step.newVals[p.name]; diffs.push(`  ${p.name}: ${p.value} → ${step.newVals[p.name]}`); } });
+  if (!diffs.length) return;
+  if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
+  step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
+  try {
+    await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values});
+    step.writeMsg = 'Adaptation written to the unit. Re-open the channel to confirm.';
+  } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
+  renderUnitDetail();
+}
 
 async function borrowList() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
@@ -508,7 +635,8 @@ function decodedTable(hexBytes, table) {
 }
 
 function codingDefinitionHTML(step) {
-  const odx = step.odx, master = ((step.res && step.res.coding) || [])[0] || {}, coding = master.byteCoding;
+  const odx = step.odx, master = ((step.res && step.res.coding) || [])[0] || {};
+  const coding = step.work ? step.work.map(hex).join(' ') : master.byteCoding;
   if (!odx) return '<div class="meta">Looking up the coding definition in the ODIS database…</div>';
   if (odx.own) return `<div class="meta">Decoded with ${esc(odx.own.location || 'its own')} ODX data.</div>${decodedTable(coding, odx.own)}`;
   let html = `<div class="meta">${esc(odx.note)}</div>`;
@@ -694,7 +822,12 @@ async function unitRun(cmd, label) {
   step.busy = false;
   if (step.res && cmd.action === 'read_coding') {
     step.unitVariant = u.variant;
+    const master = (step.res.coding || [])[0] || {};
+    step.sysName = master.systemName || 'master';
+    step.orig = master.byteCoding ? bytesOf(master.byteCoding.replace(/\s/g, '')) : [];
+    step.work = step.orig.slice();
     step.odx = await codingDefinition(u);
+    step.unitLabels = await loadUnitLabels(u.variant, step.sysName);
     if (unitPath === path) renderUnitDetail();
   }
   if (step.res && step.res.event_memory) {  // a fresh read updates the unit's count in the list

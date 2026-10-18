@@ -945,6 +945,60 @@ def handle__debug(cmd):
         context.ungetService(ref)
 
 
+# --- Writing coding and adaptation, security access ---------------------------------------
+# These change the control unit. The web UI confirms each change (old -> new) before calling.
+
+def handle_write_byte_coding(cmd):
+    """Writes byte coding to a subsystem. name is the subsystem (systemName from read_coding,
+    e.g. "master"); coding is the hex string in the same form read_coding returns."""
+    name = cmd.get("name") or "master"
+    coding = cmd.get("coding")
+    if not coding:
+        return {"ok": False, "error": "missing coding hex string"}
+    return with_connection(cmd, lambda diag, h: {"ok": True, "result": to_data(diag.writeByteCoding(h, name, coding))})
+
+
+def handle_read_adaptation_values(cmd):
+    """The selectable values of an adaptation channel, when it has a fixed set."""
+    channel = cmd.get("channel")
+    if not channel:
+        return {"ok": False, "error": "missing channel"}
+    return with_connection(cmd, lambda diag, h: names_result(diag.getShortNamesOfAdaptationValues(h, channel), channel=channel))
+
+
+def handle_write_adaptation(cmd):
+    """Writes an adaptation channel. values maps each parameter name (as read_adaptation shows,
+    e.g. "Param_ActivStartStopFunct") to its new value."""
+    from java.util import HashMap
+    channel, values = cmd.get("channel"), cmd.get("values")
+    if not channel or not isinstance(values, dict) or not values:
+        return {"ok": False, "error": "missing channel or non-empty values map"}
+    m = HashMap()
+    for k, v in values.items():
+        m.put(k, v)
+    return with_connection(cmd, lambda diag, h: {"ok": True, "result": to_data(diag.writeAdaptation(h, channel, m))})
+
+
+def handle_list_access_modes(cmd):
+    """The named security-access modes an ECU offers (for the login value)."""
+    return with_connection(cmd, lambda diag, h: names_result(diag.getShortNamesOfAccessModes(h)))
+
+
+def handle_login(cmd):
+    """Security access ("login"): elevated mode for coding/adaptation. securityAccess takes an
+    access-mode name and a value; mode defaults to the first the ECU offers."""
+    value = cmd.get("code")
+    if value is None:
+        value = cmd.get("value") or ""
+    def run(diag, h):
+        mode = cmd.get("mode")
+        if not mode:
+            modes = list(diag.getShortNamesOfAccessModes(h))
+            mode = modes[0] if modes else ""
+        return {"ok": True, "mode": mode, "result": to_data(diag.securityAccess(h, mode, unicode(value)))}
+    return with_connection(cmd, run)
+
+
 # --- Guided fault finding (GFS) -----------------------------------------------------------
 # ODIS-S guided fault finding ("Gefuehrte Fehlersuche") hangs off an IGfs session, created for
 # the vehicle and held by GfsManager. These actions report its state and, from it, the repair
@@ -1085,6 +1139,11 @@ HANDLERS = {
     "list_coding_values": handle_list_coding_values,
     "list_adaptation_channels": handle_list_adaptation_channels,
     "read_adaptation": handle_read_adaptation,
+    "read_adaptation_values": handle_read_adaptation_values,
+    "write_byte_coding": handle_write_byte_coding,
+    "write_adaptation": handle_write_adaptation,
+    "list_access_modes": handle_list_access_modes,
+    "login": handle_login,
     "list_measurement_groups": handle_list_measurement_groups,
     "list_measurements": handle_list_measurements,
     "read_measurement": handle_read_measurement,
