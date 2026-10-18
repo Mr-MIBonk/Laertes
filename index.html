@@ -65,6 +65,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .tabs .conn.off .dot { background:var(--warn); }
 .tabs .veh { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--text); padding:0 6px; white-space:nowrap; }
 .tabs .veh.off { color:var(--warn); }
+.tabs .ver { display:flex; align-items:center; font:11px Consolas, monospace; color:var(--muted); padding:0 4px 0 8px; margin-left:4px; border-left:1px solid var(--line); white-space:nowrap; }
 .units { display:flex; gap:16px; align-items:flex-start; }
 .units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
 .units .bar label { white-space:nowrap; }
@@ -120,6 +121,12 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .db .bar input.wide { max-width:520px; }
 .db .names { max-height:30vh; }
 .db h2.sub, .units h2.sub { font-size:15px; margin:16px 0 6px; }
+.help { max-width:860px; line-height:1.55; }
+.help ol, .help ul { padding-left:22px; margin:4px 0 8px; }
+.help li { margin:3px 0; }
+.help dt { font-weight:bold; margin-top:10px; }
+.help dd { margin:2px 0 0 18px; }
+.help code { font:12.5px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
 .db td.mono { font-family:Consolas, monospace; white-space:nowrap; }
 .db #odxBody > input, .db #dtcBody > input, .db .found > input { margin:8px 0 4px; max-width:420px; }
 #jsonIn { width:100%; font:13px Consolas, monospace; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px; margin:6px 0; }
@@ -151,10 +158,11 @@ input[type=text]:focus { outline:1px solid var(--accent); }
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
-  <span id="vci" class="veh" hidden></span></nav>
+  <span id="vci" class="veh" hidden></span>
+  <span id="ver" class="ver" title="Laertes version"></span></nav>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -168,6 +176,68 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
 <div id="history" class="db units" hidden></div>
+<div id="guide" class="db help" hidden>
+  <h1>Getting started with Laertes</h1>
+  <p class="meta">Laertes runs next to ODIS. A small macro inside ODIS (the <b>bridge</b>) lets this web page read and change
+    control units, so you do everything from one place while ODIS stays open in the background.</p>
+
+  <h2 class="sub">1. Install the bridge macros (once)</h2>
+  <ol>
+    <li>Copy <code>mcpserver_test.py</code> and <code>mcpserver_handlers.py</code> from this repository to
+      <code>C:\ProgramData\OE\macros\</code>.</li>
+    <li>Updating later: replace <code>mcpserver_handlers.py</code> only. The bridge reloads it automatically when the
+      file changes, without restarting ODIS.</li>
+  </ol>
+
+  <h2 class="sub">2. Start the bridge in ODIS</h2>
+  <ol>
+    <li>Start <b>ODIS</b> and open the diagnostic session as usual (connect the VCI and the car or bench unit).</li>
+    <li>Open the <b>macros</b> function in ODIS and run <code>mcpserver_test.py</code>.</li>
+    <li>The macro keeps running and listens on <code>127.0.0.1:8765</code>. Leave it running; while it does, ODIS
+      itself cannot be operated, which is why everything is done from this page.</li>
+  </ol>
+
+  <h2 class="sub">3. Start Laertes</h2>
+  <ol>
+    <li>Run <code>laertes.exe</code>. It opens this page in your browser (<code>http://127.0.0.1:23031/</code>,
+      or another free port if that one is taken; the console window shows the address).</li>
+    <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and <b>🔌 VCI connected</b>.
+      Red “ODIS bridge offline” means the macro is not running — go back to step 2.</li>
+    <li>Optional switches: <code>-log</code> (path of ODIS <code>engine.log</code>), <code>-db</code> (database file),
+      <code>-bridge</code> (bridge address), <code>-nobrowser</code>.</li>
+  </ol>
+
+  <h2 class="sub">4. Using the tabs</h2>
+  <dl>
+    <dt>Project units</dt>
+    <dd>The units of the vehicle (or the ODIS project offline). Select a unit, then:
+      <b>Identification</b>, <b>Coding</b> (edit bytes or use the decoded tables' dropdowns, then <i>Write to unit…</i> —
+      the coding is read back and verified), <b>Adaptation channels</b> (pick a channel, change values, write, verified),
+      <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Event memory</b> (faults with
+      repair guidance) and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs elevated access.</dd>
+    <dt>Unit database / Trouble codes</dt>
+    <dd>The ODIS database without a car: search a part number or variant, see its tables and every trouble code with
+      repair guidance. Each unit also links to its <i>DTC catalog (offline)</i>.</dd>
+    <dt>Coding</dt>
+    <dd>The large coding editor: bit grid, your <code>.lbl</code> labels and any variant's ODX definition (remembered).
+      Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), from ODIS coding reads
+      in the sidebar, or with <i>New coding</i> for bytes you type in.</dd>
+    <dt>History</dt>
+    <dd>Every coding and adaptation write with old → new value, unit, variant and result. Stored in the database, so it
+      survives restarts.</dd>
+    <dt>JSON viewer</dt>
+    <dd>Send any command to the bridge and inspect the raw reply — for troubleshooting.</dd>
+  </dl>
+
+  <h2 class="sub">Tips</h2>
+  <ul>
+    <li>Writes change the control unit. Every write asks for confirmation and shows exactly what changes.</li>
+    <li>ODIS guided fault finding documents appear only after the vehicle is identified and guided fault finding is
+      started in ODIS; the general guidance works without it.</li>
+    <li>Your data (coding reads, labels, history, remembered choices) is in <code>laertes.db</code> next to
+      <code>laertes.exe</code>.</li>
+  </ul>
+</div>
 <div id="json" class="db" hidden>
   <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
   <textarea id="jsonIn" rows="5" spellcheck="false">{"action": "ping"}</textarea>
@@ -441,7 +511,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', json: 'json'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', json: 'json', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -1461,6 +1531,7 @@ showTab(startTab);
 try { toggleSide(localStorage.getItem('sideCollapsed') === '1'); } catch (e) { toggleSide(false); }
 poll();
 connPoll();
+api('GET', '/api/version').then(v => { $('#ver').textContent = 'v' + v; }).catch(() => {});
 </script>
 </body>
 </html>

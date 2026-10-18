@@ -15,6 +15,9 @@ import (
 	"time"
 )
 
+// version of Laertes, shown in the web page's top bar.
+const version = "0.1.0"
+
 //go:embed index.html
 var indexHTML []byte
 
@@ -59,6 +62,7 @@ func main() {
 	url := "http://" + host + "/"
 	log.Printf("following %s", *logPath)
 	log.Printf("database %s", *dbPath)
+	log.Printf("Laertes %s", version)
 	log.Printf("open %s", url)
 	if !*noBrowser {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
@@ -110,6 +114,9 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)
+	})
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, version, nil)
 	})
 	mux.HandleFunc("GET /api/readings", func(w http.ResponseWriter, r *http.Request) {
 		rs, err := store.Readings(200)
