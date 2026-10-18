@@ -6,6 +6,11 @@ read and write coding and adaptations (each write read back and verified), watch
 live, read fault memory with repair guidance, browse the ODIS database offline and keep a history of
 every change. The **Guide** tab in the web page explains setup and use.
 
+![Laertes — Project units with a unit's coding decoded from the ODIS database](docs/screenshot.png)
+
+*Project units with a control unit selected: its coding decoded against the ODIS database into
+editable options. (The data shown is illustrative.)*
+
 ## Contents
 
 | Path | What it is |
