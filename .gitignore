@@ -1,0 +1,11 @@
+# Build output
+*.exe
+*.exe~
+
+# SQLite database and its write-ahead log / shared-memory (runtime state, not source)
+laertes.db
+laertes.db-wal
+laertes.db-shm
+odishelper.db
+odishelper.db-wal
+odishelper.db-shm

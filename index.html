@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laertes</title>
+<style>
+:root { --bg:#f6f7f9; --panel:#fff; --text:#1d2330; --muted:#6b7280; --line:#dde1e7; --accent:#2563eb; --on:#16a34a; --chg:#d97706; --warn:#dc2626; }
+@media (prefers-color-scheme: dark) { :root { --bg:#14171c; --panel:#1d2128; --text:#e6e8eb; --muted:#9aa3ae; --line:#2e343d; --accent:#60a5fa; --on:#22c55e; --chg:#fbbf24; --warn:#f87171; } }
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); display:flex; height:100vh; }
+aside { width:290px; border-right:1px solid var(--line); overflow:auto; background:var(--panel); flex-shrink:0; }
+aside h2 { font-size:13px; text-transform:uppercase; color:var(--muted); margin:12px; }
+.hist { padding:8px 12px; border-top:1px solid var(--line); cursor:pointer; }
+.hist:hover { background:var(--bg); }
+.hist.sel { border-left:3px solid var(--accent); background:var(--bg); }
+.hist small { color:var(--muted); display:block; }
+.hist { position:relative; }
+.hist .del { position:absolute; top:6px; right:8px; padding:0 6px; }
+aside h2 { display:flex; justify-content:space-between; align-items:center; }
+aside h2 .del { text-transform:none; font-size:12px; padding:2px 8px; }
+aside h2 span { flex:1; margin-left:8px; }
+#side { padding:0 6px; }
+body.collapsed aside { width:auto; }
+body.collapsed aside h2 { margin:12px 6px; }
+body.collapsed aside h2 > :not(#side), body.collapsed #hist { display:none; }
+main { flex:1; overflow:auto; padding:16px 20px; }
+h1 { font-size:18px; margin:0 0 4px; }
+.meta { color:var(--muted); margin-bottom:12px; }
+.notes { color:var(--muted); font-size:12px; margin:0 0 12px; padding-left:18px; }
+.code { font-family:Consolas, monospace; font-size:15px; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:4px 0 12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.code > span { word-break:break-all; flex:1; }
+.code .chg { color:var(--chg); font-weight:bold; }
+.status { font:12px system-ui, sans-serif; color:var(--muted); flex-basis:100%; }
+.status.err { color:var(--warn); }
+button { font:inherit; font-size:13px; padding:4px 10px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:4px; cursor:pointer; }
+button.warn { border-color:var(--warn); color:var(--warn); }
+table { border-collapse:collapse; background:var(--panel); width:100%; }
+th, td { border:1px solid var(--line); padding:4px; vertical-align:top; }
+th { font-size:12px; color:var(--muted); font-weight:normal; }
+td.b { font-family:Consolas, monospace; white-space:nowrap; text-align:center; }
+td.f { min-width:220px; }
+.bit { display:flex; flex-direction:column; gap:3px; min-width:90px; }
+.bit label { display:flex; align-items:center; gap:4px; font-family:Consolas, monospace; cursor:pointer; }
+.bit.on label { color:var(--on); font-weight:bold; }
+.bit.chg label { color:var(--chg); }
+.field { font-size:12px; margin-top:4px; }
+.field.chg select { outline:2px solid var(--chg); }
+select { width:100%; font:12px system-ui, sans-serif; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:3px; }
+input[type=text] { width:100%; font:12px system-ui, sans-serif; padding:2px 4px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:3px; }
+input[type=text]:focus { outline:1px solid var(--accent); }
+.empty { color:var(--muted); margin-top:40px; text-align:center; }
+.tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-4px 0 14px; }
+.tabs button { border:none; border-bottom:2px solid transparent; border-radius:0; background:none; padding:6px 12px; color:var(--muted); }
+.tabs button.on { border-bottom-color:var(--accent); color:var(--text); }
+.units { display:flex; gap:16px; align-items:flex-start; }
+.units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
+.units .bar label { white-space:nowrap; }
+.units .bar, .db .bar { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.units .bar input { max-width:260px; }
+.units .bar button, .db .bar button { white-space:nowrap; }
+.units .bar .status, .db .bar .status { flex-basis:auto; }
+.units tbody.unit { cursor:pointer; }
+.units tbody.unit.known td { color:var(--on); }
+.units tbody.unit:hover td, .units tbody.unit.sel td { background:var(--bg); }
+.units tbody.unit.sel tr:first-child td { font-weight:bold; }
+.units tbody.unit tr.facts td { font:11px system-ui, sans-serif; color:var(--muted); white-space:normal; border-top:none; padding-top:0; }
+.units tbody.unit tr:first-child td { border-bottom:none; }
+.units td.small { font-size:11px; color:var(--muted); }
+.units tbody.unit td.bad { color:var(--warn); font-weight:bold; }
+.units .facts { font-size:12px; color:var(--muted); margin:2px 0 6px; }
+.units .facts a { color:var(--accent); }
+.units .names.short { max-height:150px; }
+.warnbox { border:1px solid var(--chg); color:var(--chg); border-radius:4px; padding:6px 8px; margin:8px 0; font-size:13px; }
+.units table.vals td.mono { font-family:Consolas, monospace; font-size:12px; color:var(--muted); white-space:nowrap; }
+.units details.event { border:1px solid var(--line); border-radius:4px; margin:4px 0; background:var(--panel); }
+.units details.event > summary { cursor:pointer; padding:5px 8px; }
+.units details.event .mono { font-family:Consolas, monospace; font-weight:bold; }
+.units details.event .bad { color:var(--warn); font-weight:bold; margin-left:6px; }
+.units details.event .meta { margin-left:6px; }
+.units details.event table.vals { margin:0 0 4px; }
+.units td { font-family:Consolas, monospace; font-size:13px; white-space:nowrap; }
+.units .detail { flex:1; min-width:0; position:sticky; top:0; }
+.units .detail .acts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.units .names, .db .names { display:flex; flex-wrap:wrap; gap:4px; max-height:70vh; overflow:auto; margin-top:6px; }
+.units .names button, .units .names span, .db .names button { font:12px Consolas, monospace; padding:2px 6px; }
+.units .status a, .db .meta a { color:var(--accent); }
+.units .detail > input { margin-top:6px; }
+.units table.vals td, .db table.vals td { font-family:system-ui, sans-serif; white-space:normal; }
+.units table.vals th, .db table.vals th { text-align:left; color:var(--text); font-weight:bold; background:var(--bg); }
+.units table.vals tr.err td { color:var(--warn); }
+.names button.on { border-color:var(--accent); color:var(--accent); font-weight:bold; }
+.units .names.check { flex-direction:column; flex-wrap:nowrap; gap:1px; max-height:60vh; }
+.units .names.check label { display:flex; gap:6px; align-items:center; font:12px system-ui, sans-serif; padding:1px 0; }
+.units table.vals tr.changed td { color:var(--chg); font-weight:bold; }
+.db .bar input.wide { max-width:520px; }
+.db .names { max-height:30vh; }
+.db h2.sub, .units h2.sub { font-size:15px; margin:16px 0 6px; }
+.db td.mono { font-family:Consolas, monospace; white-space:nowrap; }
+.db #odxBody > input, .db #dtcBody > input, .db .found > input { margin:8px 0 4px; max-width:420px; }
+#jsonIn { width:100%; font:13px Consolas, monospace; background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px; margin:6px 0; }
+.units details.rawjson { margin-top:8px; font-size:12px; color:var(--muted); }
+.json { font:12px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; max-height:70vh; overflow:auto; position:relative; }
+.json > button { position:sticky; top:0; float:right; font-size:11px; padding:1px 6px; }
+.json details { margin-left:14px; }
+.json > details { margin-left:0; }
+.json summary { cursor:pointer; margin-left:-14px; list-style-position:inside; }
+.json .leaf { margin-left:0; white-space:pre-wrap; word-break:break-all; }
+.json .k { color:var(--accent); }
+.json .t { color:var(--muted); }
+.json .s { color:var(--on); }
+.json .d, .json .b { color:var(--chg); }
+.json .n { color:var(--muted); font-style:italic; }
+.units pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; overflow:auto; max-height:70vh; white-space:pre-wrap; word-break:break-all; margin:0; }
+</style>
+</head>
+<body>
+<aside><h2><button id="side" onclick="toggleSide()"></button><span>Coding reads</span><button class="del" onclick="deleteReading(0)">Clear all</button></h2><div id="hist"></div></aside>
+<main>
+<nav class="tabs"><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button></nav>
+<div id="main"></div>
+<div id="units" class="units" hidden>
+  <div class="list">
+    <div class="bar"><input type="text" id="unitFilter" placeholder="Filter by address or name" oninput="renderUnitList()">
+      <label><input type="checkbox" id="unitIdentified" onchange="renderUnitList()"> identified only</label>
+      <button onclick="loadUnits()">Reload from ODIS</button><span class="status" id="unitsMsg"></span></div>
+    <table class="unitlist"><thead><tr><th>Address</th><th>Unit</th><th>State</th><th>DTCs</th></tr></thead><tbody id="unitRows"></tbody></table>
+  </div>
+  <div class="detail" id="unitDetail"></div>
+</div>
+<div id="odx" class="db" hidden></div>
+<div id="dtc" class="db" hidden></div>
+<div id="json" class="db" hidden>
+  <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
+  <textarea id="jsonIn" rows="5" spellcheck="false">{"action": "ping"}</textarea>
+  <div class="bar"><button onclick="jsonSend()">Send to bridge</button><button onclick="jsonShow()">View pasted JSON</button>
+    <button onclick="jsonLast()">Last bridge reply</button><span class="status" id="jsonMsg"></span></div>
+  <div id="jsonOut"></div>
+</div>
+</main>
+<input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
+<script>
+let readings = [], selId = null, maxId = 0, work = [], labels = [], labelsKey = '', odisMsg = null;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
+const bytesOf = h => h.match(/../g).map(x => parseInt(x, 16));
+const sel = () => readings.find(r => r.id === selId);
+const fmtTime = t => t.length >= 21 ? `${t.slice(6,8)}.${t.slice(4,6)}.${t.slice(0,4)} ${t.slice(9,17)}.${t.slice(18,21)}` : t;
+const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
+const label = (byte, lo, hi, value) => labels.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
+
+async function api(method, url, body) {
+  const res = await fetch(url, {method, body: typeof body === 'string' ? body : JSON.stringify(body)});
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function poll() {
+  try {
+    readings = await api('GET', '/api/readings');
+    const newest = readings.length ? readings[0].id : 0;
+    if (newest > maxId) { maxId = newest; await select(newest); }  // follow ODIS automatically
+    else if (!sel()) await select(newest);  // selected reading was deleted
+    else renderHist();
+  } catch (e) {}
+  setTimeout(poll, 1000);
+}
+
+async function loadLabels(force) {
+  const r = sel(), key = r.variant + '\n' + r.subsystem;
+  if (key === labelsKey && !force) return;
+  labels = await api('GET', '/api/labels?' + new URLSearchParams({variant: r.variant, subsystem: r.subsystem}));
+  labelsKey = key;
+}
+
+async function select(id) {
+  selId = id; odisMsg = null;
+  if (!sel()) {
+    selId = null; renderHist();
+    $('#main').innerHTML = '<div class="empty">Waiting for ODIS… open <b>Coding</b> on a control unit.</div>';
+    return;
+  }
+  work = bytesOf(sel().coding);
+  await loadLabels();
+  renderHist(); render();
+}
+
+function renderHist() {
+  $('#hist').innerHTML = readings.map(r => `<div class="hist ${r.id === selId ? 'sel' : ''}" onclick="select(${r.id})">
+    <button class="del" title="Delete this reading" onclick="event.stopPropagation(); deleteReading(${r.id})">✕</button>
+    <b>${esc(r.ecu || r.subsystem)}</b><small>${esc(r.variant)}</small><small>${fmtTime(r.time)} · ${r.coding.length / 2} bytes</small></div>`).join('');
+}
+
+// Bit fields of one byte: [{lo, hi, options:[{value,text}]}], from the VCDS-style range labels.
+function fields(i) {
+  const fs = {};
+  labels.filter(l => l.byte === i && l.value >= 0).forEach(l => {
+    const k = l.lo + '~' + l.hi;
+    (fs[k] = fs[k] || {lo: l.lo, hi: l.hi, options: []}).options.push(l);
+  });
+  return Object.values(fs);
+}
+
+function render() {
+  const r = sel(), orig = bytesOf(r.coding);
+  const newHex = work.map((b, i) => b !== orig[i] ? `<span class="chg">${hex(b)}</span>` : hex(b)).join('');
+  const notes = labels.filter(l => l.byte === -1).sort((a, b) => a.lo - b.lo);
+  let rows = '';
+  work.forEach((b, i) => {
+    let cells = '';
+    for (let bit = 7; bit >= 0; bit--) {
+      const on = (b >> bit) & 1, changed = on !== ((orig[i] >> bit) & 1), l = label(i, bit, bit, -1);
+      cells += `<td><div class="bit ${on ? 'on' : ''} ${changed ? 'chg' : ''}">
+        <label><input type="checkbox" ${on ? 'checked' : ''} onchange="toggle(${i},${bit})"> bit ${bit}</label>
+        <input type="text" value="${esc(l ? l.text : '')}" onchange="save({byte:${i},lo:${bit},hi:${bit},value:-1}, this.value)"></div></td>`;
+    }
+    const fieldHTML = fields(i).map(f => {
+      const m = mask(f.lo, f.hi), cur = b & m, known = f.options.some(o => o.value === cur);
+      return `<div class="field ${cur !== (orig[i] & m) ? 'chg' : ''}">Bits ${f.lo}–${f.hi}
+        <select onchange="setField(${i},${m},+this.value)">${known ? '' : `<option selected value="${cur}">0x${hex(cur)} (unknown)</option>`}
+        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}>0x${hex(o.value)} ${esc(o.text)}</option>`).join('')}</select></div>`;
+    }).join('');
+    const bl = label(i, 0, 7, -1);
+    rows += `<tr><td class="b">Byte ${i}<br>${hex(b)}${b !== orig[i] ? ` <small>(was ${hex(orig[i])})</small>` : ''}<br>${b.toString(2).padStart(8, '0')}</td>
+      <td class="f"><input type="text" placeholder="byte label" value="${esc(bl ? bl.text : '')}" onchange="save({byte:${i},lo:0,hi:7,value:-1}, this.value)">${fieldHTML}</td>${cells}</tr>`;
+  });
+  const changed = work.some((b, i) => b !== orig[i]);
+  $('#main').innerHTML = `<h1>${esc(r.ecu || r.subsystem)}</h1>
+    <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)} · coding opened ${fmtTime(r.time)}
+      · <button onclick="$('#lbl').click()">Import .lbl labels</button></div>
+    ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
+    Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button>
+      <button onclick="findInODIS()">Find in ODIS memory</button>
+      <button class="warn" onclick="writeToODIS(true)">Put original into ODIS Hex input</button></div>
+    New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="select(selId)">Reset</button>
+      <button class="warn" ${changed ? '' : 'disabled'} onclick="writeToODIS()">Put into ODIS Hex input</button>
+      ${odisMsg ? `<div class="status ${odisMsg.err ? 'err' : ''}">${esc(odisMsg.text)}</div>` : ''}</div>
+    <table><tr><th>Byte</th><th>Byte label / bit fields</th>${[7,6,5,4,3,2,1,0].map(b => `<th>Bit ${b} (0x${hex(1 << b)})</th>`).join('')}</tr>${rows}</table>`;
+}
+
+async function deleteReading(id) {
+  if (!confirm(id ? 'Delete this reading?' : 'Delete all readings? Labels are kept.')) return;
+  try { await api('DELETE', '/api/readings' + (id ? '/' + id : '')); } catch (e) { alert('Delete failed: ' + e.message); return; }
+  readings = await api('GET', '/api/readings');
+  if (!sel()) await select(readings.length ? readings[0].id : null); else renderHist();
+}
+
+// Project units come from the ODIS Jython bridge (mcpserver_test.py) through /api/bridge.
+// Unit actions connect to the control unit by its address; list results drill down further.
+let units = null, unitSel = null, unitPath = [];
+const UNIT_ACTIONS = [
+  [{action: 'read_identification'}, 'Identification'],
+  [{action: 'read_coding'}, 'Coding'],
+  [{action: 'list_adaptation_channels'}, 'Adaptation channels'],
+  [{action: 'list_measurement_groups'}, 'Measurement groups'],
+  [{action: 'read_event_memory'}, 'Event memory'],
+];
+// For list results: the command and label opened by clicking one of the names.
+const UNIT_NEXT = {
+  list_adaptation_channels: (name) => [{action: 'read_adaptation', channel: name}, name],
+  list_measurement_groups: (name) => [{action: 'read_measurement_group', group: name}, name],
+};
+
+// Table rows for the values in a bridge result: every ODIS value (translatedName/translatedValue),
+// coding, set DTC status bit and error, in document order, with a heading per result entry.
+function resultRows(v, rows = [], depth = 0) {
+  if (Array.isArray(v)) { v.forEach(x => resultRows(x, rows, depth)); return rows; }
+  if (!v || typeof v !== 'object') return rows;
+  if ('translatedValue' in v) {
+    const name = v.translatedName && v.translatedName !== '---' ? v.translatedName : v.name;
+    rows.push({depth, name, value: v.translatedValue, unit: v.unit});
+    (v.children || []).forEach(c => resultRows(c, rows, depth + 1));
+    return rows;
+  }
+  if ('bitValueText' in v) { if (v.bitSet) rows.push({depth, name: `Status bit ${v.bitPosition}`, value: v.bitValueText}); return rows; }
+  if (v.tableKeyText) rows.push({head: v.tableKeyText});
+  else if (/EventMemoryEntry/.test(v._type || '')) rows.push({head: 'Event memory entry'});
+  if ('byteCoding' in v) {
+    rows.push({depth, name: `Byte coding (${v.systemName})`, value: v.byteCoding});
+    for (const [k, x] of Object.entries(v.textCoding || {})) if (x === null || typeof x !== 'object') rows.push({depth: depth + 1, name: k, value: x});
+  }
+  if (v.negativeResult && v.negativeResult.negativeResponse) rows.push({depth, name: 'Negative response', value: v.negativeResult.translatedMessage, err: true});
+  if (v.errorMessage || v.error) rows.push({depth, name: 'Error', value: v.errorMessage || v.error, err: true});
+  for (const [k, x] of Object.entries(v)) if (!['parent', 'negativeResult', 'error'].includes(k)) resultRows(x, rows, depth);
+  return rows;
+}
+
+// Each tab shows the element with the id in TABS; the coding view lives in #main.
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', json: 'json'};
+function showTab(tab) {
+  if (!TABS[tab]) tab = 'coding';
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  for (const [t, id] of Object.entries(TABS)) $('#' + id).hidden = t !== tab;
+  $('aside').hidden = tab !== 'coding';  // coding reads belong to the coding view
+  try { localStorage.setItem('tab', tab); } catch (e) {}
+  stopLive();  // a live measurement view only updates while the units tab shows it
+  if (tab === 'units' && !units) loadUnits();
+}
+
+// The bridge describes a unit only by its toString(), e.g.
+// "id[0x0001] sname[EnginContrModul1] prot[id[0] name[UNKNOWN] prio[0]] hwver[---] ...".
+function reprFields(repr) {
+  const f = {};
+  for (const [, k, v] of repr.matchAll(/(\w+)\[([^\[\]]*)\]/g)) if (!(k in f)) f[k] = v;
+  return f;
+}
+
+function unitsStatus(text, err) { const m = $('#unitsMsg'); m.textContent = text || ''; m.classList.toggle('err', !!err); }
+
+// Units of the current ODIS session vehicle, with what ODIS identified (part numbers, versions,
+// ODX variant); without a vehicle session, the plain project plan.
+async function loadUnits() {
+  unitsStatus('Loading units from ODIS…');
+  try {
+    let res, source = 'session vehicle';
+    try { res = await bridge({action: 'list_vehicle_ecus'}); }
+    catch (e) { res = await bridge({action: 'list_project_ecus', include_methods: false}); source = 'ODIS project'; }
+    units = res.ecus.map((e, i) => ({index: i, repr: e.repr, ...reprFields(e.repr), state: e.read_state || '',
+        variant: e.odx_variant || '', system: (e.system_name && e.system_name.identification || '').trim(),
+        dtcs: e.dtc_count === undefined ? null : e.dtc_count}))
+      .sort((a, b) => (parseInt(a.id, 16) || 0) - (parseInt(b.id, 16) || 0));
+    const known = units.filter(u => u.state && u.state !== 'NOT_READ' && u.swpnr && u.swpnr !== '---').length;
+    unitsStatus(`${units.length} units from the ${source}, ${known} identified`);
+  } catch (e) { units = units || []; unitsStatus(e.message, true); }
+  renderUnitList(); renderUnitDetail();
+}
+
+const known = v => v && v !== '---' ? v : '';
+
+// One line of what ODIS identified about a unit: system · protocol · HW · SW · ODX variant.
+function unitFacts(u) {
+  return [known(u.system), known(u.name) !== 'UNKNOWN' && known(u.name),
+    known(u.hwpnr) && `HW ${u.hwpnr} ${known(u.hwver)}`, known(u.swpnr) && `SW ${u.swpnr} ${known(u.swver)}`,
+    u.variant].filter(Boolean).map(esc).join(' · ');
+}
+
+// Each unit takes two table rows: address, name, state and DTC count, then its identification
+// in small text, which keeps the list narrow next to the detail pane.
+function renderUnitList() {
+  const q = $('#unitFilter').value.trim().toLowerCase(), onlyKnown = $('#unitIdentified').checked;
+  const table = $('table.unitlist');
+  table.querySelectorAll('tbody.unit').forEach(b => b.remove());
+  const rows = (units || [])
+    .filter(u => (!q || (u.repr + ' ' + u.system + ' ' + u.variant).toLowerCase().includes(q)) && (!onlyKnown || known(u.swpnr)))
+    .map(u => {
+      const facts = unitFacts(u);
+      return `<tbody class="unit ${u.index === unitSel ? 'sel' : ''} ${known(u.swpnr) ? 'known' : ''}" onclick="selectUnit(${u.index})">
+        <tr><td>${esc(u.id || '')}</td><td>${esc(u.sname || u.repr)}</td><td class="small">${esc(u.state)}</td>
+          <td class="${u.dtcs ? 'bad' : ''}">${u.dtcs === null ? '' : u.dtcs}</td></tr>
+        ${facts ? `<tr class="facts"><td></td><td colspan="3">${facts}</td></tr>` : ''}</tbody>`;
+    }).join('');
+  table.insertAdjacentHTML('beforeend', rows);
+}
+
+function selectUnit(index) { unitSel = index; unitPath = []; renderUnitList(); renderUnitDetail(); }
+
+function valsTable(rows) {
+  return `<table class="vals">${rows.map(r => r.head ? `<tr><th colspan="3">${esc(r.head)}</th></tr>`
+    : `<tr class="${r.err ? 'err' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}</td><td>${esc(r.unit || '')}</td></tr>`).join('')}</table>`;
+}
+
+// Event memory: one collapsible block per stored fault. The summary shows the DTC, its text and
+// whether it is active (status bit 0, test failed); opening it shows every set status bit, the
+// other event details and the environment data.
+function eventMemoryHTML(res) {
+  const m = res.event_memory, entries = m.eventMemoryEntries || [];
+  const blocks = entries.map(e => {
+    const infos = e.eventInfos || [], info = t => infos.find(i => i.eventInfoType === t);
+    const code = (info('PCODE') || {}).translatedValue || '', err = info('ERROR_CODE') || {};
+    const text = err.translatedValue || (err.translatedName || '').replace(/\s+/g, ' ');
+    const bits = (e.dtcStates || []).filter(b => b.bitSet), active = bits.some(b => b.bitPosition === 0);
+    const rows = [...bits.map(b => ({depth: 0, name: `Status bit ${b.bitPosition}`, value: b.bitValueText})),
+      ...resultRows(infos.filter(i => !['PCODE', 'ERROR_CODE'].includes(i.eventInfoType) && i.translatedValue)),
+      ...resultRows(e.environmentData)];
+    return `<details class="event"><summary><span class="mono">${esc(code || '—')}</span> ${esc(text)}
+      <span class="${active ? 'bad' : 'meta'}">${active ? 'active' : 'passive'}</span></summary>${valsTable(rows)}</details>`;
+  }).join('');
+  return `<div class="meta">${res.cleared ? 'Event memory cleared. ' : ''}${entries.length} stored fault${entries.length === 1 ? '' : 's'}</div>
+    ${m.errorMessage ? `<div class="status err">${esc(m.errorMessage)}</div>` : ''}${blocks}`;
+}
+
+function renderUnitDetail() {
+  const u = (units || []).find(u => u.index === unitSel);
+  if (!u) { $('#unitDetail').innerHTML = '<div class="empty">Select a unit.</div>'; return; }
+  const step = unitPath[unitPath.length - 1];
+  let body = '';
+  if (step && step.live) {
+    body = liveHTML(step);
+  } else if (step && step.res && step.res.names && step.cmd.action === 'list_measurement_groups') {
+    body = `<div class="bar"><button onclick="liveStart()">Show live</button>
+        <button onclick="measSelectAll(true)">All</button><button onclick="measSelectAll(false)">None</button>
+        <span class="meta">Tick groups to watch, then Show live.</span></div>
+      <input type="text" placeholder="Filter" oninput="filterNames(this)">
+      <div class="names check">${step.res.names.map((n, i) =>
+        `<label><input type="checkbox" class="measpick" value="${i}"> ${esc(n)}</label>`).join('')}</div>`;
+  } else if (step && step.res && step.res.names) {
+    const next = UNIT_NEXT[step.cmd.action];
+    body = `<input type="text" placeholder="Filter" oninput="filterNames(this)">
+      <div class="names">${step.res.names.map((n, i) => next
+      ? `<button onclick="unitOpen(${i})">${esc(n)}</button>` : `<span>${esc(n)}</span>`).join('')}</div>`;
+  } else if (step && step.res && step.res.event_memory) {
+    body = eventMemoryHTML(step.res) + `<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
+  } else if (step && step.res) {
+    const rows = resultRows(step.res);
+    // Method lists are the same long Java reflection dump for every object; show only their size.
+    const data = JSON.parse(JSON.stringify(step.res, (k, v) => k === 'methods' && Array.isArray(v) ? `(${v.length} methods)` : v));
+    body = rows.length ? `${valsTable(rows)}
+        <details class="rawjson"><summary>JSON</summary>${jsonView(data)}</details>`
+      : jsonView(data);
+    if (step.cmd.action === 'read_coding')
+      body += `<h2 class="sub">Coding definition (ODIS database)</h2>${codingDefinitionHTML(step)}`;
+  }
+  const crumbs = unitPath.map((s, i) => i === unitPath.length - 1 ? esc(s.label) : `<a href="#" onclick="unitBack(${i}); return false">${esc(s.label)}</a>`).join(' › ');
+  $('#unitDetail').innerHTML = `<h1>${esc(u.sname || '')} <small class="meta">${esc(u.id || '')}</small></h1>
+    <div class="facts">${unitFacts(u) || esc(u.state)} · <a href="#" onclick="openInDatabase(); return false">open in unit database</a></div>
+    <div class="acts">${UNIT_ACTIONS.map(([, label], i) => `<button onclick="unitStart(${i})">${esc(label)}</button>`).join('')}
+      <button onclick="unitLogin()">Login…</button>
+      <button class="warn" onclick="unitClearDtcs()">Clear DTCs</button></div>
+    ${step ? `<div class="status ${step.err ? 'err' : ''}">${crumbs}${step.busy ? ' …' : ''}${step.err ? ': ' + esc(step.err) : ''}
+      ${step.res && step.res.names ? ` (${step.res.names.length})` : ''}</div>${body}` : ''}`;
+}
+
+// Textual coding from the ODIS database ("Record Data Identifier Variant Coding Writable Textual"),
+// used to decode the live byte coding of a unit. When the unit's own ODX variant defines none, a
+// definition of a related variant (same unit family) can be chosen instead, with a warning.
+const TEXTUAL_TABLE = 'TAB_RecorDataIdentVariaCodinWritaTextu';
+
+async function codingDefinition(u) {
+  if (!u.variant) return {note: 'ODIS has not identified the ODX variant of this unit, so its database coding definition is unknown.', borrow: true};
+  try {
+    const res = await bridge({action: 'odx_table', variant: u.variant, table: TEXTUAL_TABLE});
+    const params = res.rows.flatMap(r => r.params);
+    if (params.length > 1) return {own: res};
+    return {note: `Plain-text coding is disabled for ${u.variant} in the ODIS database: this unit is coded as bytes only.`, borrow: true};
+  } catch (e) {
+    return {note: `${u.variant} has no textual coding table in the ODIS database.`, borrow: true};
+  }
+}
+
+// The coding step currently shown in the unit pane.
+const codingStep = () => { const s = unitPath[unitPath.length - 1]; return s && s.cmd.action === 'read_coding' ? s : null; };
+
+async function borrowList() {
+  const step = codingStep(), u = units.find(u => u.index === unitSel);
+  step.borrow = {busy: true}; renderUnitDetail();
+  try {
+    const res = await bridge({action: 'odx_textual_variants', address: u.id, variant: u.variant});
+    step.borrow = {list: res.variants};
+  } catch (e) { step.borrow = {err: e.message}; }
+  if (codingStep() === step) renderUnitDetail();
+}
+
+async function borrowPick(i) {
+  const step = codingStep(), v = step.borrow.list[i];
+  step.borrow.chosen = v; step.borrow.table = null; renderUnitDetail();
+  try { step.borrow.table = await bridge({action: 'odx_table', variant: v.variant, base: v.base, table: TEXTUAL_TABLE}); }
+  catch (e) { step.borrow.err = e.message; }
+  if (codingStep() === step) renderUnitDetail();
+}
+
+// Decodes byte coding (hex, e.g. "01 19 00") with a textual coding definition. A parameter takes
+// bit_length bits starting at bit bit_pos of byte byte_pos; values spanning several bytes are big-endian.
+function decodeCoding(hexBytes, table) {
+  const bytes = (hexBytes || '').trim().split(/\s+/).filter(Boolean).map(h => parseInt(h, 16));
+  return table.rows.flatMap(r => r.params).map(p => {
+    if (p.byte_pos === undefined || !p.bit_length) return {name: p.long_name || p.name, value: '', raw: '—'};
+    const n = Math.ceil(((p.bit_pos || 0) + p.bit_length) / 8);
+    if (p.byte_pos + n > bytes.length) return {name: p.long_name || p.name, value: 'outside this coding', raw: `byte ${p.byte_pos}`, bad: true};
+    let v = 0n;
+    for (let i = 0; i < n; i++) v = (v << 8n) | BigInt(bytes[p.byte_pos + i]);
+    v = (v >> BigInt(p.bit_pos || 0)) & ((1n << BigInt(p.bit_length)) - 1n);
+    const choice = (p.values || []).find(c => BigInt(c.low) <= v && v <= BigInt(c.high));
+    return {name: p.long_name || p.name, value: choice ? choice.text : (p.values && p.values.length ? `unknown value ${v}` : `${v}${p.unit ? ' ' + p.unit : ''}`),
+      raw: `byte ${p.byte_pos} bit ${p.bit_pos || 0}${p.bit_length > 1 ? '–' + ((p.bit_pos || 0) + p.bit_length - 1) : ''} = ${v}`,
+      bad: !choice && p.values && p.values.length > 0};
+  });
+}
+
+function decodedTable(hexBytes, table) {
+  return `<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th></tr>${decodeCoding(hexBytes, table).map(d =>
+    `<tr class="${d.bad ? 'err' : ''}"><td>${esc(d.name)}</td><td>${esc(d.value)}</td><td class="mono">${esc(d.raw)}</td></tr>`).join('')}</table>`;
+}
+
+function codingDefinitionHTML(step) {
+  const odx = step.odx, master = ((step.res && step.res.coding) || [])[0] || {}, coding = master.byteCoding;
+  if (!odx) return '<div class="meta">Looking up the coding definition in the ODIS database…</div>';
+  if (odx.own) return `<div class="meta">Decoded with ${esc(odx.own.location || 'its own')} ODX data.</div>${decodedTable(coding, odx.own)}`;
+  let html = `<div class="meta">${esc(odx.note)}</div>`;
+  const b = step.borrow;
+  if (!b) return html + '<button onclick="borrowList()">Decode with a related variant…</button>';
+  if (b.busy) return html + '<div class="meta">Searching the unit family for variants that define textual coding…</div>';
+  if (b.err) html += `<div class="status err">${esc(b.err)}</div>`;
+  if (b.list) {
+    html += `<div class="meta">${b.list.length} variants of this unit family define textual coding (closest names first):</div>
+      ${b.list.length > 20 ? '<input type="text" placeholder="Filter variants" oninput="filterNames(this)">' : ''}
+      <div class="names short">${b.list.map((v, i) => `<button class="${b.chosen && b.chosen.variant === v.variant ? 'on' : ''}" onclick="borrowPick(${i})">${esc(v.variant)} (${v.params})</button>`).join('')}</div>`;
+  }
+  if (b.chosen) {
+    html += `<div class="warnbox">Decoded with the definition of <b>${esc(b.chosen.variant)}</b>, not of this unit
+      (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle,
+      and do not write coding based on it.</div>`;
+    html += b.table ? decodedTable(coding, b.table) : '<div class="meta">Loading the definition…</div>';
+  }
+  return html;
+}
+
+function openInDatabase() {
+  const u = units.find(u => u.index === unitSel);
+  showTab('odx');
+  $('#odxQ').value = u.variant || u.id;
+  odxFind('odx');
+}
+
+function unitStart(i) { unitPath = []; unitRun(...UNIT_ACTIONS[i]); }
+// Security-access login: unlocks elevated mode so coding and adaptation writes are accepted.
+// The webpage only passes the login value; ODIS performs the access handshake for this unit.
+function unitLogin() {
+  const u = units.find(u => u.index === unitSel);
+  const code = prompt(`Login value for ${u.sname} ${u.id}.\nODIS runs the security access for this unit and unlocks elevated mode.`, '');
+  if (code === null) return;
+  const value = code.trim();
+  if (!value) { alert('Enter a login value.'); return; }
+  unitPath = []; unitRun({action: 'login', code: value}, 'Login');
+}
+function unitClearDtcs() {
+  const u = units.find(u => u.index === unitSel);
+  if (!confirm(`Clear the event memory (all stored DTCs) of ${u.sname} ${u.id} in the vehicle?`)) return;
+  unitPath = []; unitRun({action: 'clear_event_memory'}, 'Clear DTCs');
+}
+function unitOpen(i) { const s = unitPath[unitPath.length - 1]; unitRun(...UNIT_NEXT[s.cmd.action](s.res.names[i], s.res)); }
+
+// Live measurements: watch several measurement groups at once, re-reading them on an interval.
+// Each group is read with the same read_measurement_group action as the single-group drill-down;
+// values that differ from the previous read are highlighted so changes are easy to spot.
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const curStep = () => unitPath[unitPath.length - 1];
+function stopLive() { unitPath.forEach(s => { if (s.live) s.running = false; }); }
+function measSelectAll(on) { document.querySelectorAll('.measpick').forEach(c => { if (!c.closest('label').hidden) c.checked = on; }); }
+
+function liveStart() {
+  const groups = [...document.querySelectorAll('.measpick:checked')].map(c => curStep().res.names[+c.value]);
+  if (!groups.length) { alert('Tick at least one measurement group.'); return; }
+  stopLive();
+  const step = {cmd: {action: 'measurement_live'}, label: `Live · ${groups.length} group${groups.length > 1 ? 's' : ''}`,
+    live: true, running: true, interval: 1000, groups, data: {}};
+  unitPath = [...unitPath, step];
+  renderUnitDetail();
+  liveLoop(step);
+}
+
+async function liveLoop(step) {
+  if (step.looping) return;  // one loop per step, even if resumed twice quickly
+  step.looping = true;
+  try {
+    while (step.running && curStep() === step) {
+      const u = units.find(u => u.index === unitSel);
+      if (!u) break;
+      for (const g of step.groups) {
+        if (!step.running || curStep() !== step) break;
+        try {
+          const rows = resultRows(await bridge({action: 'read_measurement_group', group: g, address: u.id}));
+          const prev = step.data[g] && step.data[g].rows;
+          if (prev) { const was = new Map(prev.map(r => [r.name, r.value])); rows.forEach(r => r.changed = was.has(r.name) && was.get(r.name) !== r.value); }
+          step.data[g] = {rows};
+        } catch (e) { step.data[g] = {err: e.message}; }
+        renderLive(step);
+      }
+      await sleep(step.interval);
+    }
+  } finally { step.looping = false; }
+}
+
+// The loop updates only the values container, so polling never disturbs the controls or the filter.
+function renderLive(step) {
+  if (curStep() !== step) return;
+  const el = $('#liveOut');
+  if (el) el.innerHTML = liveTable(step);
+}
+
+function liveHTML(step) {
+  return `<div class="bar">
+      ${step.running ? '<button onclick="liveStop()">Stop</button>' : '<button onclick="liveResume()">Start</button>'}
+      <label class="meta">Interval <input type="number" min="200" step="100" value="${step.interval}" style="width:5em" onchange="liveSetInterval(this.value)"> ms</label>
+      <span class="meta">${step.running ? 'updating…' : 'paused'}</span></div>
+    <div id="liveOut">${liveTable(step)}</div>`;
+}
+
+function liveTable(step) {
+  return step.groups.map(g => {
+    const d = step.data[g], head = `<tr><th colspan="3">${esc(g)}</th></tr>`;
+    if (!d) return `<table class="vals">${head}<tr><td colspan="3" class="meta">reading…</td></tr></table>`;
+    if (d.err) return `<table class="vals">${head}<tr class="err"><td colspan="3">${esc(d.err)}</td></tr></table>`;
+    const rows = d.rows.length ? d.rows.map(r =>
+      `<tr class="${r.changed ? 'changed' : ''}"><td style="padding-left:${4 + 14 * r.depth}px">${esc(r.name)}</td><td>${esc(r.value)}</td><td>${esc(r.unit || '')}</td></tr>`).join('')
+      : `<tr><td colspan="3" class="meta">no values</td></tr>`;
+    return `<table class="vals">${head}${rows}</table>`;
+  }).join('');
+}
+
+function liveStop() { const s = curStep(); if (s && s.live) { s.running = false; renderUnitDetail(); } }
+function liveResume() { const s = curStep(); if (s && s.live && !s.running) { s.running = true; renderUnitDetail(); liveLoop(s); } }
+function liveSetInterval(v) { const s = curStep(); if (s && s.live) s.interval = Math.max(200, +v || 1000); }
+// Collapsible JSON viewer. A node's children are rendered when it is first opened, so huge
+// replies stay fast; nodes holding an ODIS value preview its name and value.
+const jsonNodes = [];
+function jsonView(v) {
+  const id = jsonNodes.push(v) - 1;
+  return `<div class="json"><button onclick="copy(JSON.stringify(jsonNodes[${id}], null, 2))">Copy JSON</button>${jsonNode(null, v, 0)}</div>`;
+}
+function jsonNode(key, v, depth) {
+  const k = key === null ? '' : `<span class="k">${esc(key)}</span>: `;
+  if (v === null || typeof v !== 'object') {
+    const cls = v === null ? 'n' : typeof v === 'string' ? 's' : typeof v === 'number' ? 'd' : 'b';
+    return `<div class="leaf">${k}<span class="${cls}">${esc(typeof v === 'string' ? v : JSON.stringify(v))}</span></div>`;
+  }
+  const arr = Array.isArray(v), n = arr ? v.length : Object.keys(v).length;
+  let hint = arr ? `[${n}]` : `{${n}}`;
+  if (!arr && 'translatedValue' in v) hint = `${v.translatedName && v.translatedName !== '---' ? v.translatedName : v.name} = ${v.translatedValue}${v.unit ? ' ' + v.unit : ''}`;
+  else if (!arr && v._type) hint = `${v._type} {${n}}`;
+  const id = jsonNodes.push(v) - 1, open = depth < 1;
+  return `<details ${open ? 'open' : ''} data-json="${id}" ontoggle="jsonFill(this)"><summary>${k}<span class="t">${esc(hint)}</span></summary>${open ? jsonChildren(v, depth) : ''}</details>`;
+}
+function jsonChildren(v, depth) { return Object.entries(v).map(([k, x]) => jsonNode(k, x, depth + 1)).join(''); }
+function jsonFill(el) {
+  if (el.open && el.children.length === 1) el.insertAdjacentHTML('beforeend', jsonChildren(jsonNodes[+el.dataset.json], 1));
+}
+
+function filterNames(input) {
+  const q = input.value.trim().toLowerCase();
+  input.nextElementSibling.querySelectorAll('button, span, label').forEach(b => b.hidden = q && !b.textContent.toLowerCase().includes(q));
+}
+function unitBack(i) { unitPath = unitPath.slice(0, i + 1); renderUnitDetail(); }
+
+// Runs a bridge command against the selected unit and shows it as the next step of the path.
+async function unitRun(cmd, label) {
+  const u = units.find(u => u.index === unitSel), step = {cmd, label, busy: true}, path = unitPath = [...unitPath, step];
+  renderUnitDetail();
+  try { step.res = await bridge({...cmd, address: u.id}); }
+  catch (e) { step.err = e.message; }
+  step.busy = false;
+  if (step.res && cmd.action === 'read_coding') {
+    step.unitVariant = u.variant;
+    step.odx = await codingDefinition(u);
+    if (unitPath === path) renderUnitDetail();
+  }
+  if (step.res && step.res.event_memory) {  // a fresh read updates the unit's count in the list
+    u.dtcs = (step.res.event_memory.eventMemoryEntries || []).length;
+    renderUnitList();
+  }
+  if (unitPath === path) renderUnitDetail();
+}
+
+// --- ODIS database (offline) ------------------------------------------------------------
+// Unit database and Trouble codes read ODIS's ODX data through the bridge, without the vehicle.
+// Both tabs share one picker: a unit address gives its base data and variants, any other
+// text searches variant names (part numbers such as 04C906026, or GV_/EV_ names).
+let odxFound = null, odxLoc = null, odxUnit = null, odxTable = null, dtcList = null, lastBridge = null;
+
+async function bridge(cmd) {
+  const res = await api('POST', '/api/bridge', cmd);
+  lastBridge = {cmd, res};
+  return res;
+}
+
+function initDatabaseTabs() {
+  for (const p of ['odx', 'dtc']) {
+    $('#' + p).innerHTML = `<div class="bar"><input type="text" class="wide" id="${p}Q"
+        placeholder="Unit address (0x0001) or part number / variant (04C906026, GV_ECM10…)"
+        onkeydown="if (event.key === 'Enter') odxFind('${p}')"><button onclick="odxFind('${p}')">Find</button>
+      <span class="status" id="${p}Msg"></span></div><div class="found" id="${p}Found"></div><div id="${p}Body"></div>`;
+  }
+}
+
+function odxStatus(text, err) {
+  for (const p of ['odx', 'dtc']) { const m = $(`#${p}Msg`); m.textContent = text || ''; m.classList.toggle('err', !!err); }
+}
+
+async function odxFind(p) {
+  const q = $(`#${p}Q`).value.trim();
+  if (!q) return;
+  $('#odxQ').value = $('#dtcQ').value = q;
+  const address = /^(0x)?[0-9a-f]{1,4}$/i.test(q) ? '0x' + parseInt(q, 16).toString(16).toUpperCase().padStart(4, '0') : null;
+  odxStatus('Searching the ODIS database…');
+  try {
+    const res = await bridge(address ? {action: 'odx_variants', address} : {action: 'odx_variants', query: q});
+    odxFound = {address, variants: res.variants};
+    odxStatus(`${res.count} variants ${address ? `of unit ${address}` : `matching "${q}"`}`);
+    renderFound();
+    if (address) odxSelect(-1);
+    else if (res.variants.length === 1) odxSelect(0);
+  } catch (e) { odxStatus(e.message, true); }
+}
+
+function renderFound() {
+  const f = odxFound, sel = odxLoc && odxLoc.cmd;
+  const html = !f ? '' : `${f.variants.length > 20 ? '<input type="text" placeholder="Filter variants" oninput="filterNames(this)">' : ''}
+    <div class="names">${f.address ? `<button class="${sel && sel.address ? 'on' : ''}" onclick="odxSelect(-1)">Base data ${esc(f.address)}</button>` : ''}
+    ${f.variants.map((v, i) => `<button class="${sel && sel.variant === v.variant ? 'on' : ''}" title="${esc(v.base)}" onclick="odxSelect(${i})">${esc(v.variant)}</button>`).join('')}</div>`;
+  $('#odxFound').innerHTML = $('#dtcFound').innerHTML = html;
+}
+
+// Selects the base data (-1) or a found variant and loads it into both database tabs.
+async function odxSelect(i) {
+  const v = odxFound.variants[i];
+  const loc = odxLoc = i < 0 ? {label: `Base data of unit ${odxFound.address}`, cmd: {address: odxFound.address}}
+    : {label: v.variant, cmd: {variant: v.variant, base: v.base}};
+  odxUnit = odxTable = dtcList = null;
+  renderFound(); renderOdx(); renderDtc();
+  try {
+    const unit = await bridge({action: 'odx_unit', ...loc.cmd});
+    const dtcs = await bridge({action: 'odx_dtcs', ...loc.cmd});
+    if (odxLoc !== loc) return;
+    odxUnit = unit; dtcList = dtcs.dtcs;
+  } catch (e) { if (odxLoc === loc) odxStatus(e.message, true); }
+  renderOdx(); renderDtc();
+}
+
+function renderOdx() {
+  const u = odxUnit, t = odxTable;
+  let html = '';
+  if (odxLoc && !u) html = `<div class="meta">Loading ${esc(odxLoc.label)}…</div>`;
+  if (u) {
+    html = `<h1>${esc(odxLoc.label)}</h1>
+      <div class="meta">${esc([u.long_name, u.protocol, u.location, `${u.dtc_count} trouble codes`].filter(Boolean).join(' · '))}
+        · <a href="#" onclick="showTab('dtc'); return false">show trouble codes</a></div>
+      <div class="names">${u.tables.map(x => `<button class="${t && t.table === x.name ? 'on' : ''}" title="${esc(x.name)}"
+        onclick="odxOpenTable('${esc(x.name)}')">${esc(x.long_name || x.name)} (${x.rows})</button>`).join('')}</div>`;
+  }
+  if (t && t.busy) html += `<div class="meta">Loading ${esc(t.table)}…</div>`;
+  if (t && t.rows) {
+    html += `<h2 class="sub">${esc(t.long_name || t.table)} <small class="meta">${t.count} rows</small></h2>
+      <input type="text" placeholder="Filter rows" oninput="filterRows(this)">
+      <table class="vals"><tr><th>Name</th><th>Identifier</th><th>Values</th></tr>${t.rows.map(r => `<tr>
+        <td>${esc(r.long_name || r.name)}</td><td class="mono">${esc(r.name)}</td>
+        <td>${r.params.map(p => `<div>${esc(p.long_name || p.name)}${p.unit ? ` [${esc(p.unit)}]` : ''}${p.choices && p.choices.length
+          ? `: <span class="meta">${p.choices.map(esc).join(' · ')}</span>` : ''}</div>`).join('')}</td></tr>`).join('')}</table>`;
+  }
+  $('#odxBody').innerHTML = html;
+}
+
+async function odxOpenTable(name) {
+  const loc = odxLoc;
+  odxTable = {table: name, busy: true}; renderOdx();
+  try {
+    const res = await bridge({action: 'odx_table', table: name, ...loc.cmd});
+    if (odxLoc === loc) odxTable = res;
+  } catch (e) { if (odxLoc === loc) { odxTable = null; odxStatus(e.message, true); } }
+  if (odxLoc === loc) renderOdx();
+}
+
+function renderDtc() {
+  let html = '';
+  if (odxLoc && !dtcList) html = `<div class="meta">Loading ${esc(odxLoc.label)}…</div>`;
+  if (dtcList) {
+    const real = dtcList.filter(d => d.code);
+    html = `<h1>${esc(odxLoc.label)} <small class="meta">${real.length} trouble codes</small></h1>
+      ${real.length ? '' : '<div class="meta">This data defines no trouble codes. Base data usually has none: pick a variant above.</div>'}
+      <input type="text" placeholder="Search code or text, e.g. P0122 or throttle" oninput="filterRows(this)">
+      <table class="vals"><tr><th>Code</th><th>Text</th><th>Level</th><th>Number</th></tr>${real.map(d => `<tr>
+        <td class="mono">${esc(d.code)}</td><td>${esc(d.text || '')}</td><td>${d.level}</td>
+        <td class="mono">${d.number} (0x${d.number.toString(16).toUpperCase()})</td></tr>`).join('')}</table>`;
+  }
+  $('#dtcBody').innerHTML = html;
+}
+
+// Hides the rows of the table following the filter input that do not contain its text.
+function filterRows(input) {
+  const q = input.value.trim().toLowerCase();
+  input.nextElementSibling.querySelectorAll('tr').forEach((tr, i) => {
+    if (i > 0) tr.hidden = q && !tr.textContent.toLowerCase().includes(q);
+  });
+}
+
+// --- JSON viewer tab ---------------------------------------------------------------------
+
+function jsonMsg(text, err) { const m = $('#jsonMsg'); m.textContent = text || ''; m.classList.toggle('err', !!err); }
+
+function jsonParse() {
+  try { return JSON.parse($('#jsonIn').value); } catch (e) { jsonMsg('Not valid JSON: ' + e.message, true); return undefined; }
+}
+
+async function jsonSend() {
+  const cmd = jsonParse();
+  if (cmd === undefined) return;
+  if (!cmd || typeof cmd !== 'object' || !cmd.action) { jsonMsg('A bridge command is a JSON object with an "action".', true); return; }
+  jsonMsg('Waiting for the bridge…');
+  try { const res = await bridge(cmd); jsonMsg(`Reply to ${cmd.action}`); $('#jsonOut').innerHTML = jsonView(res); }
+  catch (e) { jsonMsg(e.message, true); }
+}
+
+function jsonShow() {
+  const v = jsonParse();
+  if (v !== undefined) { jsonMsg('Pasted JSON'); $('#jsonOut').innerHTML = jsonView(v); }
+}
+
+function jsonLast() {
+  if (!lastBridge) { jsonMsg('No bridge reply yet.', true); return; }
+  $('#jsonIn').value = JSON.stringify(lastBridge.cmd, null, 2);
+  jsonMsg(`Last reply: ${lastBridge.cmd.action}`);
+  $('#jsonOut').innerHTML = jsonView(lastBridge.res);
+}
+
+// The sidebar's collapsed state is remembered per browser; it is only a convenience.
+function toggleSide(collapse = !document.body.classList.contains('collapsed')) {
+  document.body.classList.toggle('collapsed', collapse);
+  $('#side').textContent = collapse ? '»' : '«';
+  $('#side').title = collapse ? 'Show coding reads' : 'Hide coding reads';
+  try { localStorage.setItem('sideCollapsed', collapse ? '1' : ''); } catch (e) {}
+}
+
+function toggle(i, bit) { work[i] ^= 1 << bit; render(); }
+function setField(i, m, v) { work[i] = (work[i] & ~m) | v; render(); }
+function copy(t) { navigator.clipboard.writeText(t); }
+function status(text, err) { odisMsg = {text, err}; render(); }
+
+async function save(l, text) {
+  const r = sel(); l.text = text.trim();
+  try { await api('PUT', '/api/labels', {variant: r.variant, subsystem: r.subsystem, labels: [l]}); }
+  catch (e) { alert('Saving label failed: ' + e.message); return; }
+  labels = labels.filter(x => !(x.byte === l.byte && x.lo === l.lo && x.hi === l.hi && x.value === l.value));
+  if (l.text) labels.push(l);
+}
+
+async function importLBL(input) {
+  const r = sel(), file = input.files[0]; input.value = '';
+  if (!r || !file) return;
+  try {
+    const n = await api('POST', '/api/labels/import?' + new URLSearchParams({variant: r.variant, subsystem: r.subsystem}), await file.text());
+    await loadLabels(true); render();
+    alert(`Imported ${n} labels from ${file.name} for ${r.variant}`);
+  } catch (e) { alert('Import failed: ' + e.message); }
+}
+
+async function findInODIS() {
+  status('Scanning ODIS memory…');
+  try {
+    const res = await api('POST', '/api/odis/find', {coding: sel().coding});
+    status(`ODIS (pid ${res.pid}) holds ${res.addresses.length} byte[] copies of the original coding${res.addresses.length ? ': ' + res.addresses.join(', ') : ''}`);
+  } catch (e) { status(e.message, true); }
+}
+
+// Puts the new coding, or with original the coding as read, into ODIS's Hex input column.
+// The new coding must still match what ODIS shows; the original may be put back over anything.
+async function writeToODIS(original) {
+  const from = original ? '' : sel().coding, to = original ? sel().coding : work.map(hex).join('');
+  if (!confirm(`Enter\n${to}\ninto the Hex input column of ODIS's byte coding${original ? ' (original coding)' : ` (current value ${from})`}?\n\nNothing is sent to the control unit until you press Accept in ODIS.`)) return;
+  status(`Entering the ${original ? 'original' : 'new'} coding into ODIS…`);
+  try {
+    const res = await api('POST', '/api/odis/write', {from, to});
+    status(res.changed
+      ? `Entered ${res.changed} byte(s) that differ from ODIS's current value into its Hex input column and read them back. Check them in ODIS, then press Accept there.`
+      : `ODIS already shows this coding as its current value, so its Hex input column is now empty.`);
+  } catch (e) { status(e.message, true); }
+}
+
+initDatabaseTabs();
+let startTab = 'coding';
+try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
+showTab(startTab);
+try { toggleSide(localStorage.getItem('sideCollapsed') === '1'); } catch (e) { toggleSide(false); }
+poll();
+</script>
+</body>
+</html>
