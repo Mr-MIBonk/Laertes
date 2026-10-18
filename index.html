@@ -1028,11 +1028,32 @@ async function unitRun(cmd, label) {
     } catch (e) { step.options = {}; }
     if (unitPath === path) renderUnitDetail();
   }
+  if (step.res && cmd.action === 'read_identification') {  // refresh the unit's row with what ODIS just identified
+    const g = n => idVal(step.res, n);
+    const set = (k, v) => { if (v !== undefined && v !== null && v !== '') u[k] = String(v).trim(); };
+    set('swpnr', g('Param_VWSparePartNumbe')); set('swver', g('Param_VWAppliSoftwVersiNumbe'));
+    set('hwpnr', g('Param_VWECUHardwNumbe')); set('hwver', g('Param_VWECUHardwVersiNumbe'));
+    set('variant', g('Param_ASAMODXFileIdent')); set('system', g('Param_VWSysteNameOrEnginType'));
+    if (known(u.swpnr) && (!u.state || u.state === 'NOT_READ')) u.state = 'IDENTIFIED';
+    renderUnitList();
+  }
   if (step.res && step.res.event_memory) {  // a fresh read updates the unit's count in the list
     u.dtcs = (step.res.event_memory.eventMemoryEntries || []).length;
     renderUnitList();
   }
   if (unitPath === path) renderUnitDetail();
+}
+
+// The translated value of an identification parameter (e.g. Param_VWSparePartNumbe), searched
+// through the identification result (and any nested children).
+function idVal(res, name) {
+  const find = arr => {
+    for (const v of arr || []) {
+      if (v && v.name === name) return v.translatedValue !== undefined ? v.translatedValue : v.value;
+      if (v && v.children) { const r = find(v.children); if (r !== undefined) return r; }
+    }
+  };
+  return find(res.identification);
 }
 
 // --- ODIS database (offline) ------------------------------------------------------------
