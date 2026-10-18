@@ -185,6 +185,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':
 const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
 const bytesOf = h => h.match(/../g).map(x => parseInt(x, 16));
 let virtualReading = null;  // a live unit's coding opened in the Coding tab (not a log reading)
+let codingCleared = false;  // the user cleared the Coding tab; don't auto-select a log reading back
 const sel = () => virtualReading || readings.find(r => r.id === selId);
 const fmtTime = t => t.length >= 21 ? `${t.slice(6,8)}.${t.slice(4,6)}.${t.slice(0,4)} ${t.slice(9,17)}.${t.slice(18,21)}` : t;
 const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
@@ -202,7 +203,7 @@ async function poll() {
     const newest = readings.length ? readings[0].id : 0;
     if (virtualReading) { if (newest > maxId) maxId = newest; renderHist(); }  // keep the live coding in view
     else if (newest > maxId) { maxId = newest; await select(newest); }  // follow ODIS automatically
-    else if (!sel()) await select(newest);  // selected reading was deleted
+    else if (!sel() && !codingCleared) await select(newest);  // selected reading was deleted
     else renderHist();
   } catch (e) {}
   setTimeout(poll, 1000);
@@ -244,6 +245,7 @@ async function loadLabels(force) {
 
 async function select(id) {
   virtualReading = null;  // choosing a log reading leaves the live-coding view
+  codingCleared = false;
   selId = id;
   if (!sel()) {
     selId = null; renderHist();
@@ -270,6 +272,14 @@ function loadCustomCoding() {
   selId = -1; work = bytesOf(virtualReading.coding); labelsKey = null;
   loadLabels(true).then(applyCodingTabDef).then(render);
 }
+// Clears the Coding tab back to the empty scratchpad so new bytes can be entered. It stays clear
+// until the user loads something or ODIS reads a new coding.
+function clearCoding() {
+  virtualReading = null; selId = null; work = []; codingDef = {}; codingCleared = true;
+  renderHist(); renderEmptyCoding();
+  const input = $('#customHex'); if (input) input.focus();
+}
+
 // Returns to the Project units coding view the user opened the Coding tab from.
 function backToUnitCoding() {
   virtualReading = null;
@@ -373,7 +383,8 @@ function render() {
       <span class="meta">Live coding of ${esc(r.ecu)} — not a saved reading</span></div>` : ''}
     <h1>${esc(r.ecu || r.subsystem)}</h1>
     <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)}${r.time ? ' · coding opened ' + fmtTime(r.time) : ''}
-      · <button onclick="$('#lbl').click()">Import .lbl labels</button></div>
+      · <button onclick="$('#lbl').click()">Import .lbl labels</button>
+      · <button onclick="clearCoding()" title="Close this coding and start with new bytes">New coding</button></div>
     ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
     Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
     New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="select(selId)">Reset</button>
