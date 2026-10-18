@@ -1197,6 +1197,15 @@ def handle_api_methods(cmd):
     return {"ok": True, "class": diag.getClass().getName(), "methods": gfs_methods(diag)}
 
 
+def handle_vehicle(cmd):
+    """Just the current vehicle project, for a lightweight top-bar status poll."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    try:
+        return {"ok": True, "project": Factory.getInstance().getVehicleProject()}
+    except (Exception, Throwable):
+        return {"ok": True, "project": None}
+
+
 def handle_vehicle_projects(cmd):
     """The current vehicle project and whether it can be changed, plus any selectable projects
     ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
@@ -1264,6 +1273,7 @@ HANDLERS = {
     "gfs_explore": handle_gfs_explore,
     "fault_guidance": handle_fault_guidance,
     "service_methods": handle_service_methods,
+    "vehicle": handle_vehicle,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "api_methods": handle_api_methods,
