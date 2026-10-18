@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS changes (
 );`); err != nil {
 		return err
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS coding_pref (
+	variant        TEXT PRIMARY KEY,
+	borrow_variant TEXT NOT NULL,
+	borrow_base    TEXT NOT NULL DEFAULT ''
+);`); err != nil {
+		return err
+	}
 	// Deleted readings stay as hidden rows so re-reading the log does not bring them back.
 	var hasDeleted int
 	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('readings') WHERE name='deleted'`).Scan(&hasDeleted); err != nil {
@@ -220,6 +228,34 @@ func (s *Store) Changes(limit int) ([]Change, error) {
 // DeleteChanges removes one change, or all of them when id is 0.
 func (s *Store) DeleteChanges(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM changes WHERE id=? OR ?=0`, id, id)
+	return err
+}
+
+// CodingPref remembers which related ("borrowed") ODX variant decodes a unit variant that has no
+// textual coding table of its own, so the choice is reused after restart and on other cars.
+type CodingPref struct {
+	Variant       string `json:"variant"`
+	BorrowVariant string `json:"borrowVariant"`
+	BorrowBase    string `json:"borrowBase"`
+}
+
+// CodingPref returns the saved preference for variant, or nil if none.
+func (s *Store) CodingPref(variant string) (*CodingPref, error) {
+	p := CodingPref{Variant: variant}
+	err := s.db.QueryRow(`SELECT borrow_variant, borrow_base FROM coding_pref WHERE variant=?`, variant).Scan(&p.BorrowVariant, &p.BorrowBase)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (s *Store) SetCodingPref(p CodingPref) error {
+	_, err := s.db.Exec(`INSERT INTO coding_pref (variant, borrow_variant, borrow_base) VALUES (?,?,?)
+		ON CONFLICT (variant) DO UPDATE SET borrow_variant=excluded.borrow_variant, borrow_base=excluded.borrow_base`,
+		p.Variant, p.BorrowVariant, p.BorrowBase)
 	return err
 }
 

@@ -779,7 +779,27 @@ async function borrowPick(i) {
   step.borrow.chosen = v; step.borrow.table = null; renderUnitDetail();
   try { step.borrow.table = await bridge({action: 'odx_table', variant: v.variant, base: v.base, table: TEXTUAL_TABLE}); }
   catch (e) { step.borrow.err = e.message; }
+  saveCodingPref(step.unitVariant, v.variant, v.base);  // remember this choice for next time / other cars
   if (codingStep() === step) renderUnitDetail();
+}
+
+// Remember / recall which related variant decodes a unit variant with no textual table of its own.
+function saveCodingPref(variant, borrowVariant, borrowBase) {
+  if (!variant || !borrowVariant) return;
+  api('PUT', '/api/coding-pref', {variant, borrowVariant, borrowBase: borrowBase || ''}).catch(() => {});
+}
+async function loadCodingPref(variant) {
+  if (!variant) return null;
+  try { const p = await api('GET', '/api/coding-pref?' + new URLSearchParams({variant})); return p && p.borrowVariant ? p : null; }
+  catch (e) { return null; }
+}
+// Applies a remembered borrowed-variant choice to the coding step, loading its definition table.
+async function applyCodingPref(step) {
+  const pref = await loadCodingPref(step.unitVariant);
+  if (!pref) return;
+  step.borrow = {chosen: {variant: pref.borrowVariant, base: pref.borrowBase}, remembered: true};
+  try { step.borrow.table = await bridge({action: 'odx_table', variant: pref.borrowVariant, base: pref.borrowBase, table: TEXTUAL_TABLE}); }
+  catch (e) { step.borrow = null; }
 }
 
 // Decodes byte coding (hex, e.g. "01 19 00") with a textual coding definition. A parameter takes
@@ -852,9 +872,10 @@ function codingDefinitionHTML(step) {
       <div class="names short">${b.list.map((v, i) => `<button class="${b.chosen && b.chosen.variant === v.variant ? 'on' : ''}" onclick="borrowPick(${i})">${esc(v.variant)} (${v.params})</button>`).join('')}</div>`;
   }
   if (b.chosen) {
-    html += `<div class="warnbox">Decoded with the definition of <b>${esc(b.chosen.variant)}</b>, not of this unit
+    html += `<div class="warnbox">Decoded with the definition of <b>${esc(b.chosen.variant)}</b>${b.remembered ? ' <span class="meta">(remembered for ' + esc(step.unitVariant || 'this variant') + ')</span>' : ''}, not of this unit
       (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle
       before writing. Editing here changes the bytes above; review them and use Write to unit with care.</div>`;
+    if (!b.list) html += '<button onclick="borrowList()">Decode with a different variant…</button>';
     html += b.table ? decodedTable(coding, b.table, true) : '<div class="meta">Loading the definition…</div>';
   }
   return html;
@@ -1032,6 +1053,7 @@ async function unitRun(cmd, label) {
     step.work = step.orig.slice();
     step.odx = await codingDefinition(u);
     step.unitLabels = await loadUnitLabels(u.variant, step.sysName);
+    if (step.odx && !step.odx.own) await applyCodingPref(step);  // reuse a remembered related variant
     if (unitPath === path) renderUnitDetail();
   }
   if (step.res && cmd.action === 'read_adaptation') {

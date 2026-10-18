@@ -188,6 +188,26 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 	mux.HandleFunc("DELETE /api/history", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, store.DeleteChanges(0))
 	})
+	mux.HandleFunc("GET /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
+		p, err := store.CodingPref(r.URL.Query().Get("variant"))
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		if p == nil {
+			reply(w, map[string]any{}, nil)
+			return
+		}
+		reply(w, p, nil)
+	})
+	mux.HandleFunc("PUT /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
+		var p CodingPref
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil || p.Variant == "" || p.BorrowVariant == "" {
+			http.Error(w, "variant and borrowVariant are required", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.SetCodingPref(p))
+	})
 	mux.HandleFunc("POST /api/bridge", func(w http.ResponseWriter, r *http.Request) {
 		var cmd struct {
 			Action string `json:"action"`
