@@ -54,6 +54,11 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-4px 0 14px; }
 .tabs button { border:none; border-bottom:2px solid transparent; border-radius:0; background:none; padding:6px 12px; color:var(--muted); }
 .tabs button.on { border-bottom-color:var(--accent); color:var(--text); }
+.tabs .conn { margin-left:auto; display:flex; align-items:center; gap:6px; font:12px system-ui, sans-serif; color:var(--muted); padding:0 6px; cursor:default; }
+.tabs .conn .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.tabs .conn.on .dot { background:var(--on); }
+.tabs .conn.off { color:var(--warn); }
+.tabs .conn.off .dot { background:var(--warn); }
 .units { display:flex; gap:16px; align-items:flex-start; }
 .units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
 .units .bar label { white-space:nowrap; }
@@ -118,7 +123,8 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <body>
 <aside><h2><button id="side" onclick="toggleSide()"></button><span>Coding reads</span><button class="del" onclick="deleteReading(0)">Clear all</button></h2><div id="hist"></div></aside>
 <main>
-<nav class="tabs"><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button></nav>
+<nav class="tabs"><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
+  <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span></nav>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -167,6 +173,20 @@ async function poll() {
   } catch (e) {}
   setTimeout(poll, 1000);
 }
+
+// Bridge connection indicator: pings the ODIS bridge (mcpserver_test.py) so a lost connection
+// shows in the top bar without having to run a command. ping goes through /api/bridge directly,
+// not through bridge(), to avoid overwriting the "Last bridge reply" of the JSON viewer.
+async function pingBridge() {
+  const el = $('#conn'), txt = el.querySelector('.txt');
+  try {
+    await api('POST', '/api/bridge', {action: 'ping'});
+    el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver_test.py).';
+  } catch (e) {
+    el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
+  }
+}
+async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
 
 async function loadLabels(force) {
   const r = sel(), key = r.variant + '\n' + r.subsystem;
@@ -861,6 +881,7 @@ try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
 showTab(startTab);
 try { toggleSide(localStorage.getItem('sideCollapsed') === '1'); } catch (e) { toggleSide(false); }
 poll();
+connPoll();
 </script>
 </body>
 </html>
