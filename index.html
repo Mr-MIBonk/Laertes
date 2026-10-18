@@ -103,6 +103,11 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units .byteedit input { width:2.6em; font:13px Consolas, monospace; text-align:center; text-transform:uppercase; padding:3px 0; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:3px; }
 .units .byteedit input.chg { border-color:var(--chg); color:var(--chg); font-weight:bold; }
 .units .mono { font-family:Consolas, monospace; }
+.units table.vals select, .units table.vals input.num { font:12px system-ui, sans-serif; max-width:260px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:3px; padding:2px; }
+.units table.vals input.num { width:7em; }
+.units .guide { margin:8px 0 2px; padding:8px; border:1px solid var(--line); border-radius:4px; background:var(--bg); }
+.units .guide ul { margin:4px 0 8px; padding-left:18px; }
+.units .guide li { margin:2px 0; }
 .units table.vals td.sparkcell { padding:1px 4px; width:94px; }
 .units svg.spark { display:block; }
 .units svg.spark polyline { fill:none; stroke:var(--accent); stroke-width:1; vector-effect:non-scaling-stroke; }
@@ -394,7 +399,7 @@ function valsTable(rows) {
 // other event details and the environment data.
 function eventMemoryHTML(res) {
   const m = res.event_memory, entries = m.eventMemoryEntries || [];
-  const blocks = entries.map(e => {
+  const blocks = entries.map((e, ei) => {
     const infos = e.eventInfos || [], info = t => infos.find(i => i.eventInfoType === t);
     const code = (info('PCODE') || {}).translatedValue || '', err = info('ERROR_CODE') || {};
     const text = err.translatedValue || (err.translatedName || '').replace(/\s+/g, ' ');
@@ -403,10 +408,46 @@ function eventMemoryHTML(res) {
       ...resultRows(infos.filter(i => !['PCODE', 'ERROR_CODE'].includes(i.eventInfoType) && i.translatedValue)),
       ...resultRows(e.environmentData)];
     return `<details class="event"><summary><span class="mono">${esc(code || '—')}</span> ${esc(text)}
-      <span class="${active ? 'bad' : 'meta'}">${active ? 'active' : 'passive'}</span></summary>${valsTable(rows)}</details>`;
+      <span class="${active ? 'bad' : 'meta'}">${active ? 'active' : 'passive'}</span></summary>${valsTable(rows)}${dtcGuidanceHTML(code, text, ei)}</details>`;
   }).join('');
   return `<div class="meta">${res.cleared ? 'Event memory cleared. ' : ''}${entries.length} stored fault${entries.length === 1 ? '' : 's'}</div>
     ${m.errorMessage ? `<div class="status err">${esc(m.errorMessage)}</div>` : ''}${blocks}`;
+}
+
+// General repair guidance for a DTC, derived from its standardised OBD-II code structure and
+// fault text. This is generic methodology, not ODIS's vehicle-specific guided fault finding;
+// the button fetches the latter when a guided-diagnosis session is active in ODIS.
+function dtcGuidance(code, text) {
+  const t = (text || '').toLowerCase(), steps = [];
+  if (/low input|circ.*low|short to ground/.test(t)) steps.push('“Low input”: measure the signal wire — suspect a short to ground or an open supply/signal line. Inspect the connector and pins for corrosion or spread terminals.');
+  if (/high input|circ.*high|short to.*(b\+|positive|power)/.test(t)) steps.push('“High input”: suspect a short to power or a missing ground. Back-probe the component’s supply and ground.');
+  if (/\bcircuit\b|open circuit/.test(t) && !/low|high/.test(t)) steps.push('“Circuit” fault: check wiring continuity and the connector between the control unit and the component.');
+  if (/range\/performance|implausible|plausib|correlation|signal/.test(t)) steps.push('“Range/performance” or correlation: the signal is present but implausible — compare related sensors in live measurements and check for a mechanical cause.');
+  if (/intermittent|sporadic/.test(t)) steps.push('Intermittent: wiggle-test the harness and connector while watching the live value; inspect the component grounds.');
+  const m = /P([0-3])[0-9]([0-9A-F])[0-9A-F]/i.exec(code || '');
+  if (m) {
+    const sys = {'1': 'fuel / air metering', '2': 'fuel / air injector circuit', '3': 'ignition system or misfire', '4': 'auxiliary emission controls', '5': 'vehicle speed, idle control or auxiliary inputs', '6': 'control module or its outputs', '7': 'transmission', '8': 'transmission'}[m[2]];
+    if (sys) steps.push(`Code area: ${sys}. Inspect the related component, its wiring and connector; verify supply and ground.`);
+    if (m[1] === '1' || m[1] === '3') steps.push('Manufacturer-specific (P1/P3) code — use the ODIS guided test or workshop manual for the exact procedure.');
+  }
+  steps.push('Use the freeze-frame data above (speed, load, temperatures, voltage) to reproduce the conditions, then clear the code and check whether it returns.');
+  return steps;
+}
+function dtcGuidanceHTML(code, text, idx) {
+  return `<div class="guide"><b>General guidance</b> <span class="meta">(generic, not ODIS guided fault finding)</span>
+    <ul>${dtcGuidance(code, text).map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+    <button onclick="odisGuidance('${esc(code)}', ${idx})">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
+    <div id="guide${idx}" class="meta"></div></div>`;
+}
+async function odisGuidance(code, idx) {
+  const el = document.getElementById('guide' + idx); if (!el) return;
+  el.textContent = 'Asking ODIS…';
+  try {
+    const res = await bridge({action: 'fault_guidance', query: code});
+    const docs = res.documents || [], objs = res.diagnostic_objects || [];
+    if (!docs.length && !objs.length) { el.textContent = 'ODIS returned no guided documents. Identify the vehicle and start Guided Fault Finding in ODIS, then retry.'; return; }
+    el.innerHTML = `${docs.length ? `<b>Documents</b><ul>${docs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}${objs.length ? `<b>Diagnostic objects</b><ul>${objs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}`;
+  } catch (e) { el.textContent = e.message; }
 }
 
 function renderUnitDetail() {
@@ -616,29 +657,60 @@ async function borrowPick(i) {
 function decodeCoding(hexBytes, table) {
   const bytes = (hexBytes || '').trim().split(/\s+/).filter(Boolean).map(h => parseInt(h, 16));
   return table.rows.flatMap(r => r.params).map(p => {
-    if (p.byte_pos === undefined || !p.bit_length) return {name: p.long_name || p.name, value: '', raw: '—'};
+    const base = {name: p.long_name || p.name, byte_pos: p.byte_pos, bit_pos: p.bit_pos || 0, bit_length: p.bit_length, values: p.values || [], unit: p.unit};
+    if (p.byte_pos === undefined || !p.bit_length) return {...base, value: '', raw: '—'};
     const n = Math.ceil(((p.bit_pos || 0) + p.bit_length) / 8);
-    if (p.byte_pos + n > bytes.length) return {name: p.long_name || p.name, value: 'outside this coding', raw: `byte ${p.byte_pos}`, bad: true};
+    if (p.byte_pos + n > bytes.length) return {...base, value: 'outside this coding', raw: `byte ${p.byte_pos}`, bad: true};
     let v = 0n;
     for (let i = 0; i < n; i++) v = (v << 8n) | BigInt(bytes[p.byte_pos + i]);
     v = (v >> BigInt(p.bit_pos || 0)) & ((1n << BigInt(p.bit_length)) - 1n);
     const choice = (p.values || []).find(c => BigInt(c.low) <= v && v <= BigInt(c.high));
-    return {name: p.long_name || p.name, value: choice ? choice.text : (p.values && p.values.length ? `unknown value ${v}` : `${v}${p.unit ? ' ' + p.unit : ''}`),
+    return {...base, cur: Number(v), editable: p.bit_length <= 32,
+      value: choice ? choice.text : (p.values && p.values.length ? `unknown value ${v}` : `${v}${p.unit ? ' ' + p.unit : ''}`),
       raw: `byte ${p.byte_pos} bit ${p.bit_pos || 0}${p.bit_length > 1 ? '–' + ((p.bit_pos || 0) + p.bit_length - 1) : ''} = ${v}`,
       bad: !choice && p.values && p.values.length > 0};
   });
 }
 
-function decodedTable(hexBytes, table) {
-  return `<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th></tr>${decodeCoding(hexBytes, table).map(d =>
-    `<tr class="${d.bad ? 'err' : ''}"><td>${esc(d.name)}</td><td>${esc(d.value)}</td><td class="mono">${esc(d.raw)}</td></tr>`).join('')}</table>`;
+// When editable, each parameter is a dropdown (enumerated values) or a number input that writes
+// the chosen value back into the coding bytes at its byte/bit position (shown in the Bits column).
+function decodedTable(hexBytes, table, editable) {
+  return `<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th></tr>${decodeCoding(hexBytes, table).map(d => {
+    const discrete = (d.values || []).filter(c => c.low === c.high);
+    let cell;
+    if (editable && d.editable && discrete.length) {
+      const known = discrete.some(c => c.low === d.cur);
+      cell = `<select onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},+this.value)">
+        ${known ? '' : `<option selected value="${d.cur}">0x${d.cur.toString(16).toUpperCase()} (unknown)</option>`}
+        ${discrete.map(c => `<option value="${c.low}" ${c.low === d.cur ? 'selected' : ''}>${esc(c.text)} (0x${c.low.toString(16).toUpperCase()})</option>`).join('')}</select>`;
+    } else if (editable && d.editable && d.byte_pos !== undefined) {
+      cell = `<input class="num" value="${d.cur}" onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},this.value)">${d.unit ? ' ' + esc(d.unit) : ''}`;
+    } else {
+      cell = esc(d.value);
+    }
+    return `<tr class="${d.bad ? 'err' : ''}"><td>${esc(d.name)}</td><td>${cell}</td><td class="mono">${esc(d.raw)}</td></tr>`;
+  }).join('')}</table>`;
+}
+
+// Writes value into the working coding at byte_pos/bit_pos for bit_length bits (big-endian).
+function codingSetParam(bytePos, bitPos, bitLen, value) {
+  const step = codingStep(); if (!step) return;
+  let v = BigInt(Math.max(0, Math.floor(Number(value) || 0)));
+  const fieldMax = (1n << BigInt(bitLen)) - 1n; if (v > fieldMax) v = fieldMax;
+  const n = Math.ceil((bitPos + bitLen) / 8);
+  let cur = 0n;
+  for (let i = 0; i < n; i++) cur = (cur << 8n) | BigInt(step.work[bytePos + i]);
+  const fieldMask = fieldMax << BigInt(bitPos);
+  cur = (cur & ~fieldMask) | ((v << BigInt(bitPos)) & fieldMask);
+  for (let i = n - 1; i >= 0; i--) { step.work[bytePos + i] = Number(cur & 0xFFn); cur >>= 8n; }
+  renderUnitDetail();
 }
 
 function codingDefinitionHTML(step) {
   const odx = step.odx, master = ((step.res && step.res.coding) || [])[0] || {};
   const coding = step.work ? step.work.map(hex).join(' ') : master.byteCoding;
   if (!odx) return '<div class="meta">Looking up the coding definition in the ODIS database…</div>';
-  if (odx.own) return `<div class="meta">Decoded with ${esc(odx.own.location || 'its own')} ODX data.</div>${decodedTable(coding, odx.own)}`;
+  if (odx.own) return `<div class="meta">Decoded with ${esc(odx.own.location || 'its own')} ODX data. Change a value below to edit the coding bytes.</div>${decodedTable(coding, odx.own, true)}`;
   let html = `<div class="meta">${esc(odx.note)}</div>`;
   const b = step.borrow;
   if (!b) return html + '<button onclick="borrowList()">Decode with a related variant…</button>';

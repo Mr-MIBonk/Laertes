@@ -1035,6 +1035,33 @@ def current_gfs(context):
             context.ungetService(ref)
 
 
+def handle_fault_guidance(cmd):
+    """Guided-fault-finding guidance for a fault: repair documents and diagnostic objects the
+    GFS search service finds for the query (a DTC code or text). Needs an active guided-diagnosis
+    session (vehicle identified and Guided Fault Finding started in ODIS); the knowledge base is
+    empty otherwise."""
+    query = cmd.get("query") or cmd.get("dtc") or ""
+    context = get_context()
+    gfs = current_gfs(context)
+    if gfs is None:
+        return {"ok": False, "error": "No guided diagnosis session; identify the vehicle and start Guided Fault Finding in ODIS."}
+    out = {"ok": True, "query": query, "gfs_class": gfs.getClass().getName()}
+    search, ref = gfs_service(context, "de.volkswagen.odis.vaudas.gfs.search.IGfsSearchService")
+    try:
+        try:
+            out["documents"] = [unicode(x)[:300] for x in (search.findDocLinks(gfs, query, True, True) or [])]
+        except (Exception, Throwable) as e:
+            out["documents_error"] = error_text(e)
+        try:
+            out["diagnostic_objects"] = [unicode(x)[:300] for x in (search.findGfsDiagnosticObjects(gfs, query) or [])]
+        except (Exception, Throwable) as e:
+            out["diagnostic_objects_error"] = error_text(e)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    return out
+
+
 def handle_gfs_explore(cmd):
     """Read-only: reports whether a diagnosis session is active and, if so, the current IGfs
     object with the methods available on it and on the GFS search service. Used to design the
@@ -1123,6 +1150,7 @@ def handle_api_methods(cmd):
 HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
+    "fault_guidance": handle_fault_guidance,
     "api_methods": handle_api_methods,
     "project_state": handle_project_state,
     "ping": handle_ping,
