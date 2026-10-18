@@ -666,13 +666,23 @@ function adaptationEditorHTML(step) {
     return `<tr class="${String(nv) !== String(p.value) ? 'changed' : ''}">
       <td>${esc(p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name)}</td>
       <td class="mono">${esc(p.value)}${p.unit ? ' ' + esc(p.unit) : ''}</td>
-      <td><input value="${esc(nv)}" onchange="adaptSet('${esc(p.name)}', this.value)"></td></tr>`;
+      <td>${adaptControl(step, p.name, nv)}</td></tr>`;
   }).join('');
   const changed = params.some(p => (p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value));
   return `<h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
     <table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th></tr>${rows}</table>
     <div class="bar"><button class="warn" ${changed ? '' : 'disabled'} onclick="adaptWrite()">Write to unit…</button>
       ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</span>` : ''}</div>`;
+}
+// A dropdown of the channel's enumerated options (from ODX) when it has them, else a free input.
+function adaptControl(step, name, nv) {
+  const opts = (step.options || {})[name];
+  if (opts && opts.length) {
+    const extra = opts.includes(nv) ? '' : `<option selected value="${esc(nv)}">${esc(nv)} (current)</option>`;
+    return `<select onchange="adaptSet('${esc(name)}', this.value)">${extra}${opts.map(o =>
+      `<option value="${esc(o)}" ${o === nv ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  }
+  return `<input value="${esc(nv)}" onchange="adaptSet('${esc(name)}', this.value)">`;
 }
 function adaptSet(name, v) { const s = curStep(); if (s) { (s.newVals = s.newVals || {})[name] = v; renderUnitDetail(); } }
 async function adaptWrite() {
@@ -958,6 +968,14 @@ async function unitRun(cmd, label) {
     step.work = step.orig.slice();
     step.odx = await codingDefinition(u);
     step.unitLabels = await loadUnitLabels(u.variant, step.sysName);
+    if (unitPath === path) renderUnitDetail();
+  }
+  if (step.res && cmd.action === 'read_adaptation') {
+    try {
+      const o = await bridge({action: 'adaptation_options', address: u.id, channel: cmd.channel});
+      step.options = {};
+      (o.params || []).forEach(p => { step.options[p.name] = p.options; });
+    } catch (e) { step.options = {}; }
     if (unitPath === path) renderUnitDetail();
   }
   if (step.res && step.res.event_memory) {  // a fresh read updates the unit's count in the list

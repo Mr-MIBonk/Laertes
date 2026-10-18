@@ -1009,6 +1009,28 @@ def handle_read_adaptation_values(cmd):
     return with_connection(cmd, lambda diag, h: names_result(diag.getShortNamesOfAdaptationValues(h, channel), channel=channel))
 
 
+def handle_adaptation_options(cmd):
+    """Enumerated options for an adaptation channel's parameters, from the writable calibration
+    ODX table (matched by the channel's long name). Lets the editor offer dropdowns where a
+    parameter has a fixed set of values. Resolved by address, so no vehicle session is needed."""
+    channel = cmd.get("channel")
+    if not channel:
+        return {"ok": False, "error": "missing channel"}
+    table = handle_odx_table({"address": cmd.get("address"), "variant": cmd.get("variant"),
+                              "base": cmd.get("base"), "table": "TAB_RecorDataIdentCalibDataWrita"})
+    if not table.get("ok"):
+        return {"ok": True, "channel": channel, "params": []}
+    for row in table.get("rows", []):
+        if row.get("long_name") == channel or row.get("name") == channel:
+            params = []
+            for p in row.get("params", []):
+                opts = [c.get("text") for c in (p.get("values") or []) if c.get("low") == c.get("high")]
+                if opts:
+                    params.append({"name": p.get("name"), "options": opts})
+            return {"ok": True, "channel": channel, "params": params}
+    return {"ok": True, "channel": channel, "params": []}
+
+
 def handle_write_adaptation(cmd):
     """Writes an adaptation channel. values maps each parameter name (as read_adaptation shows,
     e.g. "Param_ActivStartStopFunct") to its new value."""
@@ -1293,6 +1315,7 @@ HANDLERS = {
     "list_adaptation_channels": handle_list_adaptation_channels,
     "read_adaptation": handle_read_adaptation,
     "read_adaptation_values": handle_read_adaptation_values,
+    "adaptation_options": handle_adaptation_options,
     "write_byte_coding": handle_write_byte_coding,
     "write_adaptation": handle_write_adaptation,
     "list_access_modes": handle_list_access_modes,
