@@ -1028,9 +1028,18 @@ def handle_gfs_explore(cmd):
     return out
 
 
+def handle_api_methods(cmd):
+    """Read-only: the methods of the ODIS automation diagnostic interface (IDiagnosticInterface),
+    to see which read/write operations (coding, adaptation) are available over the bridge."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    diag = Factory.getInstance()
+    return {"ok": True, "class": diag.getClass().getName(), "methods": gfs_methods(diag)}
+
+
 HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
+    "api_methods": handle_api_methods,
     "ping": handle_ping,
     "list_project_ecus": handle_list_project_ecus,
     "list_vehicle_ecus": handle_list_vehicle_ecus,
