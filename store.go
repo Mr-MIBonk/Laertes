@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS coding_pref (
 );`); err != nil {
 		return err
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL DEFAULT '{}'
+);`); err != nil {
+		return err
+	}
 	// Version 1 stored per-bit labels in "labels" with a "bit" column (-1 = whole byte).
 	var oldSchema int
 	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('labels') WHERE name='bit'`).Scan(&oldSchema); err != nil {
@@ -337,6 +344,27 @@ func (s *Store) SetCodingPref(p CodingPref) error {
 	_, err := s.db.Exec(`INSERT INTO coding_pref (variant, borrow_variant, borrow_base) VALUES (?,?,?)
 		ON CONFLICT (variant) DO UPDATE SET borrow_variant=excluded.borrow_variant, borrow_base=excluded.borrow_base`,
 		p.Variant, p.BorrowVariant, p.BorrowBase)
+	return err
+}
+
+// Settings returns the stored UI settings as a JSON object ({} when none are saved yet). They are
+// kept in the database so they survive restarts and are shared by every browser that opens Laertes.
+func (s *Store) Settings() (json.RawMessage, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key='ui'`).Scan(&v)
+	if err == sql.ErrNoRows {
+		return json.RawMessage("{}"), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(v), nil
+}
+
+// SetSettings replaces the stored UI settings with the given JSON object.
+func (s *Store) SetSettings(v json.RawMessage) error {
+	_, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES ('ui', ?)
+		ON CONFLICT (key) DO UPDATE SET value=excluded.value`, string(v))
 	return err
 }
 

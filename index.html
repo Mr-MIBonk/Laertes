@@ -52,7 +52,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .tabs .conn.off .dot { background:var(--warn); }
 .tabs .veh { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--text); padding:0 6px; white-space:nowrap; }
 .tabs .veh.off { color:var(--warn); }
-.tabs .ver { display:flex; align-items:center; font:11px Consolas, monospace; color:var(--muted); padding:0 4px 0 8px; margin-left:4px; border-left:1px solid var(--line); white-space:nowrap; }
+.tabs .ver { display:flex; align-items:center; font:11px Consolas, monospace; color:var(--muted); padding:0 4px 0 8px; margin-left:8px; border-left:1px solid var(--line); white-space:nowrap; }
 .units { display:flex; gap:16px; align-items:flex-start; }
 .units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
 .units .bar label { white-space:nowrap; }
@@ -137,6 +137,7 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .tabs .busy { display:flex; align-items:center; gap:6px; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
 .tabs .busy button, .tabs .conn button { font-size:11px; padding:1px 6px; }
 .tabs button.vcibtn { border:1px solid var(--line); border-radius:4px; padding:2px 8px; margin-left:6px; align-self:center; color:var(--text); font-size:12px; white-space:nowrap; }
+.tabs button.vcibtn.warn { color:var(--warn); }
 /* The hourglass runs for a while, then turns over, like a real one. */
 .tabs .busy .hourglass { display:inline-block; animation:hourglass 2s ease-in-out infinite; }
 @keyframes hourglass { 0%, 70% { transform:rotate(0deg); } 100% { transform:rotate(180deg); } }
@@ -156,6 +157,12 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .hdetails { font-family:system-ui, sans-serif; margin-top:3px; }
 .hdetails .setting { color:var(--chg); font-weight:bold; }
 pre.report { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px Consolas, monospace; overflow:auto; max-height:72vh; white-space:pre; margin:0; }
+button.exp { border-color:var(--chg); color:var(--chg); }
+.units .progress { height:16px; background:var(--bg); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:8px 0; max-width:520px; }
+.units .progress > div { height:100%; background:var(--chg); width:0; transition:width .3s; }
+.units .progress.done > div { background:var(--on); }
+.units .progress.err > div { background:var(--warn); }
+.units .expform input { max-width:520px; margin:6px 0; }
 .units pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; overflow:auto; max-height:70vh; white-space:pre-wrap; word-break:break-all; margin:0; }
 </style>
 </head>
@@ -171,15 +178,15 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
   <span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
   <span id="retro" class="retro" hidden></span>
-  <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span>
-    <button id="stopBridge" class="warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">Stop bridge</button></span>
+  <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span>
-  <span id="ver" class="ver" title="Laertes version"></span>
-  <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button></nav>
+  <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button>
+  <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
+  <span id="ver" class="ver" title="Laertes version"></span></nav>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -201,6 +208,7 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
 <div id="history" class="db units" hidden></div>
+<div id="settings" class="db help" hidden></div>
 <div id="guide" class="db help" hidden>
   <h1>Getting started with Laertes</h1>
   <p class="meta">Laertes runs next to ODIS. A small macro inside ODIS (the <b>bridge</b>) lets this web page read and change
@@ -248,7 +256,13 @@ pre.report { background:var(--panel); border:1px solid var(--line); border-radiu
       coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified, with the same before/after fault check as coding),
       <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Event memory</b> (faults with
       repair guidance), <b>Full scan</b> of the unit and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs
-      elevated access.
+      elevated access. <b>Component protection (test)</b> finds the component-protection control on the unit and writes it,
+      for bench testing of how a unit behaves while locked — it warns that this <b>locks the unit</b> (recovery needs an
+      online ODIS/VW SVM session with valid GeKo credentials) and asks you to type the unit name to confirm. Only on a
+      unit you own and can reactivate.
+      <b>Flash firmware</b> and <b>Load dataset</b> are <span class="chg">orange, experimental and untested</span>: they show a
+      live progress bar but in this build do not write anything. These three can be hidden with <b>Hide dangerous functions</b>
+      in Settings.
       <br>For many units at once, the buttons above the list work on the units the list shows (tick
       <i>responded only</i> for those that answered, untick it for everything in the ODIS project).
       On a real car start with <b>Quick scan</b>: it asks the gateway once which units are installed and
@@ -316,6 +330,16 @@ async function api(method, url, body) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+// Settings, stored in the database (so they survive restarts and are shared by every browser that
+// opens Laertes). dtcCheck: read the fault memory before and after each coding/adaptation write and
+// show what changed. Loaded once at startup; defaults apply until then.
+const settings = {dtcCheck: true, hideDangerous: true};
+async function loadSettings() {
+  try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
+  if (currentTab() === 'settings') renderSettings();
+}
+function saveSettings() { api('PUT', '/api/settings', settings).catch(e => toast('Could not save settings: ' + e.message, true)); }
 
 let toastTimer;
 function toast(text, err) {
@@ -650,7 +674,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', settings: 'settings', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -664,6 +688,25 @@ function showTab(tab) {
   if (tab === 'units' && !units) loadUnits();
   else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
+  if (tab === 'settings') renderSettings();
+}
+
+// Settings tab: per-viewer options kept in this browser.
+function renderSettings() {
+  $('#settings').innerHTML = `<h1>Settings</h1>
+    <p class="meta">These are kept in this browser.</p>
+    <h2 class="sub">After a write</h2>
+    <label style="display:flex; gap:8px; align-items:flex-start; max-width:640px">
+      <input type="checkbox" id="setDtcCheck" ${settings.dtcCheck ? 'checked' : ''} onchange="settings.dtcCheck = this.checked; saveSettings()">
+      <span>Read the fault memory before and after each coding/adaptation write and show which faults are new or gone.
+        <br><span class="meta">Turn this off to code/adapt faster without the fault check. You can still read a unit's fault memory yourself from Project units.</span></span>
+    </label>
+    <h2 class="sub">Dangerous functions</h2>
+    <label style="display:flex; gap:8px; align-items:flex-start; max-width:640px">
+      <input type="checkbox" id="setHideDangerous" ${settings.hideDangerous ? 'checked' : ''} onchange="settings.hideDangerous = this.checked; saveSettings(); if (currentTab() !== 'settings') renderUnitDetail()">
+      <span>Hide the dangerous unit functions: <b>Flash firmware</b>, <b>Load dataset</b> and <b>Component protection (test)</b>.
+        <br><span class="meta">Hides the buttons on a unit; the other functions are unaffected.</span></span>
+    </label>`;
 }
 
 // The bridge describes a unit only by its toString(), e.g.
@@ -858,7 +901,11 @@ function renderUnitDetail() {
   if (!u) { $('#unitDetail').innerHTML = '<div class="empty">Select a unit.</div>'; return; }
   const step = unitPath[unitPath.length - 1];
   let body = '';
-  if (step && step.live) {
+  if (step && step.cmd && step.cmd.action === 'flash_panel') {
+    body = flashPanelHTML(step, u);
+  } else if (step && step.cmd && step.cmd.action === 'cp_find') {
+    body = cpFindHTML(step, u);
+  } else if (step && step.live) {
     body = liveHTML(step);
   } else if (step && step.res && step.res.names && step.cmd.action === 'list_measurement_groups') {
     body = `<div class="bar"><button class="op" onclick="liveStart()">Show live</button>
@@ -901,6 +948,9 @@ function renderUnitDetail() {
     <div class="acts">${UNIT_ACTIONS.map(([, label], i) => `<button class="op" onclick="unitStart(${i})">${esc(label)}</button>`).join('')}
       <button class="op" onclick="unitLogin()">Login…</button>
       <button class="op" onclick="fullScanUnit()" title="Identification, coding and faults of this unit as a VCDS-style log">Full scan</button>
+      ${settings.hideDangerous ? '' : `<button class="warn op" onclick="cpStart()" title="Find the component-protection control on this unit and set it, to test how the unit behaves while locked (recovery needs an online VW/ODIS SVM session)">Component protection (test)…</button>
+      <button class="exp op" onclick="flashPanel('flash')" title="EXPERIMENTAL / UNTESTED: flash firmware to this unit">⚠ Flash firmware (experimental)…</button>
+      <button class="exp op" onclick="flashPanel('dataset')" title="EXPERIMENTAL / UNTESTED: load a dataset into this unit">⚠ Load dataset (experimental)…</button>`}
       <button class="warn op" onclick="unitClearDtcs()">Clear DTCs</button></div>
     ${step ? `<div class="status ${step.err ? 'err' : ''}">${crumbs}${step.busy ? ' …' : ''}${step.err ? ': ' + esc(step.err) + ' ' + trBtn(step.err) + copyBtn(step.err) : ''}
       ${step.res && step.res.names ? ` (${step.res.names.length})` : ''}</div>${body}` : ''}`;
@@ -1090,9 +1140,12 @@ async function codingWrite() {
   if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
   const details = codingDetails(step, before, want);
   // Faults before the write, to show afterwards which ones the new coding added or removed.
-  step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
-  step.dtcBefore = await readFaults(u); step.dtcAfter = null;
-  step.writeMsg = 'Writing coding to the unit…'; renderUnitDetail();
+  step.dtcBefore = step.dtcAfter = null;
+  if (settings.dtcCheck) {
+    step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
+    step.dtcBefore = await readFaults(u);
+  }
+  step.writeMsg = 'Writing coding to the unit…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to, login: loginCodes[u.id]});
     // Read the coding back from the unit and confirm it matches what we intended to write.
@@ -1118,8 +1171,10 @@ async function codingWrite() {
     recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', details, note: e.message});
   }
   renderUnitDetail();
-  step.dtcAfter = await readFaults(u);
-  if (codingStep() === step) renderUnitDetail();
+  if (settings.dtcCheck) {
+    step.dtcAfter = await readFaults(u);
+    if (codingStep() === step) renderUnitDetail();
+  }
 }
 
 // What a coding change does, one line each, for the history: every changed byte with its
@@ -1168,8 +1223,10 @@ async function readFaults(u) {
 // gone and those still there, each active or passive. Faults from before a retrofit are ignored.
 function dtcChangeHTML(step, addr) {
   const a = step.dtcAfter, b = step.dtcBefore;
-  if (!b && !a) return '';
-  let h = `<h2 class="sub">Fault memory after the write <button class="op" onclick="op('Reading faults', stepDtcReload)">Read again</button></h2>`;
+  if (step.dtcHidden || (!b && !a)) return '';
+  let h = `<h2 class="sub">Fault memory after the write
+    <button class="op" onclick="op('Reading faults', stepDtcReload)">Read again</button>
+    <button onclick="dtcHide()" title="Hide this and keep coding/adaptation">Hide</button></h2>`;
   if (!a) return h + '<div class="meta">Reading the fault memory…</div>';
   if (a.err) return h + `<div class="status err">${esc(a.err)} ${trBtn(a.err)}</div>`;
   const prev = b && b.faults ? b.faults : null, had = new Set((prev || []).map(dtcKey)), now = new Set(a.faults.map(dtcKey));
@@ -1193,6 +1250,8 @@ async function stepDtcReload() {
   step.dtcAfter = await readFaults(u);
   if (curStep() === step) renderUnitDetail();
 }
+// Hides the after-write fault panel for the current write, so coding/adaptation can continue.
+function dtcHide() { const s = curStep(); if (s) { s.dtcHidden = true; renderUnitDetail(); } }
 
 // Decode the (edited) coding with the user's own .lbl labels, independent of the ODIS database.
 async function loadUnitLabels(variant, subsystem) {
@@ -1269,9 +1328,10 @@ function adaptationEditorHTML(step) {
       <td>${adaptControl(step, p.name, nv)}</td></tr>`;
   }).join('');
   const changed = params.some(p => (p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value));
-  return `<h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
+  return `${step.cp ? `<div class="warnbox"><b>Component-protection test.</b> Writing this locks the unit; it will not work until reactivated online through an ODIS/VW SVM session with valid credentials.</div>` : ''}
+    <h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
     <table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th></tr>${rows}</table>
-    <div class="bar"><button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing adaptation', adaptWrite)">Write to unit…</button>
+    <div class="bar"><button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing adaptation', adaptWrite)">${step.cp ? 'Write — lock the unit…' : 'Write to unit…'}</button>
       ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}${step.writeErr ? ' ' + trBtn(step.writeMsg) + copyBtn(step.writeMsg) : ''}</span>` : ''}</div>`;
 }
 // A dropdown of the channel's enumerated options (from ODX) when it has them, else a free input.
@@ -1291,16 +1351,23 @@ async function adaptWrite() {
   const values = {}, diffs = [];
   params.forEach(p => { if ((p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value)) { values[p.name] = step.newVals[p.name]; diffs.push(`  ${p.name}: ${p.value} → ${step.newVals[p.name]}`); } });
   if (!diffs.length) return;
-  if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
+  if (step.cp) {
+    const ans = prompt(`COMPONENT-PROTECTION TEST — this LOCKS the unit.\n\n${u.sname} ${u.id}, channel ${step.cmd.channel}:\n${diffs.join('\n')}\n\nAfter this the unit will not work until it is reactivated online through an ODIS/VW SVM session with valid online (GeKo) credentials. Do this only on a unit you own and can reactivate.\n\nType the unit name "${u.sname}" to confirm:`);
+    if (ans === null || ans.trim() !== String(u.sname || '').trim()) { toast('Component-protection test cancelled.'); return; }
+  } else if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
   const oldV = params.filter(p => p.name in values).map(p => `${p.name}=${p.value}`).join(', ');
   const newV = Object.entries(values).map(([k, v]) => `${k}=${v}`).join(', ');
   // For the history: each changed parameter by its readable name, old → new.
   const details = params.filter(p => p.name in values).map(p =>
     `${p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name}: ${p.value} → ${values[p.name]}${p.unit ? ' ' + p.unit : ''} (${step.cmd.channel})`).join('\n');
+  const detailsFull = step.cp ? 'Component protection test (unit locked until online reactivation)\n' + details : details;
   // Faults before the write, to show afterwards which ones the adaptation added or removed.
-  step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
-  step.dtcBefore = await readFaults(u); step.dtcAfter = null;
-  step.writeMsg = 'Writing adaptation…'; renderUnitDetail();
+  step.dtcBefore = step.dtcAfter = null;
+  if (settings.dtcCheck) {
+    step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
+    step.dtcBefore = await readFaults(u);
+  }
+  step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
     // Read the channel back from the unit and confirm each written value took.
@@ -1316,15 +1383,17 @@ async function adaptWrite() {
     } else {
       step.writeMsg = `Write did NOT match for ${bad.map(k => `${k} (unit reads ${got[k] === undefined ? '—' : got[k]})`).join(', ')}.`; step.writeErr = true;
     }
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details,
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details: detailsFull,
       status: bad.length ? 'mismatch' : 'verified', note: bad.length ? 'unit reads ' + bad.map(k => `${k}=${got[k]}`).join(', ') : ''});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details, status: 'error', note: e.message});
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, details: detailsFull, status: 'error', note: e.message});
   }
   renderUnitDetail();
-  step.dtcAfter = await readFaults(u);
-  if (curStep() === step) renderUnitDetail();
+  if (settings.dtcCheck) {
+    step.dtcAfter = await readFaults(u);
+    if (curStep() === step) renderUnitDetail();
+  }
 }
 
 async function borrowList() {
@@ -1493,6 +1562,107 @@ function unitClearDtcs() {
   op('Clearing DTCs', () => { unitPath = []; return unitRun({action: 'clear_event_memory'}, 'Clear DTCs'); });
 }
 function unitOpen(i) { const s = unitPath[unitPath.length - 1]; op(s.res.names[i], () => unitRun(...UNIT_NEXT[s.cmd.action](s.res.names[i], s.res))); }
+
+// --- Component protection (test) ------------------------------------------------------------
+// Putting a unit into component protection (Komponentenschutz) locks it until it is reactivated
+// online through an ODIS/VW SVM session; it is used on a bench to see how a unit behaves while
+// locked. The control is unit-specific, so this finds the likely adaptation channels and coding
+// parameters on the unit itself (read-only) and then writes through the normal, gated path.
+const CP_RE = /schutz|komponent|verbau|protect|component|\bcp\b/i;
+function cpStart() {
+  const u = units.find(u => u.index === unitSel);
+  op('Find component protection', async () => {
+    unitReport = null;
+    const step = {cmd: {action: 'cp_find'}, label: 'Component protection (test)', busy: true};
+    unitPath = [step]; renderUnitDetail();
+    try { step.allChannels = (await bridge({action: 'list_adaptation_channels', address: u.id})).names || []; }
+    catch (e) { step.err = e.message; step.allChannels = []; }
+    try {
+      const def = await codingDefinition(u);  // the unit's own textual coding definition, if any
+      step.codingParams = def && def.own ? def.own.rows.flatMap(r => r.params).map(p => p.long_name || p.name) : [];
+    } catch (e) { step.codingParams = []; }
+    step.busy = false;
+    if (curStep() === step) renderUnitDetail();
+  });
+}
+function cpFindHTML(step, u) {
+  let h = `<div class="warnbox"><b>Component protection locks the unit.</b> Once set, ${esc(u.sname || 'the unit')} ${esc(u.id || '')} will not work
+    until it is reactivated online through an ODIS/VW SVM session with valid online (GeKo) credentials. Only do this on a unit you own and can
+    reactivate — this is a driver-assistance / safety-relevant unit.</div>`;
+  if (step.busy) return h + '<div class="meta">Scanning this unit\'s adaptation channels and coding for component-protection entries…</div>';
+  if (step.err) h += `<div class="status err">${esc(step.err)} ${trBtn(step.err)}</div>`;
+  const chans = (step.allChannels || []).filter(n => CP_RE.test(n)), codes = (step.codingParams || []).filter(n => CP_RE.test(n));
+  h += `<h2 class="sub">Likely component-protection adaptation channels</h2>`;
+  h += chans.length
+    ? `<div class="names">${chans.map(n => `<button class="op warn" onclick="cpOpen('${esc(n)}')">${esc(n)}</button>`).join('')}</div>
+       <div class="meta">Opens in the adaptation editor, where you set the value and write it (with a lock warning, confirmation and read-back).</div>`
+    : `<div class="meta">No adaptation channel on this unit matched component-protection keywords. Check the full list below, or the coding parameters.</div>`;
+  if (codes.length) h += `<h2 class="sub">Coding parameters that mention component protection</h2>
+    <div class="names">${codes.map(n => `<span>${esc(n)}</span>`).join('')}</div>
+    <div class="meta">These live in the unit's <b>Coding</b> view; change them there (the coding write has the same warning and verification).</div>`;
+  h += `<h2 class="sub">All adaptation channels (${(step.allChannels || []).length})</h2>
+    ${(step.allChannels || []).length > 20 ? '<input type="text" placeholder="Filter" oninput="filterNames(this)">' : ''}
+    <div class="names">${(step.allChannels || []).map(n => `<button class="op" onclick="cpOpen('${esc(n)}')">${esc(n)}</button>`).join('')}</div>`;
+  return h;
+}
+// Opens a chosen channel in the adaptation editor, marked as a component-protection write so the
+// editor shows the lock warning and the write asks for a stronger confirmation.
+function cpOpen(name) { op(name, () => unitRun({action: 'read_adaptation', channel: name}, name, {cp: true})); }
+
+// --- Flash firmware / load dataset (EXPERIMENTAL, UNTESTED) ---------------------------------
+// Long operations run on the bridge as a background job; this page polls job_status and shows a
+// progress bar. The ODIS flash/dataset API is not wired yet, so these report progress and stop
+// without writing — they are marked experimental (orange) until that is connected and tested.
+const FLASH = {flash: {label: 'Flash firmware', action: 'flash_firmware', kind: 'firmware', what: 'a firmware file (flash container)'},
+  dataset: {label: 'Load dataset', action: 'upload_dataset', kind: 'dataset', what: 'a dataset file'}};
+function flashPanel(which) {
+  unitReport = null;
+  unitPath = [{cmd: {action: 'flash_panel'}, which, label: FLASH[which].label + ' (experimental)'}];
+  renderUnitDetail();
+}
+function flashPanelHTML(step, u) {
+  const f = FLASH[step.which], p = step.progress;
+  let h = `<div class="warnbox"><b>Experimental and untested.</b> ${esc(f.label)} writes to ${esc(u.sname || 'the unit')} ${esc(u.id || '')}.
+    A wrong or interrupted write can leave the unit inoperable, and recovery may need an online VW/ODIS SVM session. Only on a unit you own.
+    <br>In this build the operation is <b>not wired yet</b>: it shows progress but does not write anything.</div>
+    <div class="expform"><div class="meta">Path to ${esc(f.what)} on the ODIS PC:</div>
+      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\file.odx" value="${esc(step.path || '')}" oninput="curStep().path = this.value">
+      <div class="bar"><button class="exp op" onclick="flashRun()">Start ${esc(f.label.toLowerCase())}…</button></div></div>`;
+  if (p) {
+    const cls = p.status === 'done' ? 'done' : (p.status === 'error' || p.status === 'stopped') ? 'err' : '';
+    h += `<h2 class="sub">Progress</h2>
+      <div class="progress ${cls}"><div style="width:${p.percent || 0}%"></div></div>
+      <div class="status ${cls === 'err' ? 'err' : ''}">${p.percent || 0}% — ${esc(p.message || '')}${p.error ? ' — ' + esc(p.error) + ' ' + trBtn(p.error) : ''}</div>`;
+  }
+  return h;
+}
+function flashRun() {
+  const step = curStep(), u = units.find(u => u.index === unitSel), f = FLASH[step.which];
+  const path = (step.path || '').trim();
+  if (!path) { toast('Enter the file path on the ODIS PC.', true); return; }
+  if (!confirm(`${f.label.toUpperCase()} — EXPERIMENTAL, UNTESTED.\n\n${u.sname} ${u.id}\nFile: ${path}\n\nThis can leave the unit inoperable; recovery may need an online VW/ODIS SVM session. In this build nothing is actually written.\n\nContinue?`)) return;
+  op(f.label, async o => {
+    step.progress = {percent: 0, message: 'Starting…', status: 'running'}; renderUnitDetail();
+    let jid;
+    try { jid = (await bridge({action: f.action, address: u.id, file: path})).job_id; }
+    catch (e) { step.progress = {percent: 0, message: '', status: 'error', error: e.message}; renderUnitDetail(); throw e; }
+    o.onCancel = () => { step.watchStopped = true; };
+    while (true) {
+      if (step.watchStopped) { step.progress.status = 'stopped'; step.progress.message = 'Stopped watching — the unit may still be busy; do not disconnect.'; break; }
+      let s;
+      try { s = await bridge({action: 'job_status', job_id: jid}); }
+      catch (e) { step.progress = {...step.progress, status: 'error', error: e.message}; break; }
+      step.progress = {percent: s.percent, message: s.message, status: s.status, error: s.job_error};
+      opLabel(`${f.label} ${s.percent || 0}%`);
+      if (curStep() === step) renderUnitDetail();
+      if (s.status !== 'running') break;
+      await sleep(700);
+    }
+    recordChange({kind: f.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: path, oldValue: '', newValue: path,
+      status: step.progress.status === 'done' ? 'done' : step.progress.error ? 'error' : 'stopped', note: step.progress.error || step.progress.message});
+    if (curStep() === step) renderUnitDetail();
+  });
+}
 
 // --- Scans ---------------------------------------------------------------------------------
 // Scan all, Scan all unit DTCs and Full scan work on the units the list shows: tick
@@ -1928,8 +2098,8 @@ function filterNames(input) {
 function unitBack(i) { unitPath = unitPath.slice(0, i + 1); renderUnitDetail(); }
 
 // Runs a bridge command against the selected unit and shows it as the next step of the path.
-async function unitRun(cmd, label) {
-  const u = units.find(u => u.index === unitSel), step = {cmd, label, busy: true}, path = unitPath = [...unitPath, step];
+async function unitRun(cmd, label, extra) {
+  const u = units.find(u => u.index === unitSel), step = {cmd, label, busy: true, ...extra}, path = unitPath = [...unitPath, step];
   renderUnitDetail();
   try { step.res = await bridge({...cmd, address: u.id}); markResponded(u, true); }
   catch (e) { step.err = e.message; }
@@ -2158,6 +2328,7 @@ try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
 showTab(startTab);
 renderEmptyCoding();
 connPoll();
+loadSettings();
 let laertesVersion = '';
 api('GET', '/api/version').then(v => { laertesVersion = v; $('#ver').textContent = 'v' + v; }).catch(() => {});
 loadRetrofits();

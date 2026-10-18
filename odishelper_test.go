@@ -109,3 +109,24 @@ func TestForgetCodingPref(t *testing.T) {
 		t.Errorf("EV_C lost: %+v", p)
 	}
 }
+
+func TestSettings(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	v, err := s.Settings()
+	if err != nil || string(v) != "{}" {
+		t.Fatalf("default settings = %q, %v", v, err)
+	}
+	if err := s.SetSettings([]byte(`{"dtcCheck":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSettings([]byte(`{"dtcCheck":true,"x":1}`)); err != nil { // replaces, not merges
+		t.Fatal(err)
+	}
+	if v, _ := s.Settings(); string(v) != `{"dtcCheck":true,"x":1}` {
+		t.Errorf("settings = %q", v)
+	}
+}

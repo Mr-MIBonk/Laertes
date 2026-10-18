@@ -8,6 +8,8 @@
 
 import json
 import re
+import threading
+import time
 import traceback
 
 from org.osgi.framework import FrameworkUtil
@@ -1389,6 +1391,118 @@ def handle_service_methods(cmd):
             context.ungetService(ref)
 
 
+# --- Long-running jobs with progress (flash firmware, load dataset) ------------------------
+# These operations take minutes, so they run in a background thread and the web page polls
+# "job_status" for progress. One runs at a time on the vehicle (DIAG_LOCK), like every other
+# unit operation. EXPERIMENTAL: the flash/dataset ODIS API is not wired yet, so the job reports
+# progress and then stops without writing to the unit.
+
+_JOBS = {}
+_JOBS_LOCK = threading.Lock()
+_job_seq = [0]
+
+
+def _new_job():
+    with _JOBS_LOCK:
+        _job_seq[0] += 1
+        jid = "job%d" % _job_seq[0]
+        _JOBS[jid] = {"status": "running", "percent": 0, "message": "starting", "result": None, "error": None}
+    return jid
+
+
+def _job_set(jid, percent=None, message=None):
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None:
+            return
+        if percent is not None:
+            j["percent"] = percent
+        if message is not None:
+            j["message"] = message
+
+
+def _job_finish(jid, result=None, error=None):
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None:
+            return
+        j["status"] = "error" if error else "done"
+        j["error"] = error
+        j["result"] = result
+        if not error:
+            j["percent"] = 100
+
+
+def run_background(fn):
+    """Starts fn(progress) in a daemon thread and returns the job id. fn gets progress(percent,
+    message). The job holds DIAG_LOCK for its lifetime, so no other vehicle operation overlaps."""
+    jid = _new_job()
+
+    def worker():
+        progress = lambda p, m=None: _job_set(jid, p, m)
+        DIAG_LOCK.acquire()
+        try:
+            _job_finish(jid, result=fn(progress))
+        except (Exception, Throwable) as e:
+            traceback.print_exc()
+            _job_finish(jid, error=error_text(e))
+        finally:
+            DIAG_LOCK.release()
+
+    t = threading.Thread(target=worker)
+    t.setDaemon(True)
+    t.start()
+    return jid
+
+
+def handle_job_status(cmd):
+    """Progress of a background job started by flash_firmware / upload_dataset."""
+    jid = cmd.get("job_id")
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None:
+            return {"ok": False, "error": "no such job: %s" % jid}
+        out = {"ok": True, "job_id": jid, "status": j["status"], "percent": j["percent"], "message": j["message"]}
+        if j["status"] == "done":
+            out["result"] = j["result"]
+        if j["status"] == "error":
+            out["job_error"] = j["error"]
+        return out
+
+
+def _experimental_job(kind, path):
+    """The body of an experimental flash/dataset job: it reports progress without writing anything,
+    then stops with a clear message, because the real ODIS flash/SVM API is not wired yet."""
+    def job(progress):
+        for pct, msg in [(5, "Experimental %s — nothing is written to the unit." % kind),
+                         (25, "Checking the file: %s" % path),
+                         (55, "This is where a programming session would open."),
+                         (80, "This is where the file would be transferred.")]:
+            progress(pct, msg)
+            time.sleep(0.4)
+        raise Exception("%s is not implemented in this build (experimental). The ODIS flash/SVM API "
+                        "must be wired before this can run for real; nothing was written." % kind)
+    return job
+
+
+def handle_flash_firmware(cmd):
+    """EXPERIMENTAL / UNTESTED. Intended to flash firmware to the unit at "address" from the file
+    at "file" (a path on the ODIS PC). Not wired yet: reports progress and stops without writing."""
+    address, path = cmd.get("address"), cmd.get("file") or cmd.get("path")
+    if not address or not path:
+        return {"ok": False, "error": "flash_firmware needs address and file"}
+    return {"ok": True, "job_id": run_background(_experimental_job("Firmware flashing", path))}
+
+
+def handle_upload_dataset(cmd):
+    """EXPERIMENTAL / UNTESTED. Intended to load a dataset into the unit at "address" from the file
+    at "file" (a path on the ODIS PC). Not wired yet: reports progress and stops without writing."""
+    address, path = cmd.get("address"), cmd.get("file") or cmd.get("path")
+    if not address or not path:
+        return {"ok": False, "error": "upload_dataset needs address and file"}
+    return {"ok": True, "job_id": run_background(_experimental_job("Dataset upload", path))}
+
+
 HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
@@ -1399,6 +1513,9 @@ HANDLERS = {
     "vin": handle_vin,
     "vci": handle_vci,
     "reset_vci": handle_reset_vci,
+    "flash_firmware": handle_flash_firmware,
+    "upload_dataset": handle_upload_dataset,
+    "job_status": handle_job_status,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "lookup_projects": handle_lookup_projects,

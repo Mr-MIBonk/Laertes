@@ -17,7 +17,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.2.1"
+const version = "0.2.2"
 
 //go:embed index.html
 var indexHTML []byte
@@ -210,6 +210,18 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 			ended = time.Now().Format(time.RFC3339)
 		}
 		reply(w, nil, store.UpdateRetrofit(id, strings.TrimSpace(req.Name), ended))
+	})
+	mux.HandleFunc("GET /api/settings", func(w http.ResponseWriter, r *http.Request) {
+		v, err := store.Settings()
+		reply(w, v, err)
+	})
+	mux.HandleFunc("PUT /api/settings", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		if err != nil || !json.Valid(body) {
+			http.Error(w, "settings must be a JSON object", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.SetSettings(body))
 	})
 	mux.HandleFunc("GET /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
 		p, err := store.CodingPref(r.URL.Query().Get("variant"))
