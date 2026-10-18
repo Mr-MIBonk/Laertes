@@ -445,8 +445,29 @@ async function odisGuidance(code, idx) {
   try {
     const res = await bridge({action: 'fault_guidance', query: code});
     const docs = res.documents || [], objs = res.diagnostic_objects || [];
-    if (!docs.length && !objs.length) { el.textContent = 'ODIS returned no guided documents. Identify the vehicle and start Guided Fault Finding in ODIS, then retry.'; return; }
-    el.innerHTML = `${docs.length ? `<b>Documents</b><ul>${docs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}${objs.length ? `<b>Diagnostic objects</b><ul>${objs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}`;
+    if (docs.length || objs.length) {
+      el.innerHTML = `${docs.length ? `<b>Documents</b><ul>${docs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}${objs.length ? `<b>Diagnostic objects</b><ul>${objs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}`;
+      return;
+    }
+    // No guided data: guided fault finding needs the vehicle identified. Show the detected
+    // project and, when ODIS allows it (no project loaded), let the user set the car.
+    const vp = await bridge({action: 'vehicle_projects'}).catch(() => ({}));
+    el.innerHTML = `ODIS has no guided documents yet — guided fault finding needs the vehicle identified and started in ODIS.
+      <div class="meta">Detected vehicle project: <b>${esc(vp.current || 'none')}</b>${vp.change_allowed === false ? ' · locked (change it in ODIS)' : ''}</div>
+      ${vp.change_allowed ? `<div class="bar"><input id="vp${idx}" placeholder="vehicle project, e.g. VW37X" value="${esc(vp.current || '')}">
+        <button onclick="setVehicle(${idx}, '${esc(code)}')">Set vehicle & retry</button></div>`
+        : '<div class="meta">In ODIS: identify the vehicle (or pick it manually) and open Guided Fault Finding, then retry.</div>'}`;
+  } catch (e) { el.textContent = e.message; }
+}
+async function setVehicle(idx, code) {
+  const input = document.getElementById('vp' + idx), v = input && input.value.trim();
+  if (!v) return;
+  const el = document.getElementById('guide' + idx);
+  el.textContent = 'Setting vehicle project…';
+  try {
+    const res = await bridge({action: 'set_vehicle_project', project: v});
+    el.textContent = `Vehicle project set to ${res.project} (${res.ecu_count} ECUs). Retrying guidance…`;
+    odisGuidance(code, idx);
   } catch (e) { el.textContent = e.message; }
 }
 

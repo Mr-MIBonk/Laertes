@@ -1197,10 +1197,75 @@ def handle_api_methods(cmd):
     return {"ok": True, "class": diag.getClass().getName(), "methods": gfs_methods(diag)}
 
 
+def handle_vehicle_projects(cmd):
+    """The current vehicle project and whether it can be changed, plus any selectable projects
+    ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    diag = Factory.getInstance()
+    out = {"ok": True}
+    for name, fn in [("current", diag.getVehicleProject), ("change_allowed", diag.isVehicleProjectChangeAllowed)]:
+        try:
+            out[name] = fn()
+        except (Exception, Throwable) as e:
+            out[name + "_error"] = error_text(e)
+    for name, fn in [("vehicle_infos", lambda: diag.getVehicleInfos("")), ("odx_versions", diag.getODXVersions)]:
+        try:
+            out[name] = [unicode(x) for x in (fn() or [])]
+        except (Exception, Throwable) as e:
+            out[name + "_error"] = error_text(e)
+    context = get_context()
+    info, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.systemtest.IDiagnosisSessionInfoService")
+    try:
+        if info is not None:
+            out["proposed_projects"] = [unicode(x) for x in (info.getProposedVehicleProjectList() or [])]
+            out["proposed_manufacturers"] = [unicode(x) for x in (info.getProposedManufacturerList() or [])]
+    except (Exception, Throwable) as e:
+        out["proposed_error"] = error_text(e)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    return out
+
+
+def handle_set_vehicle_project(cmd):
+    """Sets the vehicle project (the car) so its ODX data loads when ODIS did not detect one."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    project = cmd.get("project")
+    if not project:
+        return {"ok": False, "error": "missing project"}
+    diag = Factory.getInstance()
+    try:
+        result = diag.setVehicleProject(project)
+    except (Exception, Throwable) as e:
+        return {"ok": False, "error": error_text(e)}
+    ecus = []
+    try:
+        ecus = [unicode(x) for x in (diag.getProjectEcuAddressList() or [])]
+    except (Exception, Throwable):
+        pass
+    return {"ok": True, "project": unicode(result), "ecu_count": len(ecus)}
+
+
+def handle_service_methods(cmd):
+    """Read-only: the methods of any registered OSGi service, for exploration."""
+    context = get_context()
+    svc, ref = gfs_service(context, cmd.get("service"))
+    try:
+        if svc is None:
+            return {"ok": False, "error": "service not found"}
+        return {"ok": True, "class": svc.getClass().getName(), "methods": gfs_methods(svc)}
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
 HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
     "fault_guidance": handle_fault_guidance,
+    "service_methods": handle_service_methods,
+    "vehicle_projects": handle_vehicle_projects,
+    "set_vehicle_project": handle_set_vehicle_project,
     "api_methods": handle_api_methods,
     "project_state": handle_project_state,
     "ping": handle_ping,
