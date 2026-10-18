@@ -1,2 +1,4 @@
 # Windows batch files need CRLF line endings to run reliably.
 *.cmd text eol=crlf
+# Shell scripts run on Linux runners and must keep LF line endings.
+*.sh text eol=lf
