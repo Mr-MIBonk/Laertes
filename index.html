@@ -437,7 +437,8 @@ function renderUnitDetail() {
   }
   const crumbs = unitPath.map((s, i) => i === unitPath.length - 1 ? esc(s.label) : `<a href="#" onclick="unitBack(${i}); return false">${esc(s.label)}</a>`).join(' › ');
   $('#unitDetail').innerHTML = `<h1>${esc(u.sname || '')} <small class="meta">${esc(u.id || '')}</small></h1>
-    <div class="facts">${unitFacts(u) || esc(u.state)} · <a href="#" onclick="openInDatabase(); return false">open in unit database</a></div>
+    <div class="facts">${unitFacts(u) || esc(u.state)} · <a href="#" onclick="openInDatabase(); return false">open in unit database</a>
+      · <a href="#" onclick="openDtcCatalog(); return false">DTC catalog (offline)</a></div>
     <div class="acts">${UNIT_ACTIONS.map(([, label], i) => `<button onclick="unitStart(${i})">${esc(label)}</button>`).join('')}
       <button onclick="unitLogin()">Login…</button>
       <button class="warn" onclick="unitClearDtcs()">Clear DTCs</button></div>
@@ -534,6 +535,16 @@ function openInDatabase() {
   showTab('odx');
   $('#odxQ').value = u.variant || u.id;
   odxFind('odx');
+}
+
+// Browse the unit's DTCs from the ODIS database without a vehicle connected: the Trouble codes
+// tab reads the ODX catalog for the unit's variant (or its address, which resolves the base
+// variant), so a project unit's faults can be read offline when ODIS has a project loaded.
+function openDtcCatalog() {
+  const u = units.find(u => u.index === unitSel);
+  showTab('dtc');
+  $('#dtcQ').value = u.variant || u.id;
+  odxFind('dtc');
 }
 
 function unitStart(i) { unitPath = []; unitRun(...UNIT_ACTIONS[i]); }

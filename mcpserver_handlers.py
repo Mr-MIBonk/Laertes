@@ -1028,6 +1028,36 @@ def handle_gfs_explore(cmd):
     return out
 
 
+def handle_project_state(cmd):
+    """Read-only: the current/available vehicle project, to design offline simulation."""
+    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
+    out = {"ok": True}
+    diag = Factory.getInstance()
+    for name, fn in [("vehicle_project", diag.getVehicleProject),
+                     ("change_allowed", diag.isVehicleProjectChangeAllowed),
+                     ("project_mode", diag.getAutomationApiVersion)]:
+        try:
+            out[name] = fn()
+        except (Exception, Throwable) as e:
+            out[name + "_error"] = error_text(e)
+    try:
+        out["project_ecus"] = [unicode(x) for x in diag.getProjectEcuAddressList()]
+    except (Exception, Throwable) as e:
+        out["project_ecus_error"] = error_text(e)
+    context = get_context()
+    info, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.systemtest.IDiagnosisSessionInfoService")
+    try:
+        if info is not None:
+            out["proposed_manufacturers"] = [unicode(x) for x in info.getProposedManufacturerList()]
+            out["proposed_projects"] = [unicode(x) for x in info.getProposedVehicleProjectList()]
+    except (Exception, Throwable) as e:
+        out["proposed_error"] = error_text(e)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    return out
+
+
 def handle_api_methods(cmd):
     """Read-only: the methods of the ODIS automation diagnostic interface (IDiagnosticInterface),
     to see which read/write operations (coding, adaptation) are available over the bridge."""
@@ -1040,6 +1070,7 @@ HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
     "api_methods": handle_api_methods,
+    "project_state": handle_project_state,
     "ping": handle_ping,
     "list_project_ecus": handle_list_project_ecus,
     "list_vehicle_ecus": handle_list_vehicle_ecus,
