@@ -1,0 +1,49 @@
+# Builds a GitHub release when a version tag is pushed:  git tag v0.1.0 && git push origin v0.1.0
+# The release gets laertes.exe, the two bridge scripts, LICENSE and THIRD_PARTY_LICENSES.txt.
+# (Gitea uses .gitea/workflows/release.yml instead and ignores this file.)
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check that the tag matches the version in main.go
+        run: |
+          v=$(sed -n 's/^const version = "\(.*\)"$/\1/p' main.go)
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version \"$v\" in main.go"
+            exit 1
+          fi
+
+      - name: Test and build
+        run: |
+          go vet ./...
+          go test ./...
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o laertes.exe .
+          GOOS=windows sh scripts/licenses.sh > THIRD_PARTY_LICENSES.txt
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files="laertes.exe mcpserver_test.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt"
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $files --clobber   # re-run: replace the files
+          else
+            gh release create "$GITHUB_REF_NAME" $files --title "Laertes $GITHUB_REF_NAME" --notes \
+              "Laertes $GITHUB_REF_NAME for Windows. Copy the two mcpserver_*.py files to C:\\ProgramData\\OE\\macros\\, run mcpserver_test.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
+          fi

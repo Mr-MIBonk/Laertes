@@ -23,7 +23,8 @@ Double-click `build.cmd` (needs [Go](https://go.dev/dl/)) — it runs the tests 
 
 ## Release
 
-Pushing a tag `vX.Y.Z` runs `.gitea/workflows/release.yml`: it checks that the tag matches `version`
+Pushing a tag `vX.Y.Z` runs the release workflow (`.gitea/workflows/release.yml` on Gitea,
+`.github/workflows/release.yml` on GitHub): it checks that the tag matches `version`
 in `main.go`, runs the tests, builds `laertes.exe` and publishes a release with the executable, the
 two bridge scripts, `LICENSE` and `THIRD_PARTY_LICENSES.txt`.
 
