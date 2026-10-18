@@ -539,15 +539,28 @@ function codingByte(i, v) {
 function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(); s.writeMsg = ''; renderUnitDetail(); } }
 async function codingWrite() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
-  const to = step.work.map(hex).join(' '), from = step.orig.map(hex).join(' ');
-  const diff = step.work.map((b, i) => b !== step.orig[i] ? `  byte ${i}: ${hex(step.orig[i])} → ${hex(b)}` : null).filter(Boolean);
+  const want = step.work.slice();
+  const to = want.map(hex).join(' '), from = step.orig.map(hex).join(' ');
+  const diff = want.map((b, i) => b !== step.orig[i] ? `  byte ${i}: ${hex(step.orig[i])} → ${hex(b)}` : null).filter(Boolean);
   if (!diff.length) return;
   if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
   step.writeMsg = 'Writing coding to the unit…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_byte_coding', address: u.id, name: step.sysName, coding: to});
-    step.orig = step.work.slice();
-    step.writeMsg = 'Coding written to the unit.';
+    // Read the coding back from the unit and confirm it matches what we intended to write.
+    step.writeMsg = 'Coding written. Reading it back to verify…'; renderUnitDetail();
+    const res = await bridge({action: 'read_coding', address: u.id});
+    const entry = (res.coding || []).find(c => c.systemName === step.sysName) || (res.coding || [])[0] || {};
+    const got = entry.byteCoding ? bytesOf(entry.byteCoding.replace(/\s/g, '')) : [];
+    step.orig = got.slice();  // the unit's actual coding now
+    const same = got.length === want.length && got.every((b, i) => b === want[i]);
+    if (same) {
+      step.work = got.slice();
+      step.writeMsg = `Verified: the unit now reads ${got.map(hex).join(' ')}.`; step.writeErr = false;
+    } else {
+      step.writeMsg = `Write did NOT match. Wanted ${to} but the unit reads ${got.map(hex).join(' ') || '(empty)'}. The differing bytes are highlighted; you can write again.`;
+      step.writeErr = true;  // step.work stays at the intended value so the diff is visible
+    }
   } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
   renderUnitDetail();
 }
