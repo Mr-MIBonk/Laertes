@@ -690,13 +690,13 @@ function decodeCoding(hexBytes, table) {
 // the chosen value back into the coding bytes at its byte/bit position (shown in the Bits column).
 function decodedTable(hexBytes, table, editable) {
   return `<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th></tr>${decodeCoding(hexBytes, table).map(d => {
-    const discrete = (d.values || []).filter(c => c.low === c.high);
+    const discrete = (d.values || []).filter(c => Number(c.low) === Number(c.high));
     let cell;
     if (editable && d.editable && discrete.length) {
-      const known = discrete.some(c => c.low === d.cur);
+      const known = discrete.some(c => Number(c.low) === d.cur);
       cell = `<select onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},+this.value)">
         ${known ? '' : `<option selected value="${d.cur}">0x${d.cur.toString(16).toUpperCase()} (unknown)</option>`}
-        ${discrete.map(c => `<option value="${c.low}" ${c.low === d.cur ? 'selected' : ''}>${esc(c.text)} (0x${c.low.toString(16).toUpperCase()})</option>`).join('')}</select>`;
+        ${discrete.map(c => `<option value="${Number(c.low)}" ${Number(c.low) === d.cur ? 'selected' : ''}>${esc(c.text)} (0x${Number(c.low).toString(16).toUpperCase()})</option>`).join('')}</select>`;
     } else if (editable && d.editable && d.byte_pos !== undefined) {
       cell = `<input class="num" value="${d.cur}" onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},this.value)">${d.unit ? ' ' + esc(d.unit) : ''}`;
     } else {
