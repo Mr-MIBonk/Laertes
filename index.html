@@ -252,6 +252,7 @@ async function select(id) {
   }
   work = bytesOf(sel().coding);
   await loadLabels();
+  await applyCodingTabDef();
   renderHist(); render();
 }
 
@@ -267,13 +268,65 @@ function loadCustomCoding() {
   if (h.length < 2 || h.length % 2) { alert('Enter an even number of hex digits.'); return; }
   virtualReading = {id: -1, time: '', ecu: 'Custom coding', variant: 'CUSTOM', subsystem: 'custom', coding: h.toUpperCase(), fromUnit: false};
   selId = -1; work = bytesOf(virtualReading.coding); labelsKey = null;
-  loadLabels(true).then(render);
+  loadLabels(true).then(applyCodingTabDef).then(render);
 }
 // Returns to the Project units coding view the user opened the Coding tab from.
 function backToUnitCoding() {
   virtualReading = null;
   select(readings.length ? readings[0].id : null);  // restore the Coding tab to its normal view
   showTab('units'); renderUnitDetail();
+}
+
+// Coding-tab ODX definition picker: decode with any variant's database definition, like the
+// "related variant" option in Project units, remembered per variant (shared coding_pref).
+let codingDef = {};
+async function applyCodingTabDef() {
+  const r = sel();
+  codingDef = {forVariant: r ? r.variant : ''};
+  if (!r || !r.variant) return;
+  const pref = await loadCodingPref(r.variant);
+  if (!pref) return;
+  try {
+    const table = await bridge({action: 'odx_table', variant: pref.borrowVariant, base: pref.borrowBase, table: TEXTUAL_TABLE});
+    codingDef = {forVariant: r.variant, chosen: {variant: pref.borrowVariant, base: pref.borrowBase}, table, remembered: true};
+    labels = labels.concat(odxToLabels(table));
+  } catch (e) { /* definition unavailable; leave the grid as-is */ }
+}
+function codingDefPanelHTML() {
+  const d = codingDef || {};
+  let h = '<h2 class="sub">Coding definition (ODIS database)</h2>';
+  h += d.chosen
+    ? `<div class="meta">Decoded with <b>${esc(d.chosen.variant)}</b>${d.remembered ? ' (remembered)' : ''}. <button onclick="codingDefStart()">Change…</button></div>`
+    : '<button onclick="codingDefStart()">Decode with a variant’s definition…</button>';
+  if (d.searching) {
+    h += `<div class="bar"><input id="cdq" placeholder="part number or variant, e.g. 04C906026 or EV_ECM…" style="width:24em;font-family:Consolas, monospace"
+        onkeydown="if(event.key==='Enter')codingDefSearch()"><button onclick="codingDefSearch()">Search</button></div>`;
+    if (d.busy) h += '<div class="meta">Searching the ODIS database…</div>';
+    if (d.err) h += `<div class="status err">${esc(d.err)}</div>`;
+    if (d.list) h += `<div class="names short">${d.list.map((v, i) => `<button onclick="codingDefPick(${i})">${esc(v.variant)}</button>`).join('')}</div>`;
+  }
+  return h;
+}
+function codingDefStart() { codingDef.searching = true; codingDef.list = null; codingDef.err = null; render(); }
+async function codingDefSearch() {
+  const q = ($('#cdq').value || '').trim(); if (!q) return;
+  codingDef.busy = true; codingDef.err = null; render();
+  try { codingDef.list = (await bridge({action: 'odx_variants', query: q})).variants; }
+  catch (e) { codingDef.err = e.message; }
+  codingDef.busy = false; render();
+}
+async function codingDefPick(i) {
+  const v = codingDef.list[i], r = sel();
+  codingDef = {forVariant: r ? r.variant : '', chosen: v, busy: true};
+  render();
+  try {
+    const table = await bridge({action: 'odx_table', variant: v.variant, base: v.base, table: TEXTUAL_TABLE});
+    codingDef = {forVariant: r ? r.variant : '', chosen: v, table};
+    await loadLabels(true);
+    labels = labels.concat(odxToLabels(table));
+    if (r && r.variant) saveCodingPref(r.variant, v.variant, v.base);  // remember the choice
+  } catch (e) { codingDef = {forVariant: r ? r.variant : '', err: e.message}; }
+  render();
 }
 
 function renderHist() {
@@ -325,7 +378,8 @@ function render() {
     Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
     New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="select(selId)">Reset</button>
       <span class="meta">To write to a unit, open it under Project units.</span></div>
-    <table><tr><th>Byte</th><th>Byte label / bit fields</th>${[7,6,5,4,3,2,1,0].map(b => `<th>Bit ${b} (0x${hex(1 << b)})</th>`).join('')}</tr>${rows}</table>`;
+    <table><tr><th>Byte</th><th>Byte label / bit fields</th>${[7,6,5,4,3,2,1,0].map(b => `<th>Bit ${b} (0x${hex(1 << b)})</th>`).join('')}</tr>${rows}</table>
+    ${codingDefPanelHTML()}`;
 }
 
 async function deleteReading(id) {
@@ -683,7 +737,13 @@ async function openUnitCodingInTab() {
   await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
   // Also carry the coding definition chosen in units (own or borrowed ODX) as labels for the grid.
   const table = step.odx && step.odx.own ? step.odx.own : (step.borrow && step.borrow.table);
-  if (table) labels = labels.concat(odxToLabels(table));
+  if (table) {
+    labels = labels.concat(odxToLabels(table));
+    const chosen = step.odx && step.odx.own ? {variant: step.unitVariant || '(this unit)', base: ''} : (step.borrow && step.borrow.chosen);
+    codingDef = {forVariant: step.unitVariant, chosen, table, remembered: !!(step.borrow && step.borrow.remembered)};
+  } else {
+    codingDef = {forVariant: step.unitVariant};
+  }
   renderHist(); render();
 }
 // Converts an ODX textual coding table into VCDS-style labels (per-byte bit fields) so the chosen

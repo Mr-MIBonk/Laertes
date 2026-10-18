@@ -1305,6 +1305,21 @@ def handle_vehicle_projects(cmd):
     return out
 
 
+def handle_lookup_projects(cmd):
+    """All vehicle projects ODIS can offer (for choosing the car from the web page)."""
+    context = get_context()
+    svc, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.vehicledata.IVaudasVehicleService")
+    try:
+        if svc is None:
+            return {"ok": False, "error": "vehicle service not found"}
+        return {"ok": True, "projects": sorted(set(unicode(x) for x in (svc.lookupProjects() or [])))}
+    except (Exception, Throwable) as e:
+        return {"ok": False, "error": error_text(e)}
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
 def handle_set_vehicle_project(cmd):
     """Sets the vehicle project (the car) so its ODX data loads when ODIS did not detect one."""
     from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
@@ -1360,6 +1375,7 @@ HANDLERS = {
     "vci": handle_vci,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
+    "lookup_projects": handle_lookup_projects,
     "api_methods": handle_api_methods,
     "project_state": handle_project_state,
     "ping": handle_ping,
