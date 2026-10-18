@@ -181,7 +181,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
   <span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
   <span id="retro" class="retro" hidden></span>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
@@ -212,6 +212,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
 <div id="history" class="db units" hidden></div>
+<div id="retrofit" class="db units" hidden></div>
 <div id="settings" class="db help" hidden></div>
 <div id="guide" class="db help" hidden>
   <h1>Getting started with Laertes</h1>
@@ -276,10 +277,11 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       how many are new (+) or gone (−) since the press before; <b>Full scan</b> writes identification, coding and faults
       as a log in the layout of a VCDS Auto-Scan, to copy or download for tools that read those logs.</dd>
     <dt>Retrofit mode</dt>
-    <dd><b>Start retrofit…</b> first scans the listed units and keeps that scan. While the retrofit is active (🔧 in the
-      top bar), every change is stored under its name (by default from the VIN) and the faults the units had before are
-      ignored in counts, scans and the coding fault check. Rename it or look at the scan from before at any time; end it
-      when the work is done. In History, pick the retrofit to see all its changes.</dd>
+    <dd><b>Start retrofit…</b> opens the <b>Retrofit</b> tab: tick the units the retrofit covers (all by default), and
+      they are scanned and that scan is kept. While the retrofit is active (🔧 in the top bar), every coding, adaptation,
+      firmware and dataset change to those units is stored under its name (by default from the VIN) and the faults they
+      had before are ignored in counts, scans and the coding fault check. The Retrofit tab lists its changes as they are
+      written, by unit (e.g. only the ACC); History shows them too. <b>Stop retrofit</b> when the work is done.</dd>
     <dt>Unit database / Trouble codes</dt>
     <dd>The ODIS database without a car: search a part number or variant, see its tables and every trouble code with
       repair guidance. Each unit also links to its <i>DTC catalog (offline)</i>.</dd>
@@ -695,7 +697,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', settings: 'settings', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', settings: 'settings', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -709,6 +711,7 @@ function showTab(tab) {
   if (tab === 'units' && !units) loadUnits();
   else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
+  if (tab === 'retrofit') loadRetrofitTab();
   if (tab === 'settings') renderSettings();
 }
 
@@ -1018,8 +1021,13 @@ async function recordChange(c) {
     if (c.vin === undefined) c.vin = await getVin();
     await api('POST', '/api/history', c);
     changes = null;  // reload next time History is shown
-    if (currentTab() === 'history') loadHistory();
+    refreshChangeViews();
   } catch (e) { /* recording is best-effort; the write itself already reported its result */ }
+}
+// Reloads History or the Retrofit tab when one of them is shown, so new changes appear at once.
+function refreshChangeViews() {
+  if (currentTab() === 'history') loadHistory();
+  else if (currentTab() === 'retrofit') loadRetrofitTab();
 }
 async function loadHistory() {
   try { changes = await api('GET', '/api/history'); } catch (e) { changes = []; }
@@ -1053,7 +1061,7 @@ function renderHistory() {
       <button class="warn" onclick="deleteChange(0)">Clear all</button></div>
     ${rf ? `<div class="retrobar"><b>${esc(rf.name)}</b><span class="meta">${rf.vin ? 'VIN ' + esc(rf.vin) + ' · ' : ''}${esc(fmtWhen(rf.started))} – ${rf.ended ? esc(fmtWhen(rf.ended)) : 'active'}</span>
       <button onclick="retrofitRename(${rf.id})">Rename…</button><button onclick="retrofitBaseline(${rf.id})">Scan before the retrofit</button>
-      ${rf.ended ? '' : `<button class="warn" onclick="retrofitEnd()">End retrofit</button>`}</div>` : ''}
+      ${rf.ended ? '' : `<button class="warn" onclick="retrofitEnd()">Stop retrofit</button>`}</div>` : ''}
     ${histBaseline ? reportHTML(histBaseline, 'histBaseline = null; renderHistory()') : ''}
     <div id="histRows"></div>`;
   renderHistoryRows();
@@ -1071,6 +1079,11 @@ function changeDetailsHTML(details) {
 // Only the rows re-render while typing in the search, so the input keeps its focus.
 function renderHistoryRows() {
   const cs = historyShown(), all = (changes || []).length;
+  $('#histRows').innerHTML = `<div class="meta">${cs.length === all ? `${all} change${all === 1 ? '' : 's'}` : `${cs.length} of ${all} changes`} written to control units (stored in the database)</div>
+    ${cs.length ? changesTableHTML(cs) : `<div class="empty">${all ? 'No change matches.' : 'No coding or adaptation changes recorded yet.'}</div>`}`;
+}
+// The table of written changes, shared by History and the Retrofit tab.
+function changesTableHTML(cs) {
   const rows = cs.map(c => {
     const unit = [esc(c.unit || ''), c.address ? `<small class="meta">${esc(c.address)}</small>` : '',
       c.variant ? `<small class="meta">${esc(c.variant)}</small>` : '',
@@ -1084,14 +1097,13 @@ function renderHistoryRows() {
       <td><button class="cp" title="Copy this change" onclick="copyEl(this.closest('tr'))">⧉</button>
         <button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`;
   }).join('');
-  $('#histRows').innerHTML = `<div class="meta">${cs.length === all ? `${all} change${all === 1 ? '' : 's'}` : `${cs.length} of ${all} changes`} written to control units (stored in the database)</div>
-    ${cs.length ? copyNext(`<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`, 'Copy the shown changes')
-      : `<div class="empty">${all ? 'No change matches.' : 'No coding or adaptation changes recorded yet.'}</div>`}`;
+  return copyNext(`<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`, 'Copy the shown changes');
 }
 async function deleteChange(id) {
   if (!confirm(id ? 'Delete this history entry?' : 'Clear all change history?')) return;
   try { await api('DELETE', '/api/history' + (id ? '/' + id : '')); } catch (e) { alert('Delete failed: ' + e.message); return; }
-  loadHistory();
+  changes = null;
+  refreshChangeViews();
 }
 
 // --- Units coding editor: edit the byte coding and write it to the unit via the bridge ------
@@ -2021,31 +2033,41 @@ function renderRetrofit() {
   $('#retroStartBtn').hidden = !!retrofit;
   const n = retrofit ? Object.values(retrofit.baselineDtcs || {}).reduce((a, x) => a + x.length, 0) : 0;
   $('#retroBar').innerHTML = !retrofit ? '' : `<div class="retrobar">🔧 Retrofit <b>${esc(retrofit.name)}</b>
-    <span class="meta">since ${esc(fmtWhen(retrofit.started))} · ${n} fault${n === 1 ? '' : 's'} from before ignored</span>
+    <span class="meta">since ${esc(fmtWhen(retrofit.started))} · ${retroUnitsText(retrofit)} · ${n} fault${n === 1 ? '' : 's'} from before ignored</span>
     <button onclick="retrofitRename(${retrofit.id})">Rename…</button><button onclick="retrofitBaseline(${retrofit.id})">Scan before</button>
-    <button class="warn" onclick="retrofitEnd()">End retrofit</button></div>`;
+    <button class="warn" onclick="retrofitEnd()">Stop retrofit</button></div>`;
   (units || []).forEach(u => { const f = scanOf(u.id).faults; if (f) countFaults(u, f); });
   if (units) renderUnitList();
 }
-function retrofitStart() {
+// Start retrofit… opens the setup in the Retrofit tab: a name and the listed units, all ticked.
+async function retrofitStart() {
+  await loadRetrofits();
+  if (retrofit) { toast('A retrofit is already active.', true); showTab('retrofit'); return; }
+  const list = scanList();
+  if (!list.length) return;
+  const vin = await getVin(), day = new Date().toISOString().slice(0, 10);
+  retroSetup = {name: vin ? `Retrofit ${vin} ${day}` : `Retrofit ${day}`, vin, list, picked: new Set(list.map(u => u.id))};
+  showTab('retrofit');
+}
+// Scans the ticked units, then stores the retrofit with them. Only changes to these units are
+// stored under it; with every unit ticked it covers all units, also ones not listed now.
+function retrofitBegin() {
+  const st = retroSetup, list = st.list.filter(u => st.picked.has(u.id));
+  if (!list.length) { toast('Tick at least one unit.', true); return; }
+  if (!confirm(`Retrofit mode first scans the ${list.length} ticked units (identification, coding, faults) and keeps the result as the state before the retrofit. Faults found now are ignored while the retrofit is active.\n\nStart the scan?`)) return;
   op('Retrofit', async o => {
-    await loadRetrofits();
-    if (retrofit) { toast('A retrofit is already active.', true); return; }
-    const vin = await getVin(), day = new Date().toISOString().slice(0, 10);
-    const auto = vin ? `Retrofit ${vin} ${day}` : `Retrofit ${day}`;
-    const name = prompt('Name of the retrofit (History finds all its changes by it):', auto);
-    if (name === null) return;
-    const list = scanList();
-    if (!list.length) return;
-    if (!confirm(`Retrofit mode first scans the ${list.length} listed units (identification, coding, faults) and keeps the result as the state before the retrofit. Faults found now are ignored while the retrofit is active.\n\nStart the scan?`)) return;
     const scan = await fullScanRun(list, o);
     if (o.cancelled) { toast('Scan stopped: retrofit not started.', true); return; }
     const baselineDtcs = {};
     scan.results.forEach(r => { if (r.faults) baselineDtcs[r.u.id] = r.faults.map(dtcKey); });
-    await api('POST', '/api/retrofits', {name: name.trim() || auto, vin, baseline: scan.text, baselineDtcs});
-    await loadRetrofits();
+    const all = list.length === st.list.length;
+    await api('POST', '/api/retrofits', {name: st.name.trim() || 'Retrofit', vin: st.vin, baseline: scan.text, baselineDtcs,
+      units: all ? [] : list.map(u => u.id)});
+    retroSetup = null; retroView = '';
     Object.keys(dtcSnap).forEach(k => delete dtcSnap[k]);  // DTC deltas start again without the old faults
-    showReport({...scan, title: `Retrofit ${retrofit ? retrofit.name : ''} started — scan before the retrofit`});
+    await loadRetrofits();
+    retroBaseline = {...scan, title: `Retrofit ${retrofit ? retrofit.name : ''} started — scan before the retrofit`};
+    showTab('retrofit');
   });
 }
 async function retrofitRename(id) {
@@ -2054,19 +2076,80 @@ async function retrofitRename(id) {
   if (!name || !name.trim()) return;
   try { await api('PATCH', '/api/retrofits/' + id, {name: name.trim()}); } catch (e) { toast(e.message, true); return; }
   await loadRetrofits(); changes = null;
-  if (currentTab() === 'history') loadHistory();
+  refreshChangeViews();
 }
 async function retrofitEnd() {
-  if (!retrofit || !confirm(`End retrofit "${retrofit.name}"?\n\nLater changes are no longer stored under it, and faults from before it count again.`)) return;
+  if (!retrofit || !confirm(`Stop retrofit "${retrofit.name}"?\n\nLater changes are no longer stored under it, and faults from before it count again.`)) return;
   try { await api('PATCH', '/api/retrofits/' + retrofit.id, {end: true}); } catch (e) { toast(e.message, true); return; }
   await loadRetrofits();
   if (currentTab() === 'history') renderHistory();
+  else if (currentTab() === 'retrofit') loadRetrofitTab();
 }
 async function retrofitBaseline(id) {
   let r;
   try { r = await api('GET', '/api/retrofits/' + id); } catch (e) { toast(e.message, true); return; }
   const rep = {title: `${r.name} — scan before the retrofit`, text: r.baseline || '(no scan stored)', file: 'Log-' + (r.vin || 'retrofit')};
-  if (currentTab() === 'history') { histBaseline = rep; renderHistory(); } else showReport(rep);
+  if (currentTab() === 'history') { histBaseline = rep; renderHistory(); }
+  else if (currentTab() === 'retrofit') { retroBaseline = rep; renderRetrofitTab(); }
+  else showReport(rep);
+}
+
+// --- Retrofit tab --------------------------------------------------------------------------
+// The setup of a new retrofit (units to cover), or every change of the active retrofit (or of
+// a past one picked here) straight from the database, narrowed by unit, e.g. to the ACC.
+let retroSetup = null, retroView = '', retroChanges = [], retroQ = '', retroBaseline = null;
+const retroShownId = () => retroView || (retrofit ? String(retrofit.id) : retrofits.length ? String(retrofits[0].id) : '');
+const retroUnitsText = r => !r.units || !r.units.length ? 'all units' : r.units.length === 1 ? 'unit ' + r.units[0] : `${r.units.length} units: ${r.units.join(', ')}`;
+async function loadRetrofitTab() {
+  await loadRetrofits();
+  const id = retroShownId();
+  if (!retroSetup && id) {
+    try { retroChanges = await api('GET', '/api/history?retrofit=' + id); } catch (e) { retroChanges = []; toast(e.message, true); }
+  } else retroChanges = [];
+  renderRetrofitTab();
+}
+function retroSetupHTML() {
+  const st = retroSetup;
+  return `<h2 class="sub">Start retrofit</h2>
+    <div class="expform"><div class="meta">Name (History and this tab find its changes by it):</div>
+      <input type="text" value="${esc(st.name)}" oninput="retroSetup.name = this.value"></div>
+    <div class="meta">Units of the retrofit: they are scanned now, and only changes to them are stored under it. With every unit ticked it covers all units.</div>
+    <div class="bar"><button onclick="retroSetup.list.forEach(u => retroSetup.picked.add(u.id)); renderRetrofitTab()">All</button>
+      <button onclick="retroSetup.picked.clear(); renderRetrofitTab()">None</button>
+      <span class="meta">${st.picked.size} of ${st.list.length} ticked</span></div>
+    <table class="vals">${st.list.map(u => `<tr><td><label><input type="checkbox" ${st.picked.has(u.id) ? 'checked' : ''}
+      onchange="retroSetup.picked[this.checked ? 'add' : 'delete'](this.value); renderRetrofitTab()" value="${esc(u.id)}"> ${esc(u.id || '')}</label></td>
+      <td>${esc(u.sname || u.repr || '')}</td></tr>`).join('')}</table>
+    <div class="bar"><button class="op" onclick="retrofitBegin()">Scan and start</button><button onclick="retroSetup = null; loadRetrofitTab()">Cancel</button></div>`;
+}
+function renderRetrofitTab() {
+  const el = $('#retrofit');
+  if (!el) return;
+  if (retroSetup) { el.innerHTML = retroSetupHTML(); return; }
+  const rf = retrofits.find(r => String(r.id) === retroShownId());
+  const perUnit = {};
+  retroChanges.forEach(c => { const k = c.unit || c.address || '?'; perUnit[k] = (perUnit[k] || 0) + 1; });
+  el.innerHTML = `<div class="bar">${retrofit ? '' : `<button class="op" onclick="retrofitStart()" title="Pick the units, scan them, then group all following changes to them under one name">Start retrofit…</button>`}
+      <button onclick="loadRetrofitTab()">Reload</button>
+      ${retrofits.length ? `<select onchange="retroView = this.value; retroQ = ''; retroBaseline = null; loadRetrofitTab()" style="max-width:280px">
+        ${retrofits.map(r => `<option value="${r.id}" ${String(r.id) === retroShownId() ? 'selected' : ''}>${esc(r.name)}${r.ended ? '' : ' (active)'}</option>`).join('')}</select>` : ''}
+      ${rf ? `<input type="text" placeholder="Search unit, value, setting…" value="${esc(retroQ)}" oninput="retroQ = this.value; renderRetrofitRows()" style="max-width:300px">` : ''}</div>
+    ${rf ? `<div class="retrobar">🔧 <b>${esc(rf.name)}</b><span class="meta">${rf.vin ? 'VIN ' + esc(rf.vin) + ' · ' : ''}${esc(fmtWhen(rf.started))} – ${rf.ended ? esc(fmtWhen(rf.ended)) : 'active'} · ${esc(retroUnitsText(rf))}</span>
+      <button onclick="retrofitRename(${rf.id})">Rename…</button><button onclick="retrofitBaseline(${rf.id})">Scan before the retrofit</button>
+      ${rf.ended ? '' : `<button class="warn" onclick="retrofitEnd()">Stop retrofit</button>`}</div>
+      ${Object.keys(perUnit).length ? `<div class="bar"><span class="meta">Units changed:</span> ${Object.entries(perUnit).map(([u, n]) =>
+        `<button data-u="${esc(u)}" onclick="retroQ = this.dataset.u; renderRetrofitTab()">${esc(u)} (${n})</button>`).join('')}
+        ${retroQ ? `<button onclick="retroQ = ''; renderRetrofitTab()">Show all</button>` : ''}</div>` : ''}`
+      : `<div class="empty">No retrofit yet. <b>Start retrofit…</b> scans the units you pick, then every coding, adaptation, firmware and dataset change to them is stored under the retrofit until you stop it.</div>`}
+    ${retroBaseline ? reportHTML(retroBaseline, 'retroBaseline = null; renderRetrofitTab()') : ''}
+    <div id="retroRows"></div>`;
+  if (rf) renderRetrofitRows();
+}
+function renderRetrofitRows() {
+  const q = retroQ.trim().toLowerCase(), all = retroChanges.length;
+  const cs = retroChanges.filter(c => !q || Object.values(c).join(' ').toLowerCase().includes(q));
+  $('#retroRows').innerHTML = `<div class="meta">${cs.length === all ? `${all} change${all === 1 ? '' : 's'}` : `${cs.length} of ${all} changes`} in this retrofit</div>
+    ${cs.length ? changesTableHTML(cs) : `<div class="empty">${all ? 'No change matches.' : 'No changes written in this retrofit yet.'}</div>`}`;
 }
 
 // Live measurements: watch several measurement groups at once, re-reading them on an interval.

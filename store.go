@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 
 	_ "modernc.org/sqlite"
 )
@@ -86,6 +87,15 @@ CREATE TABLE IF NOT EXISTS retrofits (
 	baseline_dtcs TEXT NOT NULL DEFAULT '{}'
 );`); err != nil {
 		return err
+	}
+	var hasUnits int
+	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('retrofits') WHERE name='units'`).Scan(&hasUnits); err != nil {
+		return err
+	}
+	if hasUnits == 0 {
+		if _, err := db.Exec(`ALTER TABLE retrofits ADD COLUMN units TEXT NOT NULL DEFAULT '[]'`); err != nil {
+			return err
+		}
 	}
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS coding_pref (
@@ -181,7 +191,7 @@ type Change struct {
 }
 
 // AddChange records one written change and sets c.ID. A change written while a retrofit is
-// active belongs to that retrofit.
+// active belongs to that retrofit, if the retrofit covers the changed unit.
 func (s *Store) AddChange(c *Change) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -189,9 +199,20 @@ func (s *Store) AddChange(c *Change) error {
 	}
 	defer tx.Rollback()
 	c.RetrofitID, c.Retrofit = 0, ""
-	err = tx.QueryRow(`SELECT id, name FROM retrofits WHERE ended='' ORDER BY id DESC LIMIT 1`).Scan(&c.RetrofitID, &c.Retrofit)
+	var id int64
+	var name, units string
+	err = tx.QueryRow(`SELECT id, name, units FROM retrofits WHERE ended='' ORDER BY id DESC LIMIT 1`).Scan(&id, &name, &units)
 	if err != nil && err != sql.ErrNoRows {
 		return err
+	}
+	if err == nil {
+		var addrs []string
+		if err := json.Unmarshal([]byte(units), &addrs); err != nil {
+			return err
+		}
+		if len(addrs) == 0 || slices.Contains(addrs, c.Address) {
+			c.RetrofitID, c.Retrofit = id, name
+		}
 	}
 	res, err := tx.Exec(`INSERT INTO changes (time, kind, address, unit, target, old_value, new_value, status, note, vin, variant, details, retrofit_id)
 		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, c.Time, c.Kind, c.Address, c.Unit, c.Target, c.OldValue, c.NewValue, c.Status, c.Note, c.VIN, c.Variant,
@@ -205,10 +226,13 @@ func (s *Store) AddChange(c *Change) error {
 	return tx.Commit()
 }
 
-func (s *Store) Changes(limit int) ([]Change, error) {
+// Changes returns the newest changes first; retrofit >= 0 keeps only that retrofit's changes
+// (0 = those made outside a retrofit), retrofit < 0 returns all.
+func (s *Store) Changes(limit int, retrofit int64) ([]Change, error) {
 	rows, err := s.db.Query(`SELECT c.id, c.time, c.kind, c.address, c.unit, c.target, c.old_value, c.new_value, c.status, c.note,
 		c.vin, c.variant, c.details, c.retrofit_id, COALESCE(r.name, '')
-		FROM changes c LEFT JOIN retrofits r ON r.id = c.retrofit_id ORDER BY c.id DESC LIMIT ?`, limit)
+		FROM changes c LEFT JOIN retrofits r ON r.id = c.retrofit_id WHERE ?<0 OR c.retrofit_id=? ORDER BY c.id DESC LIMIT ?`,
+		retrofit, retrofit, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +263,8 @@ type Retrofit struct {
 	VIN     string `json:"vin"`
 	Started string `json:"started"`
 	Ended   string `json:"ended"` // empty while the retrofit is active
+	// Units are the addresses of the units the retrofit covers; empty means all units.
+	Units []string `json:"units"`
 	// Baseline is the full-scan log taken at the start (only returned by Retrofit).
 	Baseline string `json:"baseline,omitempty"`
 	// BaselineDTCs maps a unit address to the faults it had at the start (JSON, kept as sent).
@@ -252,6 +278,13 @@ func (s *Store) StartRetrofit(r *Retrofit) error {
 	if len(r.BaselineDTCs) == 0 {
 		r.BaselineDTCs = json.RawMessage("{}")
 	}
+	if r.Units == nil {
+		r.Units = []string{}
+	}
+	units, err := json.Marshal(r.Units)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -264,8 +297,8 @@ func (s *Store) StartRetrofit(r *Retrofit) error {
 	if active > 0 {
 		return errRetrofitActive
 	}
-	res, err := tx.Exec(`INSERT INTO retrofits (name, vin, started, baseline, baseline_dtcs) VALUES (?,?,?,?,?)`,
-		r.Name, r.VIN, r.Started, r.Baseline, string(r.BaselineDTCs))
+	res, err := tx.Exec(`INSERT INTO retrofits (name, vin, started, baseline, baseline_dtcs, units) VALUES (?,?,?,?,?,?)`,
+		r.Name, r.VIN, r.Started, r.Baseline, string(r.BaselineDTCs), string(units))
 	if err != nil {
 		return err
 	}
@@ -277,7 +310,7 @@ func (s *Store) StartRetrofit(r *Retrofit) error {
 
 // Retrofits lists all retrofits, newest first, without their baseline logs.
 func (s *Store) Retrofits() ([]Retrofit, error) {
-	rows, err := s.db.Query(`SELECT id, name, vin, started, ended, baseline_dtcs FROM retrofits ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT id, name, vin, started, ended, baseline_dtcs, units FROM retrofits ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -285,11 +318,14 @@ func (s *Store) Retrofits() ([]Retrofit, error) {
 	out := []Retrofit{}
 	for rows.Next() {
 		var r Retrofit
-		var dtcs string
-		if err := rows.Scan(&r.ID, &r.Name, &r.VIN, &r.Started, &r.Ended, &dtcs); err != nil {
+		var dtcs, units string
+		if err := rows.Scan(&r.ID, &r.Name, &r.VIN, &r.Started, &r.Ended, &dtcs, &units); err != nil {
 			return nil, err
 		}
 		r.BaselineDTCs = json.RawMessage(dtcs)
+		if err := json.Unmarshal([]byte(units), &r.Units); err != nil {
+			return nil, err
+		}
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -298,9 +334,9 @@ func (s *Store) Retrofits() ([]Retrofit, error) {
 // Retrofit returns one retrofit with its baseline log, or nil if there is none with this id.
 func (s *Store) Retrofit(id int64) (*Retrofit, error) {
 	r := Retrofit{ID: id}
-	var dtcs string
-	err := s.db.QueryRow(`SELECT name, vin, started, ended, baseline, baseline_dtcs FROM retrofits WHERE id=?`, id).
-		Scan(&r.Name, &r.VIN, &r.Started, &r.Ended, &r.Baseline, &dtcs)
+	var dtcs, units string
+	err := s.db.QueryRow(`SELECT name, vin, started, ended, baseline, baseline_dtcs, units FROM retrofits WHERE id=?`, id).
+		Scan(&r.Name, &r.VIN, &r.Started, &r.Ended, &r.Baseline, &dtcs, &units)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -308,6 +344,9 @@ func (s *Store) Retrofit(id int64) (*Retrofit, error) {
 		return nil, err
 	}
 	r.BaselineDTCs = json.RawMessage(dtcs)
+	if err := json.Unmarshal([]byte(units), &r.Units); err != nil {
+		return nil, err
+	}
 	return &r, nil
 }
 

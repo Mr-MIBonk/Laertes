@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -78,16 +79,32 @@ func TestRetrofitChanges(t *testing.T) {
 	after := Change{Time: "t4", Kind: "coding"}
 	s.AddChange(&after)
 
-	cs, _ := s.Changes(10)
+	cs, _ := s.Changes(10, -1)
 	if len(cs) != 3 || cs[0].RetrofitID != 0 || cs[1].RetrofitID != rf.ID || cs[1].Retrofit != "Renamed" || cs[1].Details != "Byte 1: 00 → 04" || cs[2].RetrofitID != 0 {
 		t.Errorf("changes %+v", cs)
+	}
+	if cs, _ := s.Changes(10, rf.ID); len(cs) != 1 || cs[0].ID != during.ID {
+		t.Errorf("retrofit changes %+v", cs)
+	}
+	if cs, _ := s.Changes(10, 0); len(cs) != 2 {
+		t.Errorf("changes outside a retrofit %+v", cs)
 	}
 	got, _ := s.Retrofit(rf.ID)
 	if got == nil || got.Ended != "t3" || got.Baseline != "scan" || string(got.BaselineDTCs) != `{"0x0019":["U1113|x"]}` {
 		t.Errorf("retrofit %+v", got)
 	}
-	if err := s.StartRetrofit(&Retrofit{Name: "next", Started: "t5"}); err != nil {
+	next := Retrofit{Name: "next", Started: "t5", Units: []string{"0x0013"}}
+	if err := s.StartRetrofit(&next); err != nil {
 		t.Errorf("start after end: %v", err)
+	}
+	acc, other := Change{Time: "t6", Kind: "coding", Address: "0x0013"}, Change{Time: "t7", Kind: "firmware", Address: "0x0019"}
+	s.AddChange(&acc)
+	s.AddChange(&other)
+	if acc.RetrofitID != next.ID || other.RetrofitID != 0 {
+		t.Errorf("unit scope: in %d, outside %d", acc.RetrofitID, other.RetrofitID)
+	}
+	if rs, _ := s.Retrofits(); len(rs) != 2 || !slices.Equal(rs[0].Units, []string{"0x0013"}) || len(rs[1].Units) != 0 {
+		t.Errorf("retrofit units %+v", rs)
 	}
 }
 

@@ -18,7 +18,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.3.0"
+const version = "0.4.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -204,7 +204,18 @@ func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
 		reply(w, len(ls), store.SetLabels(q.Get("variant"), q.Get("subsystem"), ls))
 	})
 	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
-		cs, err := store.Changes(500)
+		// ?retrofit=<id> returns every change of that retrofit; otherwise the latest 500 of all.
+		if q := r.URL.Query().Get("retrofit"); q != "" {
+			id, err := strconv.ParseInt(q, 10, 64)
+			if err != nil || id < 0 {
+				http.Error(w, "bad retrofit id", http.StatusBadRequest)
+				return
+			}
+			cs, err := store.Changes(100000, id)
+			reply(w, cs, err)
+			return
+		}
+		cs, err := store.Changes(500, -1)
 		reply(w, cs, err)
 	})
 	mux.HandleFunc("POST /api/history", func(w http.ResponseWriter, r *http.Request) {
