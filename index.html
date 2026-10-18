@@ -259,7 +259,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       the coding is read back and verified, and the fault memory is read before and after so you see which faults
       are new or gone, active or passive; units that also code slave units, such as the gateway 19, offer each
       coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified, with the same before/after fault check as coding),
-      <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Event memory</b> (faults with
+      <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Basic settings</b> (start a
+      routine with its parameters, watch its status and chosen measurements, Stop), <b>Event memory</b> (faults with
       repair guidance), <b>Full scan</b> of the unit and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs
       elevated access. <b>Component protection (test)</b> finds the component-protection control on the unit and writes it,
       for bench testing of how a unit behaves while locked — it warns that this <b>locks the unit</b> (recovery needs an
@@ -664,12 +665,14 @@ const UNIT_ACTIONS = [
   [{action: 'read_coding'}, 'Coding'],
   [{action: 'list_adaptation_channels'}, 'Adaptation channels'],
   [{action: 'list_measurement_groups'}, 'Measurement groups'],
+  [{action: 'list_basic_settings'}, 'Basic settings'],
   [{action: 'read_event_memory'}, 'Event memory'],
 ];
 // For list results: the command and label opened by clicking one of the names.
 const UNIT_NEXT = {
   list_adaptation_channels: (name) => [{action: 'read_adaptation', channel: name}, name],
   list_measurement_groups: (name) => [{action: 'read_measurement_group', group: name}, name],
+  list_basic_settings: (name) => [{action: 'basic_setting_info', name}, name, {params: {}, meas: []}],
 };
 
 // Table rows for the values in a bridge result: every ODIS value (translatedName/translatedValue),
@@ -937,6 +940,8 @@ function renderUnitDetail() {
     body = flashPanelHTML(step, u);
   } else if (step && step.cmd && step.cmd.action === 'cp_find') {
     body = cpFindHTML(step, u);
+  } else if (step && step.res && step.cmd.action === 'basic_setting_info') {
+    body = basicSettingHTML(step, u);
   } else if (step && step.live) {
     body = liveHTML(step);
   } else if (step && step.res && step.res.names && step.cmd.action === 'list_measurement_groups') {
@@ -1770,11 +1775,77 @@ async function flashCancel(fromStop) {
   if (!step || !step.jobId) return;
   const flashing = step.progress && step.progress.phase === 'flashing';
   if (flashing && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
-  try { await bridge({action: 'flash_cancel', job_id: step.jobId}); toast(flashing ? 'Cancellation requested (may not stop programming).' : 'Cancelling…'); }
+  try { await bridge({action: 'job_cancel', job_id: step.jobId}); toast(flashing ? 'Cancellation requested (may not stop programming).' : 'Cancelling…'); }
   catch (e) { toast(e.message, true); }
 }
 
-// --- Scans ---------------------------------------------------------------------------------
+// --- Basic settings ------------------------------------------------------------------------
+// Like ODIS: pick a basic setting, fill its start parameters, tick the measurements to watch,
+// Start, follow the status and values, Stop. The bridge runs it as a job (basic_setting_run) and
+// checks it until job_cancel; this page polls job_status, and if it stops polling the bridge
+// stops the basic setting itself.
+function basicSettingHTML(step, u) {
+  const r = step.res, run = step.run, running = run && run.status === 'running';
+  const dis = running ? 'disabled' : '';
+  let h = `<div class="warnbox">A basic setting runs a routine in ${esc(u.sname || 'the unit')}: it can move actuators and relearn values.
+    Meet the conditions in the repair information (ignition, engine running or off, temperatures) before starting.</div>`;
+  if (r.params.length) h += `<h2 class="sub">Start parameters</h2><table class="vals">${r.params.map((p, i) =>
+    `<tr><td>${esc(p)}</td><td><input type="text" value="${esc(step.params[p] || '')}" ${dis} oninput="bsParam(${i}, this.value)"></td></tr>`).join('')}</table>`;
+  if (r.measurements.length) h += `<h2 class="sub">Measurements read with each check</h2>
+    <input type="text" placeholder="Filter" oninput="filterNames(this)">
+    <div class="names check">${r.measurements.map((m, i) =>
+      `<label><input type="checkbox" ${step.meas.includes(m) ? 'checked' : ''} ${dis} onchange="bsMeasure(${i}, this.checked)"> ${esc(m)}</label>`).join('')}</div>`;
+  h += `<div class="bar">${running ? '<button class="warn" onclick="bsStop()">Stop</button>'
+    : '<button class="warn op" onclick="bsStart()">Start basic setting…</button>'}</div>`;
+  return h + `<div id="bsOut">${run ? bsRunHTML(run) : ''}</div>`;
+}
+const bsStatuses = data => (data || []).map(s => s.status).filter(Boolean).join(', ');
+function bsRunHTML(run) {
+  const statuses = bsStatuses(run.data), rows = resultRows(run.data || []);
+  return `<div class="status ${run.error ? 'err' : ''}">${esc(run.phase || run.status)}${statuses ? ' — ' + esc(statuses) : ''}${run.error ? ' — ' + esc(run.error) + ' ' + trBtn(run.error) : ''}</div>
+    ${rows.length ? valsTable(rows) : ''}
+    ${run.data ? `<details class="rawjson"><summary>JSON</summary>${jsonView(run.data)}</details>` : ''}`;
+}
+function bsParam(i, v) { const s = curStep(); s.params[s.res.params[i]] = v; }
+function bsMeasure(i, on) {
+  const s = curStep(), m = s.res.measurements[i];
+  s.meas = s.meas.filter(x => x !== m);
+  if (on) s.meas.push(m);
+}
+function bsStart() {
+  const step = curStep(), u = units.find(u => u.index === unitSel), name = step.cmd.name;
+  if (busy) { toast(`Busy: ${busy.label}.`, true); return; }
+  if (!confirm(`Start basic setting ${name} on ${u.sname} ${u.id}?\n\nThe unit runs the routine until you press Stop.`)) return;
+  const params = Object.fromEntries(Object.entries(step.params).filter(([, v]) => v !== ''));
+  op(`Basic setting ${name}`, async o => {
+    step.run = {status: 'running', phase: 'starting'}; renderUnitDetail();
+    let jid;
+    try { jid = (await bridge({action: 'basic_setting_run', address: u.id, name, params, measurements: step.meas, login: loginCodes[u.id]})).job_id; }
+    catch (e) { step.run = {status: 'error', error: e.message}; renderUnitDetail(); throw e; }
+    step.jobId = jid;
+    o.onCancel = bsStop;  // the top-bar Stop stops the basic setting too
+    while (true) {
+      let s;
+      try { s = await bridge({action: 'job_status', job_id: jid}); }
+      catch (e) { step.run = {...step.run, status: 'error', error: e.message}; break; }
+      step.run = {status: s.status, phase: s.status === 'running' ? s.phase : s.status, data: s.data, error: s.job_error};
+      if (s.status !== 'running') { if (s.result) step.run.data = s.result.stop || s.result.last || s.result.start; break; }
+      const el = curStep() === step && $('#bsOut');
+      if (el) el.innerHTML = bsRunHTML(step.run);
+      await sleep(700);
+    }
+    recordChange({kind: 'basic setting', address: u.id, unit: u.sname || '', variant: u.variant || '', target: name,
+      oldValue: '', newValue: bsStatuses(step.run.data), status: step.run.error ? 'error' : 'done', note: step.run.error || ''});
+    if (curStep() === step) renderUnitDetail();
+  });
+}
+async function bsStop() {
+  const step = unitPath.find(s => s.run && s.run.status === 'running');
+  if (!step || !step.jobId) return;
+  try { await bridge({action: 'job_cancel', job_id: step.jobId}); step.run.phase = 'stopping'; }
+  catch (e) { toast(e.message, true); }
+}
+
 // --- Scans ---------------------------------------------------------------------------------
 // Scan all, Scan all unit DTCs and Full scan work on the units the list shows: tick
 // "responded only" to scan just the units that answered, untick it for the whole ODIS project.
