@@ -247,12 +247,33 @@ async function select(id) {
   selId = id;
   if (!sel()) {
     selId = null; renderHist();
-    $('#main').innerHTML = '<div class="empty">Waiting for ODIS… open <b>Coding</b> on a control unit.</div>';
+    renderEmptyCoding();
     return;
   }
   work = bytesOf(sel().coding);
   await loadLabels();
   renderHist(); render();
+}
+
+// With nothing selected the Coding tab is a scratchpad: enter a custom coding to decode/edit it
+// with your .lbl labels. Opening a unit's coding from Project units uses this tab too.
+function renderEmptyCoding() {
+  $('#main').innerHTML = `<div class="empty">No coding selected — open a unit's coding from <b>Project units</b>, wait for ODIS to read one, or enter a custom coding below.</div>
+    <div class="code"><input id="customHex" placeholder="custom coding hex, e.g. 01 19 00 32" style="width:22em;font-family:Consolas, monospace">
+      <button onclick="loadCustomCoding()">Load for editing</button></div>`;
+}
+function loadCustomCoding() {
+  const h = ($('#customHex').value || '').replace(/[^0-9a-fA-F]/g, '');
+  if (h.length < 2 || h.length % 2) { alert('Enter an even number of hex digits.'); return; }
+  virtualReading = {id: -1, time: '', ecu: 'Custom coding', variant: 'CUSTOM', subsystem: 'custom', coding: h.toUpperCase(), fromUnit: false};
+  selId = -1; work = bytesOf(virtualReading.coding); labelsKey = null;
+  loadLabels(true).then(render);
+}
+// Returns to the Project units coding view the user opened the Coding tab from.
+function backToUnitCoding() {
+  virtualReading = null;
+  select(readings.length ? readings[0].id : null);  // restore the Coding tab to its normal view
+  showTab('units'); renderUnitDetail();
 }
 
 function renderHist() {
@@ -295,8 +316,10 @@ function render() {
       <td class="f"><input type="text" placeholder="byte label" value="${esc(bl ? bl.text : '')}" onchange="save({byte:${i},lo:0,hi:7,value:-1}, this.value)">${fieldHTML}</td>${cells}</tr>`;
   });
   const changed = work.some((b, i) => b !== orig[i]);
-  $('#main').innerHTML = `<h1>${esc(r.ecu || r.subsystem)}</h1>
-    <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)} · coding opened ${fmtTime(r.time)}
+  $('#main').innerHTML = `${virtualReading && virtualReading.fromUnit ? `<div class="bar"><button onclick="backToUnitCoding()">← Back to unit coding</button>
+      <span class="meta">Live coding of ${esc(r.ecu)} — not a saved reading</span></div>` : ''}
+    <h1>${esc(r.ecu || r.subsystem)}</h1>
+    <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)}${r.time ? ' · coding opened ' + fmtTime(r.time) : ''}
       · <button onclick="$('#lbl').click()">Import .lbl labels</button></div>
     ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
     Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
@@ -654,7 +677,7 @@ function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(
 async function openUnitCodingInTab() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
   if (!step || !step.work) return;
-  virtualReading = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join('')};
+  virtualReading = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true};
   selId = -1; work = step.work.slice(); labelsKey = null;
   showTab('coding');
   await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
