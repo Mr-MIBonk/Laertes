@@ -563,9 +563,15 @@ const codingStep = () => { const s = unitPath[unitPath.length - 1]; return s && 
 
 // Change history: every coding/adaptation write is saved to SQL (survives restart) and listed
 // under the History tab.
-let changes = null;
+let changes = null, vehicleVin;
+async function getVin() {  // fetched once and cached; '' when ODIS does not know it
+  if (vehicleVin !== undefined) return vehicleVin;
+  try { vehicleVin = (await bridge({action: 'vin'})).vin || ''; } catch (e) { vehicleVin = ''; }
+  return vehicleVin;
+}
 async function recordChange(c) {
   try {
+    if (c.vin === undefined) c.vin = await getVin();
     await api('POST', '/api/history', c);
     changes = null;  // reload next time History is shown
     if (currentTab() === 'history') loadHistory();
@@ -575,20 +581,33 @@ async function loadHistory() {
   try { changes = await api('GET', '/api/history'); } catch (e) { changes = []; }
   renderHistory();
 }
+// A local, human-readable date/time from the stored ISO timestamp.
+const fmtWhen = t => { const d = new Date(t); return isNaN(d.getTime()) ? (t || '') : d.toLocaleString(); };
+// Shows newValue with the tokens that differ from oldValue highlighted (byte or key=value tokens).
+function diffNew(oldStr, newStr) {
+  const o = String(oldStr || '').split(/(\s+)/);
+  return String(newStr || '').split(/(\s+)/).map((tok, i) =>
+    /^\s*$/.test(tok) ? tok : (tok !== (o[i] || '') ? `<span class="chg">${esc(tok)}</span>` : esc(tok))).join('');
+}
 function renderHistory() {
   const el = $('#history');
   if (!el) return;
   const cs = changes || [];
-  const rows = cs.map(c => `<tr class="${c.status === 'error' || c.status === 'mismatch' ? 'err' : ''}">
-    <td class="small">${esc(fmtTime(c.time))}</td><td>${esc(c.kind)}</td>
-    <td>${esc(c.unit || '')} <small class="meta">${esc(c.address || '')}</small></td>
-    <td>${esc(c.target || '')}</td><td class="mono">${esc(c.oldValue || '')}</td>
-    <td class="mono">${esc(c.newValue || '')}</td><td>${esc(c.status || '')}${c.note ? ` <small class="meta">${esc(c.note)}</small>` : ''}</td>
-    <td><button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`).join('');
+  const rows = cs.map(c => {
+    const unit = [esc(c.unit || ''), c.address ? `<small class="meta">${esc(c.address)}</small>` : '',
+      c.variant ? `<small class="meta">${esc(c.variant)}</small>` : '',
+      c.vin ? `<small class="meta">VIN ${esc(c.vin)}</small>` : ''].filter(Boolean).join('<br>');
+    return `<tr class="${c.status === 'error' || c.status === 'mismatch' ? 'err' : ''}">
+      <td class="small">${esc(fmtWhen(c.time))}</td><td>${esc(c.kind)}</td>
+      <td>${unit}</td><td>${esc(c.target || '')}</td>
+      <td class="mono"><span class="meta">${esc(c.oldValue || '')}</span><br>${diffNew(c.oldValue, c.newValue)}</td>
+      <td>${esc(c.status || '')}${c.note ? `<br><small class="meta">${esc(c.note)}</small>` : ''}</td>
+      <td><button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`;
+  }).join('');
   el.innerHTML = `<div class="bar"><button onclick="loadHistory()">Reload</button>
       <button class="warn" onclick="deleteChange(0)">Clear all</button>
       <span class="meta">${cs.length} change${cs.length === 1 ? '' : 's'} written to control units (stored in the database)</span></div>
-    ${cs.length ? `<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old</th><th>New</th><th>Status</th><th></th></tr>${rows}</table>`
+    ${cs.length ? `<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`
       : '<div class="empty">No coding or adaptation changes recorded yet.</div>'}`;
 }
 async function deleteChange(id) {
@@ -642,12 +661,12 @@ async function codingWrite() {
       step.writeMsg = `Write did NOT match. Wanted ${to} but the unit reads ${got.map(hex).join(' ') || '(empty)'}. The differing bytes are highlighted; you can write again.`;
       step.writeErr = true;  // step.work stays at the intended value so the diff is visible
     }
-    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', target: step.sysName,
+    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName,
       oldValue: from, newValue: to, status: same ? 'verified' : 'mismatch',
       note: same ? '' : 'unit reads ' + (got.map(hex).join(' ') || '(empty)')});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
-    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', note: e.message});
+    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', variant: step.unitVariant || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', note: e.message});
   }
   renderUnitDetail();
 }
@@ -768,11 +787,11 @@ async function adaptWrite() {
     } else {
       step.writeMsg = `Write did NOT match for ${bad.map(k => `${k} (unit reads ${got[k] === undefined ? '—' : got[k]})`).join(', ')}.`; step.writeErr = true;
     }
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV,
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV,
       status: bad.length ? 'mismatch' : 'verified', note: bad.length ? 'unit reads ' + bad.map(k => `${k}=${got[k]}`).join(', ') : ''});
   } catch (e) {
     step.writeMsg = e.message; step.writeErr = true;
-    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'error', note: e.message});
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', variant: u.variant || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'error', note: e.message});
   }
   renderUnitDetail();
 }

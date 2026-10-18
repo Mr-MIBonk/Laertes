@@ -65,9 +65,22 @@ CREATE TABLE IF NOT EXISTS changes (
 	old_value TEXT NOT NULL DEFAULT '',
 	new_value TEXT NOT NULL DEFAULT '',
 	status    TEXT NOT NULL DEFAULT '',
-	note      TEXT NOT NULL DEFAULT ''
+	note      TEXT NOT NULL DEFAULT '',
+	vin       TEXT NOT NULL DEFAULT '',
+	variant   TEXT NOT NULL DEFAULT ''
 );`); err != nil {
 		return err
+	}
+	for _, col := range []string{"vin", "variant"} { // columns added after the table first shipped
+		var has int
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('changes') WHERE name=?`, col).Scan(&has); err != nil {
+			return err
+		}
+		if has == 0 {
+			if _, err := db.Exec(`ALTER TABLE changes ADD COLUMN ` + col + ` TEXT NOT NULL DEFAULT ''`); err != nil {
+				return err
+			}
+		}
 	}
 	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS coding_pref (
@@ -194,12 +207,14 @@ type Change struct {
 	NewValue string `json:"newValue"`
 	Status   string `json:"status"` // verified, written, mismatch, error
 	Note     string `json:"note"`
+	VIN      string `json:"vin"`     // vehicle VIN, if ODIS knows it
+	Variant  string `json:"variant"` // the unit's ODX variant
 }
 
 // AddChange records one written change and sets c.ID.
 func (s *Store) AddChange(c *Change) error {
-	res, err := s.db.Exec(`INSERT INTO changes (time, kind, address, unit, target, old_value, new_value, status, note)
-		VALUES (?,?,?,?,?,?,?,?,?)`, c.Time, c.Kind, c.Address, c.Unit, c.Target, c.OldValue, c.NewValue, c.Status, c.Note)
+	res, err := s.db.Exec(`INSERT INTO changes (time, kind, address, unit, target, old_value, new_value, status, note, vin, variant)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`, c.Time, c.Kind, c.Address, c.Unit, c.Target, c.OldValue, c.NewValue, c.Status, c.Note, c.VIN, c.Variant)
 	if err != nil {
 		return err
 	}
@@ -208,7 +223,7 @@ func (s *Store) AddChange(c *Change) error {
 }
 
 func (s *Store) Changes(limit int) ([]Change, error) {
-	rows, err := s.db.Query(`SELECT id, time, kind, address, unit, target, old_value, new_value, status, note
+	rows, err := s.db.Query(`SELECT id, time, kind, address, unit, target, old_value, new_value, status, note, vin, variant
 		FROM changes ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -217,7 +232,7 @@ func (s *Store) Changes(limit int) ([]Change, error) {
 	out := []Change{}
 	for rows.Next() {
 		var c Change
-		if err := rows.Scan(&c.ID, &c.Time, &c.Kind, &c.Address, &c.Unit, &c.Target, &c.OldValue, &c.NewValue, &c.Status, &c.Note); err != nil {
+		if err := rows.Scan(&c.ID, &c.Time, &c.Kind, &c.Address, &c.Unit, &c.Target, &c.OldValue, &c.NewValue, &c.Status, &c.Note, &c.VIN, &c.Variant); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

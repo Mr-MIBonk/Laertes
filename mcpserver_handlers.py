@@ -1228,6 +1228,36 @@ def handle_vehicle(cmd):
         return {"ok": True, "project": None}
 
 
+def handle_vin(cmd):
+    """Best-effort vehicle VIN from the current ODIS session; empty if ODIS does not know it."""
+    out = {"ok": True, "vin": None}
+    context = get_context()
+    info, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.systemtest.IDiagnosisSessionInfoService")
+    try:
+        for getter in ("getVehicleIdentificatonData", "getIdleVin"):
+            try:
+                obj = getattr(info, getter)()
+            except (Exception, Throwable):
+                continue
+            if obj is None:
+                continue
+            for m in ("getVin", "getVIN", "getFin", "getVehicleIdentificationNumber", "getIdentNumber", "toString"):
+                try:
+                    v = getattr(obj, m)()
+                except (Exception, Throwable):
+                    continue
+                if v is None:
+                    continue
+                mo = re.search(r"[A-HJ-NPR-Z0-9]{17}", unicode(v))  # a VIN is 17 chars, no I/O/Q
+                if mo:
+                    out["vin"] = mo.group(0)
+                    return out
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    return out
+
+
 def handle_vehicle_projects(cmd):
     """The current vehicle project and whether it can be changed, plus any selectable projects
     ODIS proposes. Used to let the user pick the car for offline/guided data when not detected."""
@@ -1296,6 +1326,7 @@ HANDLERS = {
     "fault_guidance": handle_fault_guidance,
     "service_methods": handle_service_methods,
     "vehicle": handle_vehicle,
+    "vin": handle_vin,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,
     "api_methods": handle_api_methods,
