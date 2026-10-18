@@ -1307,6 +1307,18 @@ def handle_set_vehicle_project(cmd):
     return {"ok": True, "project": unicode(result), "ecu_count": len(ecus)}
 
 
+def handle_list_services(cmd):
+    """Read-only: registered OSGi service class names containing cmd['q'] (for exploration)."""
+    q = (cmd.get("q") or "").lower()
+    context = get_context()
+    names = set()
+    for r in context.getAllServiceReferences(None, None) or []:
+        for n in (r.getProperty("objectClass") or []):
+            if q in n.lower():
+                names.add(n)
+    return {"ok": True, "services": sorted(names)}
+
+
 def handle_service_methods(cmd):
     """Read-only: the methods of any registered OSGi service, for exploration."""
     context = get_context()
@@ -1325,6 +1337,7 @@ HANDLERS = {
     "gfs_explore": handle_gfs_explore,
     "fault_guidance": handle_fault_guidance,
     "service_methods": handle_service_methods,
+    "list_services": handle_list_services,
     "vehicle": handle_vehicle,
     "vin": handle_vin,
     "vehicle_projects": handle_vehicle_projects,

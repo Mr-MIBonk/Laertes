@@ -182,7 +182,8 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
 const bytesOf = h => h.match(/../g).map(x => parseInt(x, 16));
-const sel = () => readings.find(r => r.id === selId);
+let virtualReading = null;  // a live unit's coding opened in the Coding tab (not a log reading)
+const sel = () => virtualReading || readings.find(r => r.id === selId);
 const fmtTime = t => t.length >= 21 ? `${t.slice(6,8)}.${t.slice(4,6)}.${t.slice(0,4)} ${t.slice(9,17)}.${t.slice(18,21)}` : t;
 const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
 const label = (byte, lo, hi, value) => labels.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
@@ -197,7 +198,8 @@ async function poll() {
   try {
     readings = await api('GET', '/api/readings');
     const newest = readings.length ? readings[0].id : 0;
-    if (newest > maxId) { maxId = newest; await select(newest); }  // follow ODIS automatically
+    if (virtualReading) { if (newest > maxId) maxId = newest; renderHist(); }  // keep the live coding in view
+    else if (newest > maxId) { maxId = newest; await select(newest); }  // follow ODIS automatically
     else if (!sel()) await select(newest);  // selected reading was deleted
     else renderHist();
   } catch (e) {}
@@ -232,6 +234,7 @@ async function loadLabels(force) {
 }
 
 async function select(id) {
+  virtualReading = null;  // choosing a log reading leaves the live-coding view
   selId = id;
   if (!sel()) {
     selId = null; renderHist();
@@ -628,6 +631,7 @@ function codingEditorHTML(step) {
     <div class="byteedit">${inputs}</div>
     <div class="code"><span class="mono">${newHex}</span><button onclick="codingReset()">Reset</button>
       <button class="warn" ${changed ? '' : 'disabled'} onclick="codingWrite()">Write to unit…</button>
+      <button onclick="openUnitCodingInTab()" title="Open this coding in the Coding tab for the full bit grid and label editing">Open in Coding tab</button>
       ${step.writeMsg ? `<div class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}</div>` : ''}</div>`;
 }
 function codingByte(i, v) {
@@ -637,6 +641,15 @@ function codingByte(i, v) {
   renderUnitDetail();
 }
 function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(); s.writeMsg = ''; renderUnitDetail(); } }
+// Opens the current unit coding in the Coding tab (full bit grid + label editing) as a live view.
+async function openUnitCodingInTab() {
+  const step = codingStep(), u = units.find(u => u.index === unitSel);
+  if (!step || !step.work) return;
+  virtualReading = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join('')};
+  selId = -1; work = step.work.slice(); labelsKey = null;
+  showTab('coding');
+  await loadLabels(true); renderHist(); render();
+}
 async function codingWrite() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
   const want = step.work.slice();
