@@ -54,6 +54,21 @@ CREATE TABLE IF NOT EXISTS readings (
 	if err != nil {
 		return err
 	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS changes (
+	id        INTEGER PRIMARY KEY AUTOINCREMENT,
+	time      TEXT NOT NULL,
+	kind      TEXT NOT NULL,
+	address   TEXT NOT NULL DEFAULT '',
+	unit      TEXT NOT NULL DEFAULT '',
+	target    TEXT NOT NULL DEFAULT '',
+	old_value TEXT NOT NULL DEFAULT '',
+	new_value TEXT NOT NULL DEFAULT '',
+	status    TEXT NOT NULL DEFAULT '',
+	note      TEXT NOT NULL DEFAULT ''
+);`); err != nil {
+		return err
+	}
 	// Deleted readings stay as hidden rows so re-reading the log does not bring them back.
 	var hasDeleted int
 	if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('readings') WHERE name='deleted'`).Scan(&hasDeleted); err != nil {
@@ -157,6 +172,55 @@ func (s *Store) Labels(variant, subsystem string) ([]Label, error) {
 		out = append(out, l)
 	}
 	return out, rows.Err()
+}
+
+// Change is one coding or adaptation value the tool wrote to a control unit.
+type Change struct {
+	ID       int64  `json:"id"`
+	Time     string `json:"time"`
+	Kind     string `json:"kind"`     // "coding" or "adaptation"
+	Address  string `json:"address"`  // unit id, e.g. 0x0001
+	Unit     string `json:"unit"`     // unit name
+	Target   string `json:"target"`   // subsystem (coding) or channel (adaptation)
+	OldValue string `json:"oldValue"`
+	NewValue string `json:"newValue"`
+	Status   string `json:"status"` // verified, written, mismatch, error
+	Note     string `json:"note"`
+}
+
+// AddChange records one written change and sets c.ID.
+func (s *Store) AddChange(c *Change) error {
+	res, err := s.db.Exec(`INSERT INTO changes (time, kind, address, unit, target, old_value, new_value, status, note)
+		VALUES (?,?,?,?,?,?,?,?,?)`, c.Time, c.Kind, c.Address, c.Unit, c.Target, c.OldValue, c.NewValue, c.Status, c.Note)
+	if err != nil {
+		return err
+	}
+	c.ID, err = res.LastInsertId()
+	return err
+}
+
+func (s *Store) Changes(limit int) ([]Change, error) {
+	rows, err := s.db.Query(`SELECT id, time, kind, address, unit, target, old_value, new_value, status, note
+		FROM changes ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Change{}
+	for rows.Next() {
+		var c Change
+		if err := rows.Scan(&c.ID, &c.Time, &c.Kind, &c.Address, &c.Unit, &c.Target, &c.OldValue, &c.NewValue, &c.Status, &c.Note); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DeleteChanges removes one change, or all of them when id is 0.
+func (s *Store) DeleteChanges(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM changes WHERE id=? OR ?=0`, id, id)
+	return err
 }
 
 // SetLabels saves labels in one transaction; an empty text removes that label.

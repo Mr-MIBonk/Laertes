@@ -136,7 +136,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <body>
 <aside><h2><button id="side" onclick="toggleSide()"></button><span>Coding reads</span><button class="del" onclick="deleteReading(0)">Clear all</button></h2><div id="hist"></div></aside>
 <main>
-<nav class="tabs"><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
+<nav class="tabs"><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="json" onclick="showTab('json')">JSON viewer</button>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span></nav>
 <div id="main"></div>
@@ -151,6 +151,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 </div>
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
+<div id="history" class="db units" hidden></div>
 <div id="json" class="db" hidden>
   <div class="meta">Send a command to the ODIS bridge, or paste any JSON to read it as a tree.</div>
   <textarea id="jsonIn" rows="5" spellcheck="false">{"action": "ping"}</textarea>
@@ -162,7 +163,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
 <input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
 <script>
-let readings = [], selId = null, maxId = 0, work = [], labels = [], labelsKey = '', odisMsg = null;
+let readings = [], selId = null, maxId = 0, work = [], labels = [], labelsKey = '';
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hex = b => b.toString(16).toUpperCase().padStart(2, '0');
@@ -217,7 +218,7 @@ async function loadLabels(force) {
 }
 
 async function select(id) {
-  selId = id; odisMsg = null;
+  selId = id;
   if (!sel()) {
     selId = null; renderHist();
     $('#main').innerHTML = '<div class="empty">Waiting for ODIS… open <b>Coding</b> on a control unit.</div>';
@@ -272,12 +273,9 @@ function render() {
     <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)} · coding opened ${fmtTime(r.time)}
       · <button onclick="$('#lbl').click()">Import .lbl labels</button></div>
     ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
-    Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button>
-      <button onclick="findInODIS()">Find in ODIS memory</button>
-      <button class="warn" onclick="writeToODIS(true)">Put original into ODIS Hex input</button></div>
+    Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
     New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="select(selId)">Reset</button>
-      <button class="warn" ${changed ? '' : 'disabled'} onclick="writeToODIS()">Put into ODIS Hex input</button>
-      ${odisMsg ? `<div class="status ${odisMsg.err ? 'err' : ''}">${esc(odisMsg.text)}</div>` : ''}</div>
+      <span class="meta">To write to a unit, open it under Project units.</span></div>
     <table><tr><th>Byte</th><th>Byte label / bit fields</th>${[7,6,5,4,3,2,1,0].map(b => `<th>Bit ${b} (0x${hex(1 << b)})</th>`).join('')}</tr>${rows}</table>`;
 }
 
@@ -329,15 +327,19 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', json: 'json'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', json: 'json'};
+let activeTab = 'coding';
+const currentTab = () => activeTab;
 function showTab(tab) {
   if (!TABS[tab]) tab = 'coding';
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   for (const [t, id] of Object.entries(TABS)) $('#' + id).hidden = t !== tab;
   $('aside').hidden = tab !== 'coding';  // coding reads belong to the coding view
   try { localStorage.setItem('tab', tab); } catch (e) {}
+  activeTab = tab;
   stopLive();  // a live measurement view only updates while the units tab shows it
   if (tab === 'units' && !units) loadUnits();
+  if (tab === 'history') loadHistory();
 }
 
 // The bridge describes a unit only by its toString(), e.g.
@@ -545,6 +547,42 @@ async function codingDefinition(u) {
 // The coding step currently shown in the unit pane.
 const codingStep = () => { const s = unitPath[unitPath.length - 1]; return s && s.cmd.action === 'read_coding' ? s : null; };
 
+// Change history: every coding/adaptation write is saved to SQL (survives restart) and listed
+// under the History tab.
+let changes = null;
+async function recordChange(c) {
+  try {
+    await api('POST', '/api/history', c);
+    changes = null;  // reload next time History is shown
+    if (currentTab() === 'history') loadHistory();
+  } catch (e) { /* recording is best-effort; the write itself already reported its result */ }
+}
+async function loadHistory() {
+  try { changes = await api('GET', '/api/history'); } catch (e) { changes = []; }
+  renderHistory();
+}
+function renderHistory() {
+  const el = $('#history');
+  if (!el) return;
+  const cs = changes || [];
+  const rows = cs.map(c => `<tr class="${c.status === 'error' || c.status === 'mismatch' ? 'err' : ''}">
+    <td class="small">${esc(fmtTime(c.time))}</td><td>${esc(c.kind)}</td>
+    <td>${esc(c.unit || '')} <small class="meta">${esc(c.address || '')}</small></td>
+    <td>${esc(c.target || '')}</td><td class="mono">${esc(c.oldValue || '')}</td>
+    <td class="mono">${esc(c.newValue || '')}</td><td>${esc(c.status || '')}${c.note ? ` <small class="meta">${esc(c.note)}</small>` : ''}</td>
+    <td><button class="del" title="Delete" onclick="deleteChange(${c.id})">✕</button></td></tr>`).join('');
+  el.innerHTML = `<div class="bar"><button onclick="loadHistory()">Reload</button>
+      <button class="warn" onclick="deleteChange(0)">Clear all</button>
+      <span class="meta">${cs.length} change${cs.length === 1 ? '' : 's'} written to control units (stored in the database)</span></div>
+    ${cs.length ? `<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old</th><th>New</th><th>Status</th><th></th></tr>${rows}</table>`
+      : '<div class="empty">No coding or adaptation changes recorded yet.</div>'}`;
+}
+async function deleteChange(id) {
+  if (!confirm(id ? 'Delete this history entry?' : 'Clear all change history?')) return;
+  try { await api('DELETE', '/api/history' + (id ? '/' + id : '')); } catch (e) { alert('Delete failed: ' + e.message); return; }
+  loadHistory();
+}
+
 // --- Units coding editor: edit the byte coding and write it to the unit via the bridge ------
 function codingEditorHTML(step) {
   if (!step.work || !step.work.length) return '';
@@ -590,7 +628,13 @@ async function codingWrite() {
       step.writeMsg = `Write did NOT match. Wanted ${to} but the unit reads ${got.map(hex).join(' ') || '(empty)'}. The differing bytes are highlighted; you can write again.`;
       step.writeErr = true;  // step.work stays at the intended value so the diff is visible
     }
-  } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
+    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', target: step.sysName,
+      oldValue: from, newValue: to, status: same ? 'verified' : 'mismatch',
+      note: same ? '' : 'unit reads ' + (got.map(hex).join(' ') || '(empty)')});
+  } catch (e) {
+    step.writeMsg = e.message; step.writeErr = true;
+    recordChange({kind: 'coding', address: u.id, unit: u.sname || '', target: step.sysName, oldValue: from, newValue: to, status: 'error', note: e.message});
+  }
   renderUnitDetail();
 }
 
@@ -692,11 +736,17 @@ async function adaptWrite() {
   params.forEach(p => { if ((p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value)) { values[p.name] = step.newVals[p.name]; diffs.push(`  ${p.name}: ${p.value} → ${step.newVals[p.name]}`); } });
   if (!diffs.length) return;
   if (!confirm(`Write adaptation to ${u.sname} ${u.id}, channel ${step.cmd.channel}?\n\n${diffs.join('\n')}\n\nThis writes to the control unit.`)) return;
+  const oldV = params.filter(p => p.name in values).map(p => `${p.name}=${p.value}`).join(', ');
+  const newV = Object.entries(values).map(([k, v]) => `${k}=${v}`).join(', ');
   step.writeMsg = 'Writing adaptation…'; step.writeErr = false; renderUnitDetail();
   try {
     await bridge({action: 'write_adaptation', address: u.id, channel: step.cmd.channel, values, login: loginCodes[u.id]});
     step.writeMsg = 'Adaptation written to the unit. Re-open the channel to confirm.';
-  } catch (e) { step.writeMsg = e.message; step.writeErr = true; }
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'written'});
+  } catch (e) {
+    step.writeMsg = e.message; step.writeErr = true;
+    recordChange({kind: 'adaptation', address: u.id, unit: u.sname || '', target: step.cmd.channel, oldValue: oldV, newValue: newV, status: 'error', note: e.message});
+  }
   renderUnitDetail();
 }
 
@@ -1146,7 +1196,6 @@ function toggleSide(collapse = !document.body.classList.contains('collapsed')) {
 function toggle(i, bit) { work[i] ^= 1 << bit; render(); }
 function setField(i, m, v) { work[i] = (work[i] & ~m) | v; render(); }
 function copy(t) { navigator.clipboard.writeText(t); }
-function status(text, err) { odisMsg = {text, err}; render(); }
 
 async function save(l, text) {
   const r = sel(); l.text = text.trim();
@@ -1164,28 +1213,6 @@ async function importLBL(input) {
     await loadLabels(true); render();
     alert(`Imported ${n} labels from ${file.name} for ${r.variant}`);
   } catch (e) { alert('Import failed: ' + e.message); }
-}
-
-async function findInODIS() {
-  status('Scanning ODIS memory…');
-  try {
-    const res = await api('POST', '/api/odis/find', {coding: sel().coding});
-    status(`ODIS (pid ${res.pid}) holds ${res.addresses.length} byte[] copies of the original coding${res.addresses.length ? ': ' + res.addresses.join(', ') : ''}`);
-  } catch (e) { status(e.message, true); }
-}
-
-// Puts the new coding, or with original the coding as read, into ODIS's Hex input column.
-// The new coding must still match what ODIS shows; the original may be put back over anything.
-async function writeToODIS(original) {
-  const from = original ? '' : sel().coding, to = original ? sel().coding : work.map(hex).join('');
-  if (!confirm(`Enter\n${to}\ninto the Hex input column of ODIS's byte coding${original ? ' (original coding)' : ` (current value ${from})`}?\n\nNothing is sent to the control unit until you press Accept in ODIS.`)) return;
-  status(`Entering the ${original ? 'original' : 'new'} coding into ODIS…`);
-  try {
-    const res = await api('POST', '/api/odis/write', {from, to});
-    status(res.changed
-      ? `Entered ${res.changed} byte(s) that differ from ODIS's current value into its Hex input column and read them back. Check them in ODIS, then press Accept there.`
-      : `ODIS already shows this coding as its current value, so its Hex input column is now empty.`);
-  } catch (e) { status(e.message, true); }
 }
 
 initDatabaseTabs();

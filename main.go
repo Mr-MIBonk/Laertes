@@ -2,10 +2,8 @@ package main
 
 import (
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -14,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 //go:embed index.html
@@ -163,24 +162,31 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 		q := r.URL.Query()
 		reply(w, len(ls), store.SetLabels(q.Get("variant"), q.Get("subsystem"), ls))
 	})
-	mux.HandleFunc("POST /api/odis/find", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ Coding string }
-		data, ok := decodeCoding(w, r, &req, &req.Coding)
-		if !ok {
+	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
+		cs, err := store.Changes(500)
+		reply(w, cs, err)
+	})
+	mux.HandleFunc("POST /api/history", func(w http.ResponseWriter, r *http.Request) {
+		var c Change
+		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		p, err := openODIS(false)
-		if err != nil {
-			reply(w, nil, err)
+		if c.Time == "" {
+			c.Time = time.Now().Format(time.RFC3339)
+		}
+		reply(w, &c, store.AddChange(&c))
+	})
+	mux.HandleFunc("DELETE /api/history/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err != nil || id <= 0 {
+			http.Error(w, "bad id", http.StatusBadRequest)
 			return
 		}
-		defer p.Close()
-		addrs, err := p.findByteArrays(data)
-		hexAddrs := make([]string, len(addrs))
-		for i, a := range addrs {
-			hexAddrs[i] = fmt.Sprintf("%#x", a)
-		}
-		reply(w, map[string]any{"pid": p.pid, "addresses": hexAddrs}, err)
+		reply(w, nil, store.DeleteChanges(id))
+	})
+	mux.HandleFunc("DELETE /api/history", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, nil, store.DeleteChanges(0))
 	})
 	mux.HandleFunc("POST /api/bridge", func(w http.ResponseWriter, r *http.Request) {
 		var cmd struct {
@@ -199,50 +205,7 @@ func routes(store *Store, bridgeAddr string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(res)
 	})
-	mux.HandleFunc("POST /api/odis/write", func(w http.ResponseWriter, r *http.Request) {
-		// From, if given, is the coding To was derived from; ODIS must still show it.
-		var req struct{ From, To string }
-		to, ok := decodeCoding(w, r, &req, &req.To)
-		if !ok {
-			return
-		}
-		var from []byte
-		if req.From != "" {
-			var err error
-			if from, err = hex.DecodeString(req.From); err != nil || len(from) != len(to) {
-				http.Error(w, "original coding must be hex of the same length", http.StatusBadRequest)
-				return
-			}
-		}
-		p, err := openODIS(true)
-		if err != nil {
-			reply(w, nil, err)
-			return
-		}
-		defer p.Close()
-		n, err := p.fillHexInput(from, to)
-		if err != nil {
-			log.Printf("ODIS hex input: %v", err)
-		} else {
-			log.Printf("ODIS hex input: entered %X (%d bytes differ from ODIS's current value)", to, n)
-		}
-		reply(w, map[string]any{"pid": p.pid, "changed": n}, err)
-	})
 	return mux
-}
-
-// decodeCoding decodes the JSON body into req and the hex coding field it points to.
-func decodeCoding(w http.ResponseWriter, r *http.Request, req any, field *string) ([]byte, bool) {
-	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return nil, false
-	}
-	data, err := hex.DecodeString(*field)
-	if err != nil || len(data) == 0 {
-		http.Error(w, "coding must be hex", http.StatusBadRequest)
-		return nil, false
-	}
-	return data, true
 }
 
 func reply(w http.ResponseWriter, v any, err error) {
