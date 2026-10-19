@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 
 	_ "modernc.org/sqlite"
@@ -403,6 +404,55 @@ func (s *Store) Settings() (json.RawMessage, error) {
 // SetSettings replaces the stored UI settings with the given JSON object.
 func (s *Store) SetSettings(v json.RawMessage) error {
 	_, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES ('ui', ?)
+		ON CONFLICT (key) DO UPDATE SET value=excluded.value`, string(v))
+	return err
+}
+
+// Geko is the VW online (GeKo) sign-in kept for ODIS's online functions. In the database the
+// password is DPAPI-encrypted for the current Windows user (see protect).
+type Geko struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Geko returns the stored sign-in (empty when none is saved).
+func (s *Store) Geko() (Geko, error) {
+	var v string
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key='geko'`).Scan(&v)
+	if err == sql.ErrNoRows {
+		return Geko{}, nil
+	}
+	if err != nil {
+		return Geko{}, err
+	}
+	var stored struct {
+		Username string `json:"username"`
+		Password []byte `json:"password"` // encrypted; base64 in the JSON
+	}
+	if err := json.Unmarshal([]byte(v), &stored); err != nil {
+		return Geko{}, err
+	}
+	pass, err := unprotect(stored.Password)
+	if err != nil {
+		return Geko{}, fmt.Errorf("decrypt the stored GeKo password (saved under another Windows user?): %w", err)
+	}
+	return Geko{Username: stored.Username, Password: string(pass)}, nil
+}
+
+// SetGeko stores the sign-in, encrypting the password.
+func (s *Store) SetGeko(g Geko) error {
+	pass, err := protect([]byte(g.Password))
+	if err != nil {
+		return fmt.Errorf("encrypt the GeKo password: %w", err)
+	}
+	v, err := json.Marshal(struct {
+		Username string `json:"username"`
+		Password []byte `json:"password"`
+	}{g.Username, pass})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO settings (key, value) VALUES ('geko', ?)
 		ON CONFLICT (key) DO UPDATE SET value=excluded.value`, string(v))
 	return err
 }

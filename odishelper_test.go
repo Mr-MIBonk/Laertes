@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -145,5 +146,28 @@ func TestSettings(t *testing.T) {
 	}
 	if v, _ := s.Settings(); string(v) != `{"dtcCheck":true,"x":1}` {
 		t.Errorf("settings = %q", v)
+	}
+}
+
+func TestGeko(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "g.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	if g, err := s.Geko(); err != nil || g != (Geko{}) {
+		t.Fatalf("empty store: %+v, %v", g, err)
+	}
+	want := Geko{Username: "user@dealer", Password: "pässwörd"}
+	if err := s.SetGeko(want); err != nil {
+		t.Fatal(err)
+	}
+	var raw string
+	s.db.QueryRow(`SELECT value FROM settings WHERE key='geko'`).Scan(&raw)
+	if strings.Contains(raw, "pässwörd") {
+		t.Fatal("password stored in plain text")
+	}
+	if g, err := s.Geko(); err != nil || g != want {
+		t.Fatalf("got %+v, %v", g, err)
 	}
 }

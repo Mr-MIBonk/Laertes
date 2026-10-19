@@ -29,6 +29,9 @@ DIAG_LOCK = threading.Lock()
 _stop = threading.Event()
 
 _loaded = {"mtime": None, "handlers": None, "error": None}
+# State that must outlive a handler reload (e.g. background jobs in flight), injected into the
+# handlers namespace so a reload does not orphan a job the web page is still polling.
+_persist = {}
 _load_lock = threading.Lock()
 
 
@@ -42,7 +45,7 @@ def get_handlers():
         mtime = os.path.getmtime(HANDLERS_FILE)
         if mtime != _loaded["mtime"]:
             _loaded["mtime"] = mtime
-            namespace = {"__name__": "mcpserver_handlers", "DIAG_LOCK": DIAG_LOCK}
+            namespace = {"__name__": "mcpserver_handlers", "DIAG_LOCK": DIAG_LOCK, "_PERSIST": _persist}
             try:
                 execfile(HANDLERS_FILE, namespace)
                 _loaded["handlers"] = namespace["HANDLERS"]
@@ -152,6 +155,50 @@ def client_loop(conn):
             pass
 
 
+# One client at a time: two clients driving ODIS at once would interfere on the vehicle. Laertes
+# keeps one connection open for all its requests; the slot is free again when it disconnects.
+_client_slot = threading.Lock()
+SINGLE_ACCESS = ("single access limit: another client is already connected to the ODIS bridge; "
+                 "close it (e.g. the other Laertes) and try again")
+
+
+def serve_client(conn):
+    try:
+        client_loop(conn)
+    finally:
+        _client_slot.release()
+        print("Client disconnected")
+
+
+def reject_client(conn):
+    """Tells a client that arrives while another is connected about the limit, as the reply to
+    its first command (read first: closing on unread data resets the connection and can lose the
+    reply), and closes its connection. In its own thread, so the accept loop is not held up."""
+    print("Client rejected: another client is connected")
+
+    def reply():
+        try:
+            conn.settimeout(5)
+            data = ""
+            while "\n" not in data:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                data += chunk
+            conn.sendall((json.dumps({"ok": False, "error": SINGLE_ACCESS}) + "\n").encode("utf-8"))
+        except Exception:
+            pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=reply)
+    t.setDaemon(True)
+    t.start()
+
+
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -166,9 +213,12 @@ def main():
             if _stop.isSet():
                 conn.close()
                 break
+            if not _client_slot.acquire(False):
+                reject_client(conn)
+                continue
             print("Client connected:", addr)
             # Daemon threads: a stopped bridge must not keep the macro running.
-            t = threading.Thread(target=client_loop, args=(conn,))
+            t = threading.Thread(target=serve_client, args=(conn,))
             t.setDaemon(True)
             t.start()
     finally:

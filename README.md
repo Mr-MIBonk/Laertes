@@ -26,6 +26,9 @@ editable options. (The data shown is illustrative.)*
 Double-click `build.cmd` (needs [Go](https://go.dev/dl/)) — it runs the tests and builds
 `laertes.exe`. Install the bridge by copying both `mcpserver_*.py` files to `C:\ProgramData\OE\macros\`.
 
+For development, `laertes.exe -grpstub` also serves a stand-in for VW's online (GRP) sign-in on
+`127.0.0.1:7000` (account `admin`/`admin`); ODIS uses it when its `grp.discovery` points there.
+
 ## Release
 
 Pushing a tag `vX.Y.Z` runs the release workflow (`.gitea/workflows/release.yml` on Gitea,
@@ -37,8 +40,8 @@ two bridge scripts, `LICENSE` and `THIRD_PARTY_LICENSES.txt`.
 
 Laertes is released under the [MIT License](LICENSE).
 
-`laertes.exe` includes the Go runtime and these modules, all under permissive licenses (BSD-3-Clause
-or MIT): `modernc.org/sqlite`, `modernc.org/libc`, `modernc.org/mathutil`, `modernc.org/memory`,
+`laertes.exe` includes the Go runtime and these modules, all under permissive licenses (BSD-3-Clause,
+MIT or ISC): `github.com/coder/websocket`, `modernc.org/sqlite`, `modernc.org/libc`, `modernc.org/mathutil`, `modernc.org/memory`,
 `golang.org/x/sys`, `github.com/remyoudompheng/bigfft`, `github.com/dustin/go-humanize`,
 `github.com/mattn/go-isatty`, `github.com/ncruces/go-strftime`. Their notices are shipped with every
 release in `THIRD_PARTY_LICENSES.txt`. The repository contains no third-party data files.

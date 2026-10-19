@@ -12,3 +12,6 @@ odishelper.db-shm
 
 # Label files (third-party data, never shipped)
 *.lbl
+
+# Files uploaded from the web page (runtime data, e.g. firmware)
+uploads/

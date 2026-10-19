@@ -28,6 +28,7 @@ func main() {
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
 	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver.py) address")
+	grpStub := flag.Bool("grpstub", false, "also serve a development stand-in for VW's online sign-in on 127.0.0.1:7000 (account admin/admin)")
 	flag.Parse()
 	adoptOldDatabase(*dbPath)
 
@@ -51,7 +52,13 @@ func main() {
 	if !*noBrowser {
 		exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
 	}
-	log.Fatal(http.Serve(ln, sameOrigin(host, routes(store, *bridgeAddr, filepath.Dir(*dbPath)))))
+	b := &bridge{addr: *bridgeAddr}
+	grp := &grpReturns{}
+	grp.listen()
+	if *grpStub {
+		serveGRPStub()
+	}
+	log.Fatal(http.Serve(ln, sameOrigin(host, singleClient(routes(store, b, grp, filepath.Dir(*dbPath))))))
 }
 
 // adoptOldDatabase renames the database of the tool's former name (odishelper.db, with its
@@ -93,7 +100,7 @@ func sameOrigin(host string, next http.Handler) http.Handler {
 	})
 }
 
-func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
+func routes(store *Store, b *bridge, grp *grpReturns, dataDir string) http.Handler {
 	mux := http.NewServeMux()
 	// Browse the ODIS PC for a file to flash: lists one directory (folders first). Laertes runs
 	// on the same PC, so these are the paths the bridge can read.
@@ -300,6 +307,20 @@ func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
 		}
 		reply(w, nil, store.SetSettings(body))
 	})
+	// The GeKo sign-in for ODIS's online functions. Sent back to the page in full: only this
+	// PC's own Laertes page can read it (sameOrigin, singleClient).
+	mux.HandleFunc("GET /api/geko", func(w http.ResponseWriter, r *http.Request) {
+		g, err := store.Geko()
+		reply(w, g, err)
+	})
+	mux.HandleFunc("PUT /api/geko", func(w http.ResponseWriter, r *http.Request) {
+		var g Geko
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&g); err != nil {
+			http.Error(w, "GeKo sign-in must be a JSON object with username and password", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.SetGeko(g))
+	})
 	mux.HandleFunc("GET /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
 		p, err := store.CodingPref(r.URL.Query().Get("variant"))
 		if err != nil {
@@ -328,6 +349,10 @@ func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
 		}
 		reply(w, nil, store.DeleteCodingPref(variant))
 	})
+	// The address the browser came back to at the end of a VW online sign-in (see grpReturns).
+	mux.HandleFunc("GET /api/grp-return", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, map[string]string{"url": grp.take(r.URL.Query().Get("state"))}, nil)
+	})
 	mux.HandleFunc("POST /api/bridge", func(w http.ResponseWriter, r *http.Request) {
 		var cmd struct {
 			Action string `json:"action"`
@@ -337,7 +362,7 @@ func routes(store *Store, bridgeAddr, dataDir string) http.Handler {
 			http.Error(w, "bridge command must be a JSON object with an action", http.StatusBadRequest)
 			return
 		}
-		res, err := bridgeCall(bridgeAddr, body)
+		res, err := b.call(body)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return

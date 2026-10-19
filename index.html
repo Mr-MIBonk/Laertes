@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='11' fill='%232563eb'/%3E%3Cpath fill='%23fff' d='M24 8 L34 37 L28.5 37 L24 23.5 L19.5 37 L14 37 Z'/%3E%3Cg fill='none' stroke='%23fbbf24' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 41 C5 35 4 24 8 14'/%3E%3Cpath d='M36 41 C43 35 44 24 40 14'/%3E%3C/g%3E%3C/svg%3E">
 <meta name="theme-color" content="#2563eb">
 <style>
-:root { --bg:#f6f7f9; --panel:#fff; --text:#1d2330; --muted:#6b7280; --line:#dde1e7; --accent:#2563eb; --on:#16a34a; --chg:#d97706; --warn:#dc2626; }
+:root { color-scheme:light dark; --bg:#f6f7f9; --panel:#fff; --text:#1d2330; --muted:#6b7280; --line:#dde1e7; --accent:#2563eb; --on:#16a34a; --chg:#d97706; --warn:#dc2626; }
 @media (prefers-color-scheme: dark) { :root { --bg:#14171c; --panel:#1d2128; --text:#e6e8eb; --muted:#9aa3ae; --line:#2e343d; --accent:#60a5fa; --on:#22c55e; --chg:#fbbf24; --warn:#f87171; } }
 * { box-sizing:border-box; }
 [hidden] { display:none !important; }
@@ -23,6 +23,7 @@ h1 { font-size:18px; margin:0 0 4px; }
 .status.err { color:var(--warn); }
 button { font:inherit; font-size:13px; padding:4px 10px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:4px; cursor:pointer; }
 button.warn { border-color:var(--warn); color:var(--warn); }
+button:disabled { opacity:.45; cursor:not-allowed; }
 table { border-collapse:collapse; background:var(--panel); width:100%; }
 th, td { border:1px solid var(--line); padding:4px; vertical-align:top; }
 th { font-size:12px; color:var(--muted); font-weight:normal; }
@@ -38,7 +39,7 @@ select { width:100%; font:12px system-ui, sans-serif; background:var(--bg); colo
 input[type=text] { width:100%; font:12px system-ui, sans-serif; padding:2px 4px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:3px; }
 input[type=text]:focus { outline:1px solid var(--accent); }
 .empty { color:var(--muted); margin-top:40px; text-align:center; }
-.tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin:-4px 0 14px; }
+.tabs { display:flex; flex-wrap:wrap; gap:4px; border-bottom:1px solid var(--line); margin:-4px 0 14px; }
 .tabs button { border:none; border-bottom:2px solid transparent; border-radius:0; background:none; padding:6px 12px; color:var(--muted); }
 .tabs button.on { border-bottom-color:var(--accent); color:var(--text); }
 .tabs .brand { display:flex; align-items:center; gap:7px; padding-right:12px; margin-right:6px; border-right:1px solid var(--line); }
@@ -53,8 +54,9 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .tabs .veh { display:flex; align-items:center; font:12px system-ui, sans-serif; color:var(--text); padding:0 6px; white-space:nowrap; }
 .tabs .veh.off { color:var(--warn); }
 .tabs .ver { display:flex; align-items:center; font:11px Consolas, monospace; color:var(--muted); padding:0 4px 0 8px; margin-left:8px; border-left:1px solid var(--line); white-space:nowrap; }
-.units { display:flex; gap:16px; align-items:flex-start; }
-.units .list { flex:0 0 42%; min-width:0; overflow-x:auto; }
+/* Only Project units is a list|detail row; the other tabs that borrow .units styles flow top-down. */
+#units { display:flex; gap:16px; align-items:flex-start; }
+#units .list { flex:0 0 clamp(460px, 36%, 760px); min-width:0; overflow-x:auto; }
 .units .bar label { white-space:nowrap; }
 .units .bar, .db .bar { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
 .units .bar input { max-width:260px; }
@@ -72,6 +74,15 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units .facts a { color:var(--accent); }
 .units .names.short { max-height:150px; }
 .warnbox { border:1px solid var(--chg); color:var(--chg); border-radius:4px; padding:6px 8px; margin:8px 0; font-size:13px; }
+.errbox { position:relative; border:1px solid var(--warn); border-radius:4px; padding:6px 8px; margin:8px 0; }
+.errbox b { color:var(--warn); font-size:12px; }
+.errbox pre { margin:4px 0 0; white-space:pre-wrap; word-break:break-word; font-family:Consolas, monospace; font-size:12px; user-select:text; }
+.errbox > button.cp { position:absolute; right:3px; top:3px; }
+.split { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+.split-l { flex:0 1 clamp(380px, 36%, 680px); min-width:0; }
+.split-r { flex:1 1 420px; min-width:0; }
+@media (min-width:901px) { .split-l, .split-r { max-height:calc(100vh - 170px); overflow:auto; } }
+.split-r .placeholder { border:1px dashed var(--line); border-radius:6px; padding:24px; text-align:center; color:var(--muted); }
 .units table.vals td.mono { font-family:Consolas, monospace; font-size:12px; color:var(--muted); white-space:nowrap; }
 .units details.event { border:1px solid var(--line); border-radius:4px; margin:4px 0; background:var(--panel); }
 .units details.event > summary { cursor:pointer; padding:5px 8px; }
@@ -81,6 +92,9 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units details.event table.vals { margin:0 0 4px; }
 .units td { font-family:Consolas, monospace; font-size:13px; white-space:nowrap; }
 .units .detail { flex:1; min-width:0; position:sticky; top:0; }
+/* Wide screens: the unit list and the unit detail scroll on their own, so the list stays in view. */
+@media (min-width:901px) { #units .list, #units .detail { max-height:calc(100vh - 78px); overflow:auto; } }
+@media (max-width:900px) { #units { flex-direction:column; align-items:stretch; } #units .list { flex-basis:auto; } .units .detail { position:static; } }
 .units .detail .acts { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
 .units .names, .db .names { display:flex; flex-wrap:wrap; gap:4px; max-height:70vh; overflow:auto; margin-top:6px; }
 .units .names button, .units .names span, .db .names button { font:12px Consolas, monospace; padding:2px 6px; }
@@ -109,12 +123,27 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .db .names { max-height:30vh; }
 .db h2.sub, .units h2.sub { font-size:15px; margin:16px 0 6px; }
 .help { max-width:860px; line-height:1.55; }
+/* Guide: on wide screens the sections flow into columns of readable width. */
+@media (min-width:1300px) {
+  #guide { max-width:none; columns:2 600px; column-gap:48px; }
+  #guide h1, #guide > .meta { column-span:all; }
+  #guide h2 { break-after:avoid; }
+  #guide li, #guide dd, #guide p { break-inside:avoid; }
+}
+/* Settings: one card per group, side by side on wide screens. */
+#settings { max-width:none; }
+#settings .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:12px 16px; max-width:1500px; }
+#settings .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 14px 12px; }
+#settings .card h2.sub { margin-top:10px; }
+#settings .card label { display:flex; gap:8px; }
 .help ol, .help ul { padding-left:22px; margin:4px 0 8px; }
 .help li { margin:3px 0; }
 .help dt { font-weight:bold; margin-top:10px; }
 .help dd { margin:2px 0 0 18px; }
 .help code { font:12.5px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
 .db td.mono { font-family:Consolas, monospace; white-space:nowrap; }
+/* Trouble-code catalog: several columns on wide screens; an opened code expands in place. */
+@media (min-width:1300px) { .dtclist { display:grid; grid-template-columns:repeat(auto-fill, minmax(600px, 1fr)); column-gap:24px; align-items:start; } }
 .db #odxBody > input, .db #dtcBody > input, .db .found > input { margin:8px 0 4px; max-width:420px; }
 .units details.rawjson { margin-top:8px; font-size:12px; color:var(--muted); }
 .json { font:12px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; max-height:70vh; overflow:auto; position:relative; }
@@ -157,6 +186,20 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .hdetails { font-family:system-ui, sans-serif; margin-top:3px; }
 .hdetails .setting { color:var(--chg); font-weight:bold; }
 pre.report { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font:12px Consolas, monospace; overflow:auto; max-height:72vh; white-space:pre; margin:0; }
+.flashlog { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 0; font:12px Consolas, monospace; overflow:auto; max-height:72vh; }
+.flashlog > div { padding:1px 8px 1px 6px; border-left:3px solid transparent; white-space:pre-wrap; overflow-wrap:anywhere; }
+.flashlog .t, .flashlog .src { color:var(--muted); }
+.flashlog .lv { display:inline-block; min-width:5ch; font-weight:600; }
+.flashlog .lv-debug { color:var(--muted); }
+.flashlog .lv-info .lv { color:var(--accent); }
+.flashlog .key { font-weight:600; border-left-color:var(--accent); }
+.flashlog .lv-warn, .flashlog .bad { color:var(--chg); border-left-color:var(--chg); }
+.flashlog .lv-error, .flashlog .cause { color:var(--warn); border-left-color:var(--warn); }
+.flashlog .lv-warn .lv, .flashlog .bad .lv { color:var(--chg); }
+.flashlog .lv-error .lv { color:var(--warn); }
+.flashlog .cause { padding-left:4ch; font-weight:400; }
+.flashlog .bad .src, .flashlog .lv-error .src, .flashlog .lv-warn .src { color:inherit; opacity:.75; }
+.flwarn { color:var(--chg); font-weight:600; } .flerr { color:var(--warn); font-weight:600; }
 button.exp { border-color:var(--chg); color:var(--chg); }
 .units .progress { height:16px; background:var(--bg); border:1px solid var(--line); border-radius:8px; overflow:hidden; margin:8px 0; max-width:520px; }
 .units .progress > div { height:100%; background:var(--chg); width:0; transition:width .3s; }
@@ -181,9 +224,10 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button data-tab="cp" onclick="showTab('cp')">CP</button><button data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
   <span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
   <span id="retro" class="retro" hidden></span>
+  <span id="srv" class="conn wait"><span class="dot"></span><span class="txt">Laertes…</span></span>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vci" class="veh" hidden></span>
@@ -213,6 +257,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="dtc" class="db" hidden></div>
 <div id="history" class="db units" hidden></div>
 <div id="retrofit" class="db units" hidden></div>
+<div id="cp" class="db units" hidden></div>
+<div id="immo" class="db units" hidden></div>
 <div id="settings" class="db help" hidden></div>
 <div id="guide" class="db help" hidden>
   <h1>Getting started with Laertes</h1>
@@ -289,7 +335,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <dt>Coding</dt>
     <dd>The large coding editor: bit grid, your <code>.lbl</code> labels and any variant's ODX definition (remembered).
       Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), or with
-      <i>New coding</i> for bytes you type in.</dd>
+      <i>New coding</i> for bytes you type in or part of a VCDS scan you paste (each <i>Coding:</i> line, with its unit and ASAM dataset, so the variant's labels apply).</dd>
     <dt>History</dt>
     <dd>Every coding and adaptation write with old → new value, unit, variant and result; for coding also each changed
       byte and bit and, where a coding definition or .lbl labels are known, each setting before → after. Search any
@@ -317,9 +363,11 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 </div>
 </main>
 <div id="toast" class="toast" hidden></div>
+<div id="resumed" class="toast" style="left:16px; right:auto; max-width:480px; max-height:60vh; overflow:auto" hidden></div>
+<div id="lockout" class="toast err" style="top:56px; bottom:auto; z-index:11" hidden></div>
 <input type="file" id="lbl" accept=".lbl,.txt" hidden onchange="importLBL(this)">
 <input type="file" id="unitlbl" accept=".lbl,.txt" hidden onchange="onUnitLBL(this)">
-<input type="file" id="flashUpload" hidden onchange="flashUploadFile(this)">
+<input type="file" id="flashUpload" hidden accept=".frf,.odx,.xml" onchange="flashUploadFile(this)">
 <script>
 let work = [], labels = [], labelsKey = '';
 const $ = s => document.querySelector(s);
@@ -333,11 +381,47 @@ const sel = () => openCoding;
 const mask = (lo, hi) => ((0xFF >> (7 - hi)) & (0xFF << lo)) & 0xFF;
 const label = (byte, lo, hi, value) => labels.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
 
+// Laertes serves one page at a time (two driving ODIS at once would interfere on the vehicle). Each
+// page identifies itself with a random id and holds Laertes while its socket (laertesLink) is open;
+// another page gets 409 and shows why until this one is closed or reloaded.
+const clientId = crypto.randomUUID();
+let lockedOut = false;
 async function api(method, url, body) {
   const raw = body == null || typeof body === 'string' || body instanceof Blob || body instanceof FormData || body instanceof ArrayBuffer;
-  const res = await fetch(url, {method, body: raw ? body : JSON.stringify(body)});
+  const res = await fetch(url, {method, body: raw ? body : JSON.stringify(body), headers: {'X-Laertes-Client': clientId}});
+  if (res.status === 409) {
+    const msg = (await res.text()).trim();
+    lockedOut = true; $('#lockout').textContent = msg; $('#lockout').hidden = false;
+    throw new Error(msg);
+  }
   if (!res.ok) throw new Error(await res.text());
+  // Laertes was in use elsewhere when this page loaded: start over now that it is free.
+  if (lockedOut) location.reload();
   return res.json();
+}
+// Live link to Laertes: it pings over this socket every 5 s, so the top bar shows whether Laertes is
+// running (no ping for 12 s, or the socket closing, means it is not) and the page reconnects when it
+// comes back. Code 4409: another page has Laertes; retried, so this page continues once it is free.
+function laertesLink() {
+  const el = $('#srv'), txt = el.querySelector('.txt');
+  const ws = new WebSocket(`ws://${location.host}/api/ws?` + new URLSearchParams({client: clientId}));
+  let watchdog;
+  const alive = () => { clearTimeout(watchdog); watchdog = setTimeout(() => ws.close(), 12000); };
+  alive();
+  ws.onmessage = () => {
+    alive();
+    if (lockedOut) { location.reload(); return; }
+    el.className = 'conn on'; txt.textContent = 'Laertes'; el.title = 'Laertes is running.';
+  };
+  ws.onclose = e => {
+    clearTimeout(watchdog);
+    if (e.code === 4409) {
+      lockedOut = true; $('#lockout').textContent = 'Single access limit: Laertes is already open in another browser window or tab. Close it there, then this page continues.'; $('#lockout').hidden = false;
+    }
+    el.className = 'conn off'; txt.textContent = e.code === 4409 ? 'Laertes in use elsewhere' : 'Laertes offline';
+    el.title = e.code === 4409 ? 'Another page is using Laertes.' : 'Laertes (laertes.exe) is not running or not reachable.';
+    setTimeout(laertesLink, 3000);
+  };
 }
 
 // Settings, stored in the database (so they survive restarts and are shared by every browser that
@@ -346,7 +430,70 @@ async function api(method, url, body) {
 const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en'};
 async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
+  try { geko = await api('GET', '/api/geko'); } catch (e) {}
   if (currentTab() === 'settings') renderSettings();
+}
+// The GeKo username and password: saved in laertes.db (password encrypted for this Windows user)
+// and filled into ODIS's username/password dialog when a guided function asks for it.
+let geko = {username: '', password: ''};
+async function saveGeko() {
+  const g = {username: $('#gekoUser').value.trim(), password: $('#gekoPass').value};
+  try { await api('PUT', '/api/geko', g); geko = g; toast('GeKo sign-in saved'); }
+  catch (e) { toast('Could not save the GeKo sign-in: ' + e.message, true); }
+}
+// The VW online (GRP) sign-in: ODIS signs in by OAuth in the user's browser. The job (grp_login,
+// and guided functions when ODIS needs it) asks with a "grp_browser" prompt carrying ODIS's login
+// URL; VW sends the browser back to http://localhost/1, where Laertes catches it
+// (/api/grp-return), or the user pastes that address when Laertes could not listen there.
+function grpPromptHTML(p, answer) {
+  return `<div class="bar"><button class="op" onclick="window.open(${esc(JSON.stringify(p.url))}, '_blank', 'noopener')">Open the VW sign-in</button><button onclick="${answer}(null)">Cancel</button></div>
+    <div class="meta">Waiting for the sign-in in the browser… If it ends on a page that does not load (localhost/1), paste that page's address here:</div>
+    <input id="grpBack" type="text" placeholder="http://localhost/1?code=…" onkeydown="if (event.key === 'Enter') ${answer}()">`;
+}
+// The address the browser came back with for this sign-in, once Laertes caught it ('' until then).
+async function grpCaught(p) {
+  try { return (await api('GET', '/api/grp-return?state=' + encodeURIComponent(p.state))).url || ''; } catch (e) { return ''; }
+}
+let grpJob = null;
+function grpSignIn() {
+  const out = $('#gekoOut');
+  op('VW online sign-in', async o => {
+    let shown = 0;
+    grpJob = {id: (await bridge({action: 'grp_login'})).job_id, prompt: null};
+    o.onCancel = () => bridge({action: 'job_cancel', job_id: grpJob.id}).catch(() => {});
+    out.innerHTML = '<div class="status">Asking ODIS to sign in to the VW online service…</div>';
+    let s;
+    try {
+      while (true) {
+        s = await bridge({action: 'job_status', job_id: grpJob.id});
+        if (s.status !== 'running') break;
+        const p = grpJob.prompt = s.prompt;
+        if (p && p.kind === 'grp_browser') {
+          if (shown !== p.id) { shown = p.id; out.innerHTML = `<div class="expform"><div class="meta">${esc(p.text)}</div>${grpPromptHTML(p, 'grpAnswer')}</div>`; }
+          const back = await grpCaught(p);
+          if (back) await grpAnswer(back);
+        }
+        await sleep(500);
+      }
+    } catch (e) { out.innerHTML = `<div class="status err">✘ ${esc(e.message)}</div>`; throw e; }
+    finally { grpJob = null; }
+    const r = s.result || {}, why = s.job_error || r.error;
+    out.innerHTML = r.signed_in
+      ? `<div class="status">✔ ODIS is signed in to the VW online service${r.user ? ' as <b>' + esc(r.user) + '</b>' : ''}${r.asked ? '' : ' (it already was)'}.</div>`
+      : `<div class="status err">✘ ${r.cancelled ? 'Sign-in cancelled' : 'Sign-in failed'}${why && !r.cancelled ? ': ' + esc(why) + ' ' + trBtn(why) : '.'}</div>`;
+  });
+}
+// Answers the sign-in prompt: the address the browser came back to (from the paste field when not
+// given); null gives up.
+async function grpAnswer(value) {
+  const p = grpJob && grpJob.prompt;
+  if (!p) return;
+  if (value === undefined) value = $('#grpBack').value.trim();
+  if (value === '') return;
+  try { await bridge({action: 'job_answer', job_id: grpJob.id, prompt_id: p.id, value}); }
+  catch (e) { toast(e.message, true); return; }
+  grpJob.prompt = null;
+  $('#gekoOut').innerHTML = `<div class="status">${value ? 'Signing in…' : 'Cancelling…'}</div>`;
 }
 function saveSettings() { api('PUT', '/api/settings', settings).catch(e => toast('Could not save settings: ' + e.message, true)); }
 
@@ -354,7 +501,8 @@ let toastTimer;
 function toast(text, err) {
   const el = $('#toast');
   el.textContent = text; el.classList.toggle('err', !!err); el.hidden = false;
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, err ? 4000 : 1500);
+  el.title = err ? 'Click to close' : ''; el.onclick = () => { el.hidden = true; };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, err ? 15000 : 1500);
 }
 
 // --- Copy ----------------------------------------------------------------------------------
@@ -519,17 +667,50 @@ async function loadLabels(force) {
   labelsKey = key;
 }
 
-// With nothing open the Coding tab is a scratchpad: enter a custom coding to decode/edit it with
-// your .lbl labels. Opening a unit's coding from Project units uses this tab too.
+// With nothing open the Coding tab is a scratchpad: enter a custom coding, or paste part of a VCDS
+// (or Laertes Full scan) Auto-Scan, to decode/edit it with your .lbl labels. Opening a unit's
+// coding from Project units uses this tab too.
+let pastedCodings = null, pastedText = '';
 function renderEmptyCoding() {
   $('#main').innerHTML = `<div class="empty">No coding open — open a unit's coding from <b>Project units</b> (Coding › Open in Coding tab), or enter a custom coding below.</div>
-    <div class="code"><input id="customHex" placeholder="custom coding hex, e.g. 01 19 00 32" style="width:22em;font-family:Consolas, monospace">
-      <button onclick="loadCustomCoding()">Load for editing</button></div>`;
+    <div class="code"><textarea id="customHex" rows="6" placeholder="custom coding hex, e.g. 01 19 00 32 — or paste part of a VCDS scan (Address … / ASAM Dataset: … / Coding: …)" style="width:40em;max-width:100%;font-family:Consolas, monospace">${esc(pastedText)}</textarea>
+      <button onclick="loadCustomCoding()">Load for editing</button></div>
+    ${pastedCodings ? `<h2 class="sub">Codings in the pasted scan</h2><div class="names">${pastedCodings.map((c, i) =>
+      `<button onclick="openCustomCoding(pastedCodings[${i}])">${esc(c.ecu)}${c.subsystem !== 'master' ? ' · ' + esc(c.subsystem) : ''} <span class="meta mono">${esc(c.coding)}</span></button>`).join('')}</div>` : ''}`;
+}
+// The codings of a pasted VCDS-style scan: one per "Coding:" line (byte codings only — the old
+// 5/7-digit decimal soft codings are skipped), with the unit from the "Address" line above it and
+// the ODX variant from its "ASAM Dataset" line, so the variant's labels and definition apply.
+function parseScanCodings(text) {
+  const out = [];
+  let unit = null, sub = 0;
+  for (const line of text.split(/\r?\n/)) {
+    let m;
+    if ((m = line.match(/^\s*Address\s+([0-9A-F]{2,4})\s*:\s*(.*?)\s*(?:\(|Labels:|$)/i))) { unit = {ecu: `Address ${m[1]}: ${m[2]}`, variant: '', codings: []}; sub = 0; }
+    else if ((m = line.match(/^\s*Subsystem\s+(\d+)\b/i))) sub = +m[1];
+    else if (unit && (m = line.match(/^\s*ASAM Dataset:\s*(\S+)/i))) { unit.variant = m[1]; unit.codings.forEach(c => c.variant = m[1]); }
+    else if ((m = line.match(/^\s*Coding:\s*([0-9A-F]+)\s*$/i)) && m[1].length % 2 === 0) {
+      const c = {ecu: unit ? unit.ecu : 'Pasted coding', variant: unit ? unit.variant : '', subsystem: sub ? 'Subsystem ' + sub : 'master', coding: m[1].toUpperCase()};
+      out.push(c); if (unit) unit.codings.push(c);
+    }
+  }
+  return out;
 }
 function loadCustomCoding() {
-  const h = ($('#customHex').value || '').replace(/[^0-9a-fA-F]/g, '');
-  if (h.length < 2 || h.length % 2) { alert('Enter an even number of hex digits.'); return; }
-  openCoding = {id: -1, time: '', ecu: 'Custom coding', variant: 'CUSTOM', subsystem: 'custom', coding: h.toUpperCase(), fromUnit: false};
+  const text = $('#customHex').value || '';
+  pastedText = text;
+  if (/Coding:/i.test(text)) {
+    const found = parseScanCodings(text);
+    if (!found.length) { alert('No byte coding ("Coding: <hex>") found in the pasted text.'); return; }
+    if (found.length === 1) { openCustomCoding(found[0]); return; }
+    pastedCodings = found; renderEmptyCoding(); return;
+  }
+  const h = text.replace(/[^0-9a-fA-F]/g, '');
+  if (h.length < 2 || h.length % 2) { alert('Enter an even number of hex digits, or paste part of a VCDS scan.'); return; }
+  openCustomCoding({ecu: 'Custom coding', variant: '', subsystem: 'custom', coding: h.toUpperCase()});
+}
+function openCustomCoding(c) {
+  openCoding = {id: -1, time: '', ecu: c.ecu, variant: c.variant || 'CUSTOM', subsystem: c.subsystem, coding: c.coding, fromUnit: false};
   work = bytesOf(openCoding.coding); labelsKey = null;
   loadLabels(true).then(applyCodingTabDef).then(render);
 }
@@ -700,7 +881,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', settings: 'settings', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -715,33 +896,44 @@ function showTab(tab) {
   else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
   if (tab === 'retrofit') loadRetrofitTab();
+  if (tab === 'cp') loadCpTab();
+  if (tab === 'immo') loadImmoTab();
   if (tab === 'settings') renderSettings();
 }
 
-// Settings tab: per-viewer options kept in this browser.
+// Settings tab: options stored in laertes.db (see loadSettings).
 function renderSettings() {
   $('#settings').innerHTML = `<h1>Settings</h1>
-    <p class="meta">These are kept in this browser.</p>
-    <h2 class="sub">After a write</h2>
-    <label style="display:flex; gap:8px; align-items:flex-start; max-width:640px">
+    <p class="meta">Stored in laertes.db, so they apply in every browser and survive restarts.</p>
+    <div class="cards"><section class="card"><h2 class="sub">After a write</h2>
+    <label style="align-items:flex-start">
       <input type="checkbox" id="setDtcCheck" ${settings.dtcCheck ? 'checked' : ''} onchange="settings.dtcCheck = this.checked; saveSettings()">
       <span>Read the fault memory before and after each coding/adaptation write and show which faults are new or gone.
         <br><span class="meta">Turn this off to code/adapt faster without the fault check. You can still read a unit's fault memory yourself from Project units.</span></span>
     </label>
-    <h2 class="sub">Translation</h2>
-    <label style="display:flex; gap:8px; align-items:center; max-width:640px">
+    </section><section class="card"><h2 class="sub">Translation</h2>
+    <label style="align-items:center">
       <span>Translate fault and error texts (🌐) into:</span>
       <select onchange="settings.transLang = this.value; saveSettings()">
         ${[['en', 'English'], ['de', 'German'], ['cs', 'Czech'], ['sk', 'Slovak'], ['pl', 'Polish'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['nl', 'Dutch'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['tr', 'Turkish'], ['pt', 'Portuguese'], ['ro', 'Romanian'], ['hu', 'Hungarian']]
           .map(([c, n]) => `<option value="${c}" ${settings.transLang === c ? 'selected' : ''}>${n}</option>`).join('')}
       </select>
     </label>
-    <h2 class="sub">Dangerous functions</h2>
-    <label style="display:flex; gap:8px; align-items:flex-start; max-width:640px">
-      <input type="checkbox" id="setHideDangerous" ${settings.hideDangerous ? 'checked' : ''} onchange="settings.hideDangerous = this.checked; saveSettings(); if (currentTab() !== 'settings') renderUnitDetail()">
+    </section><section class="card"><h2 class="sub">Dangerous functions</h2>
+    <label style="align-items:flex-start">
+      <input type="checkbox" id="setHideDangerous" ${settings.hideDangerous ? 'checked' : ''} onchange="settings.hideDangerous = this.checked; saveSettings(); renderUnitDetail()">
       <span>Hide the dangerous unit functions: <b>Flash firmware</b>, <b>Load dataset</b> and <b>Component protection (test)</b>.
         <br><span class="meta">Hides the buttons on a unit; the other functions are unaffected.</span></span>
-    </label>`;
+    </label></section><section class="card"><h2 class="sub">VW online sign-in</h2>
+    <p class="meta">ODIS signs in to the VW online service (GRP) in your browser, when an online function such as component protection needs it. <b>Sign in</b> does it now.</p>
+    <div class="bar"><button class="op" onclick="grpSignIn()">Sign in</button></div>
+    <div id="gekoOut"></div>
+    <p class="meta">GeKo username and password, filled into ODIS's username/password dialog when a guided function asks for it. The password is stored encrypted for this Windows user.</p>
+    <table class="vals">
+      <tr><td>Username</td><td><input id="gekoUser" type="text" autocomplete="off" value="${esc(geko.username || '')}"></td></tr>
+      <tr><td>Password</td><td><input id="gekoPass" type="password" autocomplete="new-password" value="${esc(geko.password || '')}"></td></tr>
+    </table>
+    <div class="bar"><button onclick="saveGeko()">Save</button></div></section></div>`;
 }
 
 // The bridge describes a unit only by its toString(), e.g.
@@ -895,7 +1087,7 @@ function dtcGuidance(code, text) {
 function dtcGuidanceHTML(code, text, idx) {
   return `<div class="guide"><b>General guidance</b> <span class="meta">(generic, not ODIS guided fault finding)</span>
     <ul>${dtcGuidance(code, text).map(s => `<li>${esc(s)}</li>`).join('')}</ul>
-    <button onclick="op('ODIS guidance', () => odisGuidance('${esc(code)}', '${idx}'))">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
+    <button onclick="op('ODIS guidance', () => odisGuidance('${esc(jsStr(code))}', '${idx}'))">ODIS guided guidance${code ? ' for ' + esc(code) : ''}</button>
     <div id="guide${idx}" class="meta"></div></div>`;
 }
 async function odisGuidance(code, idx) {
@@ -914,7 +1106,7 @@ async function odisGuidance(code, idx) {
     el.innerHTML = `ODIS has no guided documents yet — guided fault finding needs the vehicle identified and started in ODIS.
       <div class="meta">Detected vehicle project: <b>${esc(vp.current || 'none')}</b>${vp.change_allowed === false ? ' · locked (change it in ODIS)' : ''}</div>
       ${vp.change_allowed ? `<div class="bar"><input id="vp${idx}" placeholder="vehicle project, e.g. VW37X" value="${esc(vp.current || '')}">
-        <button onclick="op('Setting the vehicle', () => setVehicle('${idx}', '${esc(code)}'))">Set vehicle & retry</button></div>`
+        <button onclick="op('Setting the vehicle', () => setVehicle('${idx}', '${esc(jsStr(code))}'))">Set vehicle & retry</button></div>`
         : '<div class="meta">In ODIS: identify the vehicle (or pick it manually) and open Guided Fault Finding, then retry.</div>'}`;
   } catch (e) { el.textContent = e.message; }
 }
@@ -1105,7 +1297,7 @@ function changesTableHTML(cs) {
   return copyNext(`<table class="vals"><tr><th>Time</th><th>Kind</th><th>Unit</th><th>Target</th><th>Old → New</th><th>Status</th><th></th></tr>${rows}</table>`, 'Copy the shown changes');
 }
 async function deleteChange(id) {
-  if (!confirm(id ? 'Delete this history entry?' : 'Clear all change history?')) return;
+  if (!confirm(id ? 'Delete this history entry?' : 'Delete ALL recorded changes, not only the ones shown? This cannot be undone.')) return;
   try { await api('DELETE', '/api/history' + (id ? '/' + id : '')); } catch (e) { alert('Delete failed: ' + e.message); return; }
   changes = null;
   refreshChangeViews();
@@ -1133,15 +1325,27 @@ async function codingSelect(step, i) {
   const c = step.codings[i] || {};
   step.entry = i; step.sysName = c.systemName || 'master';
   step.orig = c.byteCoding ? bytesOf(c.byteCoding.replace(/\s/g, '')) : [];
-  step.work = step.orig.slice(); step.writeMsg = ''; step.dtcBefore = step.dtcAfter = null;
+  step.work = step.orig.slice(); step.writeMsg = ''; step.dtcBefore = step.dtcAfter = null; step.dtcHidden = false;
   step.unitLabels = await loadUnitLabels(step.unitVariant, step.sysName);
 }
 async function codingPick(i) { const step = codingStep(); if (step) { await codingSelect(step, i); renderUnitDetail(); } }
+// Re-renders the unit detail after an edit without losing the keyboard position: the render runs
+// once the edit's Tab/Enter has moved focus, which then goes back to the control at the same place.
+function renderKeepFocus() {
+  setTimeout(() => {
+    const ctl = () => [...$('#unitDetail').querySelectorAll('input, select, textarea, button')];
+    const at = ctl().indexOf(document.activeElement);
+    renderUnitDetail();
+    const el = at >= 0 && ctl()[at];
+    if (el) { el.focus(); if (el.select && el.type !== 'checkbox') el.select(); }
+  }, 0);
+}
 function codingByte(i, v) {
   const step = codingStep(); if (!step) return;
   const b = parseInt(v, 16);
   if (!isNaN(b) && b >= 0 && b <= 255) step.work[i] = b;
-  renderUnitDetail();
+  step.writeMsg = '';
+  renderKeepFocus();
 }
 function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(); s.writeMsg = ''; renderUnitDetail(); } }
 // Opens the current unit coding in the Coding tab (full bit grid + label editing) as a live view.
@@ -1186,7 +1390,7 @@ async function codingWrite() {
   if (!confirm(`Write coding to ${u.sname} ${u.id} (${step.sysName})?\n\nFrom: ${from}\nTo:   ${to}\n\nChanges:\n${diff.join('\n')}\n\nThis writes to the control unit.`)) return;
   const details = codingDetails(step, before, want);
   // Faults before the write, to show afterwards which ones the new coding added or removed.
-  step.dtcBefore = step.dtcAfter = null;
+  step.dtcBefore = step.dtcAfter = null; step.dtcHidden = false;
   if (settings.dtcCheck) {
     step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
     step.dtcBefore = await readFaults(u);
@@ -1345,6 +1549,7 @@ function decodeLbl(work, ls) {
 function codingSetField(bytePos, m, value) {
   const step = codingStep(); if (!step) return;
   step.work[bytePos] = ((step.work[bytePos] & ~m) | (value & m)) & 0xFF;
+  step.writeMsg = '';
   renderUnitDetail();
 }
 let pendingLblStep = null;
@@ -1385,12 +1590,12 @@ function adaptControl(step, name, nv) {
   const opts = (step.options || {})[name];
   if (opts && opts.length) {
     const extra = opts.includes(nv) ? '' : `<option selected value="${esc(nv)}">${esc(nv)} (current)</option>`;
-    return `<select onchange="adaptSet('${esc(name)}', this.value)">${extra}${opts.map(o =>
+    return `<select onchange="adaptSet('${esc(jsStr(name))}', this.value)">${extra}${opts.map(o =>
       `<option value="${esc(o)}" ${o === nv ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   }
-  return `<input value="${esc(nv)}" onchange="adaptSet('${esc(name)}', this.value)">`;
+  return `<input value="${esc(nv)}" onchange="adaptSet('${esc(jsStr(name))}', this.value)">`;
 }
-function adaptSet(name, v) { const s = curStep(); if (s) { (s.newVals = s.newVals || {})[name] = v; renderUnitDetail(); } }
+function adaptSet(name, v) { const s = curStep(); if (s) { (s.newVals = s.newVals || {})[name] = v; s.writeMsg = ''; renderKeepFocus(); } }
 async function adaptWrite() {
   const step = curStep(), u = units.find(u => u.index === unitSel), ad = step.res.adaptation;
   const params = (ad.adaptationValues || []).map(v => v.adaptationValue).filter(Boolean);
@@ -1408,7 +1613,7 @@ async function adaptWrite() {
     `${p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name}: ${p.value} → ${values[p.name]}${p.unit ? ' ' + p.unit : ''} (${step.cmd.channel})`).join('\n');
   const detailsFull = step.cp ? 'Component protection test (unit locked until online reactivation)\n' + details : details;
   // Faults before the write, to show afterwards which ones the adaptation added or removed.
-  step.dtcBefore = step.dtcAfter = null;
+  step.dtcBefore = step.dtcAfter = null; step.dtcHidden = false;
   if (settings.dtcCheck) {
     step.writeMsg = 'Reading the fault memory before writing…'; step.writeErr = false; renderUnitDetail();
     step.dtcBefore = await readFaults(u);
@@ -1542,7 +1747,8 @@ function codingSetParam(bytePos, bitPos, bitLen, value) {
   const fieldMask = fieldMax << BigInt(bitPos);
   cur = (cur & ~fieldMask) | ((v << BigInt(bitPos)) & fieldMask);
   for (let i = n - 1; i >= 0; i--) { step.work[bytePos + i] = Number(cur & 0xFFn); cur >>= 8n; }
-  renderUnitDetail();
+  step.writeMsg = '';
+  renderKeepFocus();
 }
 
 function codingDefinitionHTML(step) {
@@ -1640,7 +1846,7 @@ function cpFindHTML(step, u) {
   const chans = (step.allChannels || []).filter(n => CP_RE.test(n)), codes = (step.codingParams || []).filter(n => CP_RE.test(n));
   h += `<h2 class="sub">Likely component-protection adaptation channels</h2>`;
   h += chans.length
-    ? `<div class="names">${chans.map(n => `<button class="op warn" onclick="cpOpen('${esc(n)}')">${esc(n)}</button>`).join('')}</div>
+    ? `<div class="names">${chans.map(n => `<button class="op warn" onclick="cpOpen('${esc(jsStr(n))}')">${esc(n)}</button>`).join('')}</div>
        <div class="meta">Opens in the adaptation editor, where you set the value and write it (with a lock warning, confirmation and read-back).</div>`
     : `<div class="meta">No adaptation channel on this unit matched component-protection keywords. Check the full list below, or the coding parameters.</div>`;
   if (codes.length) h += `<h2 class="sub">Coding parameters that mention component protection</h2>
@@ -1648,7 +1854,7 @@ function cpFindHTML(step, u) {
     <div class="meta">These live in the unit's <b>Coding</b> view; change them there (the coding write has the same warning and verification).</div>`;
   h += `<h2 class="sub">All adaptation channels (${(step.allChannels || []).length})</h2>
     ${(step.allChannels || []).length > 20 ? '<input type="text" placeholder="Filter" oninput="filterNames(this)">' : ''}
-    <div class="names">${(step.allChannels || []).map(n => `<button class="op" onclick="cpOpen('${esc(n)}')">${esc(n)}</button>`).join('')}</div>`;
+    <div class="names">${(step.allChannels || []).map(n => `<button class="op" onclick="cpOpen('${esc(jsStr(n))}')">${esc(n)}</button>`).join('')}</div>`;
   return h;
 }
 // Opens a chosen channel in the adaptation editor, marked as a component-protection write so the
@@ -1656,12 +1862,12 @@ function cpFindHTML(step, u) {
 function cpOpen(name) { op(name, () => unitRun({action: 'read_adaptation', channel: name}, name, {cp: true})); }
 
 // --- Flash firmware / load dataset (EXPERIMENTAL, UNTESTED) ---------------------------------
-// The file (an ODIS programming configuration) is chosen on the ODIS PC — browsed or uploaded —
+// The file (a flash container .frf/.odx, or an ODIS programming configuration) is chosen on the ODIS PC — browsed or uploaded —
 // then read/validated (read-only), then executed through IProgrammingConfigExecutor as a
 // background job whose text/percent progress this page polls. A wrong or interrupted flash can
 // leave a unit inoperable, so execute is staged behind validation and a typed confirmation, and
 // the cancel button must be confirmed once real programming has started.
-const FLASH = {flash: {label: 'Flash firmware', kind: 'firmware', what: 'a firmware programming configuration file'},
+const FLASH = {flash: {label: 'Flash firmware', kind: 'firmware', what: 'a firmware flash container (.frf/.odx) or programming configuration file'},
   dataset: {label: 'Load dataset', kind: 'dataset', what: 'a dataset programming configuration file'}};
 function flashPanel(which) {
   unitReport = null;
@@ -1673,7 +1879,7 @@ function flashPanelHTML(step, u) {
   let h = `<div class="warnbox"><b>Experimental and untested.</b> ${esc(f.label)} writes to ${esc(u.sname || 'the unit')} ${esc(u.id || '')}.
     A wrong or interrupted flash can leave the unit inoperable, and recovery may need an online VW/ODIS SVM session. Only on a unit you own.</div>
     <div class="expform"><div class="meta">${esc(f.what)} on the ODIS PC:</div>
-      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\config.xml" value="${esc(step.path || '')}" oninput="curStep().path = this.value" ${p && p.status === 'running' ? 'disabled' : ''}>
+      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\FL_xxxx.frf or config.xml" value="${esc(step.path || '')}" oninput="flashPathInput(this)" ${p && p.status === 'running' ? 'disabled' : ''}>
       <div class="bar"><button onclick="flashBrowse(curStep().browseDir || '')">Browse…</button>
         <button onclick="$('#flashUpload').click()">Upload…</button>
         <button class="op" onclick="flashReadConfig()" ${step.path ? '' : 'disabled'}>Read / validate config</button></div></div>`;
@@ -1693,8 +1899,13 @@ function flashPanelHTML(step, u) {
       <div class="progress ${cls}"><div style="width:${p.percent || 0}%"></div></div>
       <div class="status ${cls === 'err' ? 'err' : ''}">${p.percent || 0}% · ${esc(mmss)}${p.phase ? ' · ' + esc(p.phase) : ''} — ${esc(p.message || '')}${p.error ? ' — ' + esc(p.error) + ' ' + trBtn(p.error) : ''}</div>
       ${p.status === 'running' ? `<div class="bar"><button class="warn" onclick="flashCancel()">Cancel</button>${p.phase === 'flashing' ? '<span class="meta">Cancelling during programming must be confirmed and may not be possible.</span>' : ''}</div>` : ''}
-      ${step.log && step.log.length ? `<h2 class="sub">ODIS messages ${copyBtn(step.log.join('\\n'), 'Copy the log')}</h2><pre class="report">${esc(step.log.join('\\n'))}</pre>` : ''}`;
+      ${step.log && step.log.length ? `<h2 class="sub">ODIS messages ${copyBtn(step.log.join('\n'), 'Copy the log')}</h2><pre class="report">${esc(step.log.join('\n'))}</pre>` : ''}`;
   }
+  const fl = step.flashLog;
+  h += `<h2 class="sub">ODIS flash log ${fl && fl.lines.length ? copyBtn(fl.lines.join('\n'), 'Copy the flash log') : ''}</h2>
+    <div class="bar"><button onclick="op('Reading the ODIS log', () => flashLogShow(curStep()))">${fl ? 'Refresh' : 'Show the log of the last flash'}</button>
+      <span class="meta">Flash steps and errors from ODIS's engine.log${fl && !fl.lastFlash ? ' (last 2 MB — no flash started from this browser yet)' : ''}.</span></div>
+    ${fl ? flashLogHTML(fl) : ''}`;
   return h;
 }
 // Server-side file browser (Laertes runs on the ODIS PC): one directory at a time.
@@ -1717,6 +1928,14 @@ function flashBrowserHTML(step) {
     ${files.map(e => row(e.name + ` (${(e.size / 1024).toFixed(0)} KB)`, false, `flashPick('${jsStr(r.dir + '/' + e.name)}')`)).join('')}</div>`;
 }
 const jsStr = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+// A check belongs to the file it read: changing the path drops it, so a different, unchecked file
+// can never be flashed. Re-rendering keeps the caret in the field.
+function flashPathInput(el) {
+  const step = curStep(); step.path = el.value;
+  if (!step.config) return;
+  step.config = null; renderUnitDetail();
+  const f = $('#flashFile'); if (f) { f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
+}
 function flashPick(path) { const step = curStep(); step.path = path; step.browse = false; step.config = null; renderUnitDetail(); }
 async function flashUploadFile(input) {
   const step = curStep(), file = input.files[0]; input.value = '';
@@ -1729,31 +1948,76 @@ async function flashUploadFile(input) {
   });
 }
 function flashReadConfig() {
-  const step = curStep(), path = (step.path || '').trim();
+  const step = curStep(), u = units.find(u => u.index === unitSel), path = (step.path || '').trim();
   if (!path) { toast('Choose or upload a file first.', true); return; }
   op('Reading config', async () => {
     step.config = null; renderUnitDetail();
-    step.config = await bridge({action: 'flash_config', file: path});
+    step.config = await bridge({action: 'flash_config', address: u.id, file: path});
     renderUnitDetail();
   });
 }
+// The flash-related ODIS engine.log entries since the flash started (flash_log). The start offset
+// is kept in the browser, so the log of the last flash can be shown again after a failure or reload.
+const FLASH_LOG_KEY = 'laertes.flashLogOffset';
+// Milestones of a flash in ODIS's log: problems (unmet preconditions, a disabled step) and the
+// steps that show how far it got (container loaded, session chosen, sequence started/finished).
+const FLASH_LOG_BAD = /Programming Precondition:|flashing step is disabled|unfulfilled precondition|fehlgeschlagen|failed|abgebrochen|aborted/i;
+const FLASH_LOG_KEY_STEP = /Loading File|contains session|is selected for the control unit|programming preconditions for|update programming sequence|Flashdaten entladen|Download|Transfer|Erase|Checksum|Fingerprint|ECU ?Reset|Security ?Access/i;
+function flashLogHTML(fl) {
+  const rows = fl.lines.map(l => {
+    const m = l.match(/^(\S+) (\w+)\s+([^:]+): ([\s\S]*)$/);
+    if (!m) return {cls: 'cause', html: esc(l.trim()), key: true};  // "Caused by" under an error
+    const [, time, level, src, msg] = m;
+    const bad = level === 'ERROR' || FLASH_LOG_BAD.test(msg), key = bad || level === 'WARN' || FLASH_LOG_KEY_STEP.test(msg);
+    const cls = [`lv-${level.toLowerCase()}`, bad && level !== 'ERROR' ? 'bad' : '', key ? 'key' : ''].join(' ');
+    return {cls, key, html: `<span class="t">${esc(time)}</span> <span class="lv">${esc(level)}</span> <span class="src">${esc(src)}</span> ${esc(msg)}`};
+  });
+  const n = re => fl.lines.filter(l => re.test(l)).length;
+  const errs = n(/^\S+ ERROR /), warns = n(/^\S+ WARN /), shown = fl.keyOnly ? rows.filter(r => r.key) : rows;
+  return `<div class="bar"><span class="meta">${fl.lines.length} entries ·
+      <span class="${errs ? 'flerr' : ''}">${errs} error${errs === 1 ? '' : 's'}</span> · <span class="${warns ? 'flwarn' : ''}">${warns} warning${warns === 1 ? '' : 's'}</span></span>
+      <label class="meta"><input type="checkbox" ${fl.keyOnly ? 'checked' : ''} onchange="curStep().flashLog.keyOnly = this.checked; renderUnitDetail()"> Key steps and problems only</label></div>
+    <div class="report flashlog" id="flashLogPre">${shown.map(r => `<div class="${r.cls}">${r.html}</div>`).join('') || '<span class="meta">(no flash entries yet)</span>'}</div>`;
+}
+async function flashLogFetch(step) {
+  const fl = step.flashLog;
+  const r = await bridge({action: 'flash_log', offset: fl.next});
+  fl.lines = fl.lines.concat(r.lines); fl.next = r.next;
+  if (curStep() === step) { renderUnitDetail(); const pre = $('#flashLogPre'); if (pre) pre.scrollTop = pre.scrollHeight; }
+}
+async function flashLogShow(step) {
+  if (!step.flashLog) {
+    let off = null;
+    try { off = localStorage.getItem(FLASH_LOG_KEY); } catch (e) { /* storage unavailable */ }
+    step.flashLog = {start: off === null ? -1 : +off, lastFlash: off !== null};
+  }
+  step.flashLog.next = step.flashLog.start; step.flashLog.lines = [];  // re-read from the start
+  await flashLogFetch(step);
+}
 function flashExecute() {
   const step = curStep(), u = units.find(u => u.index === unitSel), f = FLASH[step.which];
-  const path = (step.path || '').trim();
-  if (!path) { toast('Choose or upload a file first.', true); return; }
+  const path = step.config && step.config.file;  // always the checked file, never the edited field
+  if (!path) { toast('Check the file first.', true); return; }
   const ans = prompt(`${f.label.toUpperCase()} — EXPERIMENTAL, UNTESTED, WRITES TO THE UNIT.\n\n${u.sname} ${u.id}\nFile: ${path}\n\nA wrong or interrupted flash can leave the unit inoperable; recovery may need an online VW/ODIS SVM session. Do not switch off or disconnect during programming.\n\nType the unit name "${u.sname}" to start:`);
   if (ans === null || ans.trim() !== String(u.sname || '').trim()) { toast('Flash cancelled.'); return; }
   op(f.label, async o => {
     step.log = []; step.startedAt = Date.now();
     step.progress = {percent: 0, message: 'Starting…', status: 'running', phase: 'prepare'}; renderUnitDetail();
     let jid;
-    try { jid = (await bridge({action: 'flash_run', address: u.id, file: path})).job_id; }
+    try {
+      const r = await bridge({action: 'flash_run', address: u.id, file: path, resume: {type: 'flash', label: f.label,
+        record: {kind: f.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: path, oldValue: '', newValue: path}}});
+      jid = r.job_id;
+      step.flashLog = {start: r.log_offset, next: r.log_offset, lines: [], lastFlash: true};
+      try { localStorage.setItem(FLASH_LOG_KEY, String(r.log_offset)); } catch (e) { /* storage unavailable */ }
+    }
     catch (e) { step.progress = {percent: 0, status: 'error', error: e.message, endedAt: Date.now()}; renderUnitDetail(); throw e; }
     step.jobId = jid;
     o.onCancel = () => flashCancel(true);  // top-bar Stop routes to the same confirmed-cancel rule
-    let last = '';
+    let last = '', polls = 0;
     while (true) {
       let s;
+      if (polls++ % 5 === 0) await flashLogFetch(step).catch(() => {});  // the log is best effort
       try { s = await bridge({action: 'job_status', job_id: jid}); }
       catch (e) { step.progress = {...step.progress, status: 'error', error: e.message, endedAt: Date.now()}; break; }
       if (s.message && s.message !== last) { step.log.push(s.message); last = s.message; }
@@ -1763,6 +2027,8 @@ function flashExecute() {
       if (s.status !== 'running') { step.progress.endedAt = Date.now(); break; }
       await sleep(700);
     }
+    await sleep(1000);  // let ODIS write its last entries
+    await flashLogFetch(step).catch(() => {});
     recordChange({kind: f.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: path, oldValue: '', newValue: path,
       status: step.progress.status === 'done' ? 'done' : step.progress.error ? 'error' : 'stopped', note: step.progress.error || step.progress.message});
     if (curStep() === step) renderUnitDetail();
@@ -1820,7 +2086,8 @@ function bsStart() {
   op(`Basic setting ${name}`, async o => {
     step.run = {status: 'running', phase: 'starting'}; renderUnitDetail();
     let jid;
-    try { jid = (await bridge({action: 'basic_setting_run', address: u.id, name, params, measurements: step.meas, login: loginCodes[u.id]})).job_id; }
+    try { jid = (await bridge({action: 'basic_setting_run', address: u.id, name, params, measurements: step.meas, login: loginCodes[u.id], resume: {type: 'basic', label: `Basic setting ${name}`,
+      record: {kind: 'basic setting', address: u.id, unit: u.sname || '', variant: u.variant || '', target: name, oldValue: ''}}})).job_id; }
     catch (e) { step.run = {status: 'error', error: e.message}; renderUnitDetail(); throw e; }
     step.jobId = jid;
     o.onCancel = bsStop;  // the top-bar Stop stops the basic setting too
@@ -2216,6 +2483,248 @@ function renderRetrofitTab() {
     <div id="retroRows"></div>`;
   if (rf) renderRetrofitRows();
 }
+
+// --- Guided functions in ODIS: component protection & immobilizer -------------------------
+// Both tabs run an ODIS guided function (bridge action gf_run) and relay what ODIS reports.
+// ODIS does the work — it talks to the units and to VW's online service and decides the
+// outcome; these tabs only show its messages and answer the dialogs it raises, the online
+// sign-in among them. Component protection is per unit; the immobilizer is vehicle-wide, so
+// its tab lists the functions ODIS offers for this vehicle and runs the one chosen.
+let gfRun = null, gfPromptShownId = 0;
+const gfLabel = g => (g || '').replace(/@\d+$/, '').replace(/_/g, ' ').trim();
+// ODIS's name of a guided function, or its id made readable when the name did not resolve.
+const gfName = f => !f.name || /^(displayName|testerDescription|GUID)/.test(f.name) ? gfLabel(f.gfsid) : f.name;
+
+// The form for a dialog ODIS raised while running a guided function.
+function gfPromptHTML(p) {
+  const enter = `onkeydown="if (event.key === 'Enter') gfAnswer()"`, cancel = `<button onclick="gfAnswer(null)">Cancel</button>`;
+  let h = `<div class="expform"><div class="meta">${esc(p.text || 'ODIS asks')} ${trBtn(p.text)}</div>${p.error ? `<div class="status err">${esc(p.error)} ${trBtn(p.error)}</div>` : ''}`;
+  if (p.kind === 'login') h += `<table class="vals">
+      <tr><td>Username</td><td><input id="gfUser" type="text" autocomplete="off" value="${esc(p.user || geko.username || '')}" ${enter}></td></tr>
+      <tr><td>Password</td><td><input id="gfPass" type="password" autocomplete="off" value="${esc(!p.error && (!p.user || p.user === geko.username) ? geko.password || '' : '')}" ${enter}></td></tr></table>
+    <div class="bar"><button class="op" onclick="gfAnswer()">Sign in</button>${cancel}</div>`;
+  else if (p.kind === 'grp_browser') h += grpPromptHTML(p, 'gfAnswer');
+  else if (p.kind === 'input') h += `<input id="gfInput" type="text" value="${esc(p.initial || '')}" ${enter}>
+    <div class="bar"><button class="op" onclick="gfAnswer()">OK</button>${cancel}</div>`;
+  else if (p.kind === 'select') h += `<div class="bar">${(p.options || []).map((o, i) => `<button onclick="gfAnswer(${i})">${esc(o)}</button>`).join('')}${cancel}</div>`;
+  else if (p.kind === 'confirm') h += `<div class="bar"><button class="op" onclick="gfAnswer(true)">Continue</button><button onclick="gfAnswer(false)">No</button></div>`;
+  else h += `<div class="bar"><button class="op" onclick="gfAnswer(true)">OK</button></div>`;
+  return h + '</div>';
+}
+function gfOutHTML(r) {
+  let h = `<div class="status ${r.error ? 'err' : ''}">${esc(r.phase || r.status)}${typeof r.percent === 'number' ? ' · ' + r.percent + '%' : ''}${r.message ? ' — ' + esc(r.message) : ''}</div>`;
+  // The error stays on the page in a selectable block with a copy button (it is not just a toast).
+  if (r.error) h += `<div class="errbox">${copyBtn(r.error, 'Copy the error')}<b>Error</b><pre>${esc(r.error)}</pre></div>`;
+  if (r.prompt) h += gfPromptHTML(r.prompt);
+  const log = (r.result && r.result.log) || r.log || [];
+  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text).join('\n'), 'Copy all ODIS messages')}</h2><table class="vals">${log.map(m =>
+    `<tr><td>${esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${esc(m.text)} ${trBtn(m.text)}</td></tr>`).join('')}</table>`;
+  if (r.result) h += `<div class="status">ODIS finished ${esc(r.result.function || 'the guided function')}${r.result.outcome ? ' — result: <b>' + esc(r.result.outcome) + '</b> ' + trBtn(r.result.outcome) : ''}</div>`;
+  return h;
+}
+// The run output lives in a #gfOut inside whichever guided-function tab is showing.
+function gfRender() { const el = $('.db:not([hidden]) #gfOut'); if (el && gfRun) el.innerHTML = gfOutHTML(gfRun); }
+function gfOutInitial() { return `<div id="gfOut">${gfRun ? gfOutHTML(gfRun) : '<div class="placeholder">Progress, ODIS dialogs and the result of a run appear here.</div>'}</div>`; }
+// Runs a guided function. `payload` names it for gf_run (e.g. {unit} for CP, {key} for a
+// vehicle-wide function); `label` is the op label; `tab` the owning tab, redrawn so its controls,
+// disabled while the run holds the connection, come back when it ends. With `jid` it follows a
+// run already going (the page was reloaded) instead of starting one.
+const GF_TABS = {cp: () => renderCpTab(), immo: () => renderImmoTab()};
+function gfStart(payload, label, tab, jid) {
+  const rerender = GF_TABS[tab];
+  return op(label, async o => {
+    gfRun = {status: 'running', phase: jid ? 'resuming' : 'starting', percent: 0, ...payload}; gfPromptShownId = 0;
+    rerender();
+    try {
+      if (!jid) jid = (await bridge({action: 'gf_run', ...payload, resume: {type: 'gf', label, tab, payload}})).job_id;
+      gfRun.jobId = jid; o.onCancel = gfCancel;
+      while (true) {
+        let s;
+        try { s = await bridge({action: 'job_status', job_id: jid}); }
+        catch (e) { throw new Error(/no such job/i.test(e.message) ? 'Lost track of the run — the ODIS bridge was restarted. Check in ODIS whether the guided function is still running, then start again.' : e.message); }
+        const prompt = s.prompt;
+        gfRun = {...gfRun, status: s.status, phase: s.status === 'running' ? s.phase : s.status, percent: s.percent,
+          message: s.message, prompt, log: (s.data && s.data.log) || gfRun.log, error: s.job_error, result: s.result};
+        if (s.status !== 'running') break;
+        // Render progress, but don't redraw an open dialog the user may be typing into.
+        if (prompt && prompt.kind === 'grp_browser') {
+          if (gfPromptShownId !== prompt.id) { gfPromptShownId = prompt.id; gfRender(); }
+          const back = await grpCaught(prompt);
+          if (back) await gfAnswer(back);
+        } else if (prompt) {
+          if (gfPromptShownId !== prompt.id) {
+            gfPromptShownId = prompt.id; gfRender();
+            const f = $('#gfUser') || $('#gfInput'); if (f) (f.value ? $('#gfPass') || f : f).focus();
+          }
+        } else { gfPromptShownId = 0; gfRender(); }
+        await sleep(500);
+      }
+    } catch (e) { gfRun = {...gfRun, status: 'error', prompt: null, error: e.message}; throw e; }
+    finally { rerender(); }  // the run is over: re-enable the controls disabled while it ran
+    if (gfRun.result) toast(gfRun.message || 'ODIS finished the guided function.');
+    else if (gfRun.error) toast(gfRun.error, true);
+  });
+}
+// Answers ODIS's open dialog. Without an argument the value comes from the dialog's inputs;
+// null cancels it.
+async function gfAnswer(value) {
+  const p = gfRun && gfRun.prompt;
+  if (!p) return;
+  if (value === undefined) value = p.kind === 'login' ? {username: $('#gfUser').value || '', password: $('#gfPass').value || ''}
+    : p.kind === 'input' ? $('#gfInput').value : p.kind === 'grp_browser' ? $('#grpBack').value.trim() : true;
+  if (p.kind === 'grp_browser' && value === '') return;
+  try { await bridge({action: 'job_answer', job_id: gfRun.jobId, prompt_id: p.id, value}); }
+  catch (e) { toast(e.message, true); return; }
+  gfRun.prompt = null; gfPromptShownId = 0; gfRender();
+}
+async function gfCancel() {
+  if (!gfRun || !gfRun.jobId) return;
+  try { await bridge({action: 'job_cancel', job_id: gfRun.jobId}); } catch (e) { toast(e.message, true); }
+}
+
+// --- Back to a running operation -------------------------------------------------------------
+// Jobs run in the ODIS bridge, so they outlive this page. When the page is reopened or reloaded it
+// follows each job still running (or finished while it was closed) again: a guided function in its
+// tab, a flash or basic setting in the #resumed box. Each launch passes `resume` (what to show and
+// the history entry to record) for this; the bridge keeps it with the job.
+let resumed = null;
+function resumedHTML(r) {
+  const err = r.error, statuses = r.type === 'basic' ? bsStatuses(r.data) : '';
+  return `<div class="bar"><b>${esc(r.label)}</b>${r.status === 'running' ? '<button class="warn" onclick="resumedStop()">Stop</button>'
+      : '<button onclick="resumed = null; $(\'#resumed\').hidden = true">Close</button>'}</div>
+    <div class="status ${err ? 'err' : ''}">${esc(r.phase || r.status)}${typeof r.percent === 'number' ? ' · ' + r.percent + '%' : ''}${r.message ? ' — ' + esc(r.message) : ''}${statuses ? ' — ' + esc(statuses) : ''}</div>
+    ${err ? `<div class="errbox">${copyBtn(err, 'Copy the error')}<b>Error</b><pre>${esc(err)}</pre></div>` : ''}
+    ${r.type === 'basic' && r.data ? valsTable(resultRows(r.data)) : ''}`;
+}
+function resumedRender() { const el = $('#resumed'); el.hidden = !resumed; if (resumed) el.innerHTML = resumedHTML(resumed); }
+// Stop follows the rules of the page that started the job: a flash that is programming must be confirmed.
+async function resumedStop() {
+  const r = resumed;
+  if (!r || r.status !== 'running') return;
+  if (r.type === 'flash' && r.phase === 'flashing' && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
+  try { await bridge({action: 'job_cancel', job_id: r.jobId}); r.phase = 'stopping'; resumedRender(); }
+  catch (e) { toast(e.message, true); }
+}
+function resumeJob(job) {
+  const res = job.resume || {type: '', label: 'Operation started earlier'};
+  if (res.type === 'gf') { showTab(res.tab); return gfStart(res.payload, res.label, res.tab, job.job_id); }
+  return op(res.label, async o => {
+    resumed = {type: res.type, label: res.label, jobId: job.job_id, status: 'running', phase: 'resuming'}; resumedRender();
+    o.onCancel = resumedStop;
+    while (true) {
+      let s;
+      try { s = await bridge({action: 'job_status', job_id: job.job_id}); }
+      catch (e) { resumed = {...resumed, status: 'error', error: e.message}; break; }
+      resumed = {...resumed, status: s.status, phase: s.status === 'running' ? s.phase : s.status, percent: s.percent,
+        message: s.message, data: s.data, error: s.job_error};
+      if (s.status !== 'running') { if (res.type === 'basic' && s.result) resumed.data = s.result.stop || s.result.last || s.result.start; break; }
+      opLabel(`${res.label} ${s.percent || 0}%`);
+      resumedRender();
+      await sleep(700);
+    }
+    resumedRender();
+    if (res.record) {
+      const r = resumed, status = r.status === 'done' ? 'done' : r.error ? 'error' : 'stopped';
+      recordChange({...res.record, ...(res.type === 'basic' ? {newValue: bsStatuses(r.data)} : {}), status,
+        note: r.error || (res.type === 'basic' ? '' : r.message || '')});
+    }
+  });
+}
+async function resumeJobs() {
+  let jobs = [];
+  try { jobs = (await bridge({action: 'job_list'})).jobs; } catch (e) { return; }  // bridge offline or older
+  for (const job of jobs) await resumeJob(job);
+}
+
+// --- CP tab: component protection (per unit) -----------------------------------------------
+let gfUnit = '5F', cpFilter = '';
+async function loadCpTab() {
+  if (!units) { try { await loadUnits(); } catch (e) {} }
+  renderCpTab();
+}
+function renderCpTab() {
+  const el = $('#cp'); if (!el) return;
+  const running = gfRun && gfRun.status === 'running', dis = running ? 'disabled' : '';
+  el.innerHTML = `<h2 class="sub">Component protection</h2>
+    <div class="warnbox">Runs the unit's component-protection guided function in ODIS. ODIS reads the unit, signs in to the
+      VW online service with the account you enter and decides the outcome; this page only relays its dialogs. Needs the
+      car connected and the vehicle identified in ODIS.</div>
+    <div class="split">
+      <div class="split-l">
+        <div class="bar">
+          <input type="text" placeholder="Filter units" value="${esc(cpFilter)}" oninput="cpFilter = this.value; renderCpUnits()" ${dis}>
+          <input id="gfUnit" type="text" placeholder="Address e.g. 5F" value="${esc(gfUnit)}" style="max-width:130px" ${dis} oninput="gfUnit = this.value">
+          <button class="op" onclick="cpRemove()" ${dis}>Remove component protection…</button></div>
+        <div id="cpUnits"></div>
+      </div>
+      <div class="split-r">${gfOutInitial()}</div>
+    </div>`;
+  renderCpUnits();
+}
+function renderCpUnits() {
+  const el = $('#cpUnits'); if (!el) return;
+  const q = cpFilter.trim().toLowerCase();
+  const list = (units || []).filter(u => u.id && (!q || (u.id + ' ' + (u.sname || '')).toLowerCase().includes(q)));
+  const running = gfRun && gfRun.status === 'running';
+  el.innerHTML = list.length
+    ? `<table class="unitlist"><thead><tr><th>Address</th><th>Unit</th><th></th></tr></thead><tbody>${list.map(u =>
+        `<tr><td>${esc(u.id)}</td><td>${esc(u.sname || u.variant || '')}</td>
+          <td><button onclick="cpRemove('${esc(u.id)}')" ${running ? 'disabled' : ''}>Remove CP…</button></td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty">${units && units.length ? 'No unit matches.' : 'No project units loaded — open <b>Project units</b> and scan, or type an address above.'}</div>`;
+}
+function cpRemove(unit) {
+  if (unit) { gfUnit = unit; const i = $('#gfUnit'); if (i) i.value = unit; }
+  const u = (($('#gfUnit') && $('#gfUnit').value) || gfUnit || '').trim();
+  if (!u) { toast('Enter the unit address.', true); return; }
+  gfUnit = u;
+  gfStart({unit: u}, `Component protection ${u}`, 'cp');
+}
+
+// --- Immobilizer tab: vehicle-wide immobilizer (Wegfahrsicherung) functions ----------------
+// The immobilizer is not tied to one unit, so this lists the immobilizer guided functions ODIS
+// offers for the identified vehicle and runs the one chosen (by its diag-object key).
+let immoFns = null, immoErr = null;
+const IMMO_RE = /wegfahr|wfs|immo/i;
+async function loadImmoTab() {
+  renderImmoTab();
+  if (immoFns) return;
+  await op('Immobilizer functions', async () => {
+    immoErr = null;
+    try { await bridge({action: 'gf_identify'}); } catch (e) {}  // best-effort; gf_functions needs it
+    try {
+      const r = await bridge({action: 'gf_functions', limit: 800});
+      immoFns = (r.functions || []).filter(f => IMMO_RE.test(f.gfsid || ''));
+    } catch (e) { immoErr = e.message; }
+    renderImmoTab();
+  });
+}
+function renderImmoTab() {
+  const el = $('#immo'); if (!el) return;
+  const running = gfRun && gfRun.status === 'running';
+  el.innerHTML = `<h2 class="sub">Immobilizer</h2>
+    <div class="warnbox">Runs an immobilizer (Wegfahrsicherung) guided function in ODIS. ODIS reads the vehicle, signs in to
+      the VW online service with the account you enter and decides the outcome; this page only relays its dialogs. Needs the
+      car connected and the vehicle identified in ODIS.</div>
+    <div class="split">
+      <div class="split-l">
+        <div class="bar"><button onclick="immoFns = null; loadImmoTab()" ${running ? 'disabled' : ''}>Reload functions</button></div>
+        <div id="immoFns">${immoFnsHTML(running)}</div>
+      </div>
+      <div class="split-r">${gfOutInitial()}</div>
+    </div>`;
+}
+function immoFnsHTML(running) {
+  if (immoErr) return `<div class="empty">Could not list immobilizer functions: ${esc(immoErr)}<br>Identify the vehicle in ODIS, then Reload.</div>`;
+  if (!immoFns) return `<div class="meta">Listing the vehicle's immobilizer functions…</div>`;
+  if (!immoFns.length) return `<div class="empty">ODIS offers no immobilizer function for this vehicle.</div>`;
+  return `<table class="unitlist"><thead><tr><th>Function</th><th></th></tr></thead><tbody>${immoFns.map(f =>
+    `<tr><td>${esc(gfName(f))} ${trBtn(gfName(f))} <span class="meta">${esc(String(f.key || '').slice(-6))}</span></td>
+      <td><button class="op" onclick="immoRun('${esc(f.key)}')" ${running ? 'disabled' : ''}>Run…</button></td></tr>`).join('')}</tbody></table>`;
+}
+function immoRun(key) {
+  const f = (immoFns || []).find(x => x.key === key);
+  gfStart({key}, 'Immobilizer: ' + (f ? gfName(f) : key), 'immo');
+}
 function renderRetrofitRows() {
   const q = retroQ.trim().toLowerCase(), all = retroChanges.length;
   const cs = retroChanges.filter(c => !q || Object.values(c).join(' ').toLowerCase().includes(q));
@@ -2488,7 +2997,7 @@ function renderOdx() {
       <div class="meta">${esc([u.long_name, u.protocol, u.location, `${u.dtc_count} trouble codes`].filter(Boolean).join(' · '))}
         · <a href="#" onclick="showTab('dtc'); return false">show trouble codes</a></div>
       <div class="names">${u.tables.map(x => `<button class="${t && t.table === x.name ? 'on' : ''}" title="${esc(x.name)}"
-        onclick="op('Loading the table', () => odxOpenTable('${esc(x.name)}'))">${esc(x.long_name || x.name)} (${x.rows})</button>`).join('')}</div>`;
+        onclick="op('Loading the table', () => odxOpenTable('${esc(jsStr(x.name))}'))">${esc(x.long_name || x.name)} (${x.rows})</button>`).join('')}</div>`;
   }
   if (t && t.busy) html += `<div class="meta">Loading ${esc(t.table)}…</div>`;
   if (t && t.rows) {
@@ -2555,7 +3064,6 @@ function filterRows(input) {
 
 function toggle(i, bit) { work[i] ^= 1 << bit; render(); }
 function setField(i, m, v) { work[i] = (work[i] & ~m) | v; render(); }
-function copy(t) { navigator.clipboard.writeText(t); }
 
 async function save(l, text) {
   const r = sel(); l.text = text.trim();
@@ -2580,11 +3088,13 @@ let startTab = 'coding';
 try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
 showTab(startTab);
 renderEmptyCoding();
+laertesLink();
 connPoll();
 loadSettings();
 let laertesVersion = '';
 api('GET', '/api/version').then(v => { laertesVersion = v; $('#ver').textContent = 'v' + v; }).catch(() => {});
 loadRetrofits();
+resumeJobs();
 </script>
 </body>
 </html>

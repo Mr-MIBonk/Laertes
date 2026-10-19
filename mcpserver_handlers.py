@@ -19,6 +19,14 @@ from java.util import Collection, Map
 from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
 
 
+# State that must outlive a reload of this file (jobs in flight, our registrations in ODIS):
+# mcpserver.py injects _PERSIST. An older mcpserver.py does not; then it lasts until the next reload.
+try:
+    _KEEP = _PERSIST
+except NameError:
+    _KEEP = {}
+
+
 # --- ODIS services ------------------------------------------------------------------------
 
 def get_context():
@@ -883,7 +891,8 @@ def handle__debug(cmd):
 
     A step is a method name (no arguments), [name, arg, ...], an int (element of a collection),
     "@pkg.Class.method" (static method of a class loaded through the current object's bundle)
-    "!method" (no-argument method called by reflection, for non-public classes), ".field"
+    "!method" (no-argument method called by reflection, for non-public classes), "^pkg.Class.FIELD"
+    (static field, private ones included), ".field"
     (field read by reflection)
     or, as the last step, "#pkg.Class" (list that class's methods, static ones included).
     Returns the class, text and public methods of the object reached.
@@ -909,6 +918,12 @@ def handle__debug(cmd):
                 obj = read_field(obj, step[1:])
             elif isinstance(step, basestring) and step.startswith("!"):
                 obj = invoke_declared(obj, step[1:])
+            elif isinstance(step, basestring) and step.startswith("^"):  # static field
+                cls_name, name = step[1:].rsplit(".", 1)
+                clazz = FrameworkUtil.getBundle(obj.getClass()).loadClass(cls_name)
+                field = Class.getDeclaredField(clazz, name)
+                field.setAccessible(True)
+                obj = field.get(None)
             elif isinstance(step, basestring) and step.startswith("@"):
                 cls_name, meth = step[1:].rsplit(".", 1)
                 clazz = FrameworkUtil.getBundle(obj.getClass()).loadClass(cls_name)
@@ -919,7 +934,9 @@ def handle__debug(cmd):
                 obj = getattr(obj, step[0])(*step[1:])
             else:
                 obj = getattr(obj, step)()
-        clazz = listed or (obj.getClass() if obj is not None else None)
+        if obj is None or isinstance(obj, (basestring, bool, int, long, float)):  # a plain value
+            return {"ok": True, "class": None, "repr": unicode(obj)[:2000]}
+        clazz = listed or obj.getClass()
         if cmd.get("param_of"):
             name, i = cmd["param_of"]
             clazz = [m for m in clazz.getMethods() if m.getName() == name][0].getParameterTypes()[i]
@@ -1192,6 +1209,703 @@ def handle_gfs_explore(cmd):
     return out
 
 
+# Guided functions (component protection...) need GFS's knowledge base, which ODIS builds from the
+# vehicle identification (brand, model, model year, variant, engine) of a Diagnosis session. The
+# macro runs without one, so the identification is made here on ODIS's own selection model.
+
+GF_LEVELS = [  # (name, list getter, selection setter)
+    ("brand", "getManufacturerList", "setSelectedManufacturer"),
+    ("model", "getVehicleModelList", "setSelectedVehicleModel"),
+    ("year", "getModelYearList", "setSelectedModelYear"),
+    ("variant", "getVehicleVariantList", "setSelectedVehicleVariant"),
+    ("engine", "getEngineTypeList", "setSelectedEngineType"),
+]
+
+
+def odis_text(context, text_id):
+    """The text of an ODIS text id in the ODIS language (guided-function texts in German, the only
+    language ODIS ships them in), or the id itself."""
+    if text_id is None:
+        return None
+    if text_id.getSource() == "DONT_TRANSLATE_AREA":
+        return unicode(text_id.getId())
+    from java.util import Locale
+    factory, ref = gfs_service(context, "de.volkswagen.odis.vaudas.domainmodel.base.factory.ITranslatedTextFactory")
+    try:
+        text = factory.getTranslatedText(Locale.getDefault(), text_id, None)
+        for getter in ("getText", "getTranslatedText"):
+            if text is not None and hasattr(text, getter):
+                return unicode(getattr(text, getter)())
+    except (Exception, Throwable):
+        pass
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    key = unicode(text_id.getId())
+    try:
+        return gfs_db_text(key) or key
+    except (Exception, Throwable):
+        return key
+
+
+def gf_attribute_collection(context):
+    """ODIS's vehicle-identification selection model (the one its identification dialog uses)."""
+    info, ref = gfs_service(context, "de.volkswagen.odis.vaudas.diag.systemtest.IDiagnosisSessionInfoService")
+    try:
+        return info.getVehicleIdentificatonData().getVehicleAttributeCollection()
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
+def handle_gf_identify(cmd):
+    """Exploratory: identifies the vehicle for guided functions without a Diagnosis session. Lists
+    the choices of each level (brand, model, year, variant, engine) and selects cmd[level] (an index)
+    or the only choice, or for the model the one matching the VIN's model code. Stops at the first
+    level left open. Changes only ODIS's selection, nothing in the car."""
+    context = get_context()
+    coll = gf_attribute_collection(context)
+    if cmd.get("reset"):
+        coll.clearSelection()
+    coll.evaluate()
+    vin_codes = [unicode(r.getVehicleClass()) for r in coll.getVinExtractionResult() or []]
+    out = {"ok": True, "vin": unicode(coll.getVIN()), "vin_models": vin_codes, "levels": []}
+    for name, list_getter, setter in GF_LEVELS:
+        items = list(getattr(coll, list_getter)() or [])
+        level = {"level": name, "choices": []}
+        for i, item in enumerate(items):
+            node = item.getNode() if hasattr(item, "getNode") else None
+            name_id = node.getName() if node is not None else item.getNameId()
+            choice = {"i": i, "text": odis_text(context, name_id)}
+            if node is not None:
+                choice.update(project=unicode(node.getDiagProjectName()), gfsid=unicode(node.getEquipmentNodeGfsId()),
+                              vin_codes=[unicode(c) for c in node.getVinModelCodes() or []])
+            level["choices"].append(choice)
+        out["levels"].append(level)
+        pick = cmd.get(name)
+        if pick is None and len(items) == 1:
+            pick = 0
+        if pick is None and name == "model":
+            matches = [c["i"] for c in level["choices"] if set(c.get("vin_codes", [])) & set(vin_codes)]
+            pick = matches[0] if len(matches) == 1 else None
+        if pick is None:
+            break
+        try:
+            getattr(coll, setter)(items[int(pick)])
+            level["selected"] = int(pick)
+        except (Exception, Throwable) as e:
+            level["error"] = error_text(e)
+            break
+    out["complete"] = bool(coll.selectionIsCompleted())
+    return out
+
+
+def _gfs_build(cmd, questions=None):
+    """Identify the vehicle (its selection must be completed by gf_identify first) and build a GFS
+    session and knowledge base for it, exactly as ODIS does when a Diagnosis starts. Returns
+    (context, gfs, kb, vehicle). The equipment questions the build asks are answered from
+    cmd["answers"] (question id -> bool, default no) and appended to the list `questions` when given.
+    Builds only an in-memory session; it changes nothing in the car and contacts no server."""
+    from java.lang import Class
+    from org.python.core import Py
+    context = get_context()
+    coll = gf_attribute_collection(context)
+    if not coll.selectionIsCompleted():
+        raise Exception("vehicle identification incomplete; run gf_identify first")
+    vehicle = session_vehicle()
+    vehicle.setManufacturer(coll.getSelectedManufacturer())
+    vehicle.setVehicleModel(coll.getSelectedVehicleModel())
+    vehicle.setModelYear(coll.getSelectedModelYear())
+    vehicle.setVariant(coll.getSelectedVehicleVariant())
+    vehicle.setEngineType(coll.getSelectedEngineType())
+    service, ref = gfs_service(context, "de.volkswagen.odis.vaudas.gfs.IGfsService")
+    try:
+        gfs = service.createGfs(vehicle)
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    kb = gfs.getKnowledgeBase()
+    bundle = FrameworkUtil.getBundle(kb.getClass())
+    pkg = "de.volkswagen.odis.vaudas.gfs.vehicledata.knowledgebase."
+    decision_type = Py.java2py(bundle.loadClass(pkg + "IVariantRuleDecision"))
+
+    class Decision(decision_type):
+        def decide(self, text_id):
+            answer = bool((cmd.get("answers") or {}).get(unicode(text_id.getId()), False))
+            if questions is not None:
+                questions.append({"id": unicode(text_id.getId()), "text": odis_text(context, text_id), "answer": answer})
+            return answer
+
+    rules_class = bundle.loadClass(pkg + "VariantRuleEvaluationRules")
+    rules = Class.getMethod(rules_class, cmd.get("rules", "all"), []).invoke(None, [])
+    kb.build(rules, coll.getEquipmentTree(), Decision())
+    return context, gfs, kb, vehicle
+
+
+def _super_function_json(context, o):
+    """A guided function object as JSON: id, name and its test programs."""
+    f = {"name": odis_text(context, o.getName()), "gfsid": unicode(o.getDiagObjectGfsId()), "key": unicode(o.getDiagObjectKey())}
+    try:
+        f["programs"] = [{"title": odis_text(context, h.getTitle()), "key": unicode(h.getTestProgramKey())}
+                         for h in o.getTestProgramHandles() or []]
+    except (Exception, Throwable) as e:
+        f["error"] = error_text(e)
+    return f
+
+
+def _norm_addr(addr):
+    """A unit address normalised for comparison: upper case, no 0x, no leading zeros ("05F"->"5F")."""
+    a = (addr or "").upper().replace("0X", "").lstrip("0")
+    return a or "0"
+
+
+def _find_cp_function(kb, unit):
+    """(diagnostic object, first test-program handle) of the component-protection guided function for
+    a unit address (e.g. "5F"), or (None, None). The function's gfs id is "<ADDR>_Komponentenschutz..."."""
+    want = _norm_addr(unit)
+    for o in kb.getAllSuperFunctionObjects(True) or []:
+        gid = unicode(o.getDiagObjectGfsId())
+        if "Komponentenschutz" in gid and _norm_addr(gid.split("_", 1)[0]) == want:
+            handles = list(o.getTestProgramHandles() or [])
+            return o, (handles[0] if handles else None)
+    return None, None
+
+
+def _find_function_by_key(kb, key):
+    """(diagnostic object, first test-program handle) of the guided function with diag-object key
+    `key` (the "key" from gf_functions), or (None, None). Used for vehicle-wide functions that are
+    not tied to a unit address, such as the immobilizer (Wegfahrsicherung)."""
+    for o in kb.getAllSuperFunctionObjects(True) or []:
+        if unicode(o.getDiagObjectKey()) == key:
+            handles = list(o.getTestProgramHandles() or [])
+            return o, (handles[0] if handles else None)
+    return None, None
+
+
+def handle_gf_functions(cmd):
+    """Identify the vehicle and list its vehicle-wide guided functions (component protection, online
+    system test, ...). Needs gf_identify first. Builds only an in-memory GFS session; nothing in the
+    car, no server contacted."""
+    questions = []
+    try:
+        context, gfs, kb, vehicle = _gfs_build(cmd, questions)
+    except (Exception, Throwable) as e:
+        return {"ok": False, "error": error_text(e)}
+    objs = list(kb.getAllSuperFunctionObjects(True) or [])[:int(cmd.get("limit", 500))]
+    return {"ok": True, "questions": questions, "functions": [_super_function_json(context, o) for o in objs]}
+
+
+def handle_cp_probe(cmd):
+    """Read-only: locate the component-protection guided function for unit cmd["unit"] and report what
+    running it needs (its test-program handle, the UiInputResult constructors, the special-action
+    enum constants). Contacts no VW server and runs nothing in the car."""
+    try:
+        context, gfs, kb, vehicle = _gfs_build(cmd)
+    except (Exception, Throwable) as e:
+        return {"ok": False, "error": error_text(e)}
+    out = {"ok": True, "unit": cmd.get("unit")}
+    obj, handle = _find_cp_function(kb, cmd.get("unit"))
+    if obj is None:
+        out["error"] = "no component-protection function for unit %s" % cmd.get("unit")
+    else:
+        out["function"] = {"gfsid": unicode(obj.getDiagObjectGfsId()), "name": odis_text(context, obj.getName()),
+                           "handle_id": unicode(handle.getHandleId()) if handle else None,
+                           "handle_title": odis_text(context, handle.getTitle()) if handle else None,
+                           "program_key": unicode(handle.getTestProgramKey()) if handle else None}
+    bundle = FrameworkUtil.getBundle(gfs.getClass())
+    uir = bundle.loadClass("de.volkswagen.odis.vaudas.gfs.execution.UiInputResult")
+    out["UiInputResult_ctors"] = [re.sub(r"[\w$]+\.", "", unicode(c)) for c in uir.getDeclaredConstructors()]
+    action = bundle.loadClass("de.volkswagen.odis.vaudas.gfs.execution.UiInputResult$EUserSpecialAction")
+    out["EUserSpecialAction"] = [unicode(c) for c in action.getEnumConstants() or []]
+    from java.lang import Class
+    sig = lambda c: re.sub(r"[\w$]+\.", "", unicode(c))
+    # Parameter types come back as Jython type proxies, so they are inspected through Class.
+    start = [m for m in gfs.getClass().getMethods() if m.getName() == "startTestProgram"]
+    out["startTestProgram"] = [[Class.getName(p) for p in m.getParameterTypes()] for m in start]
+    ui = bundle.loadClass("de.volkswagen.odis.vaudas.gfs.execution.IGfsUiConnector")
+    for p in [p for m in start for p in m.getParameterTypes()] + [p for m in ui.getMethods() for p in m.getParameterTypes()]:
+        n = Class.getName(p)
+        if n.startswith("de.volkswagen") and n not in out:
+            out[n] = ([unicode(c) for c in Class.getEnumConstants(p)] if Class.isEnum(p)
+                      else [sig(x) for x in Class.getDeclaredMethods(p)] + [sig(x) for x in Class.getConstructors(p)])
+    out["LoginDataResponse_ctors"] = [sig(c) for c in Class.getConstructors(_login_types(context)[1])]
+    out["login_handlers"] = [unicode(r.getProperty("service.ranking")) + " " + unicode(context.getService(r).getClass().getName())
+                             for r in context.getServiceReferences(LOGIN_HANDLER, None) or []]
+    return out
+
+
+LOGIN_HANDLER = "de.volkswagen.odis.vaudas.core.services.ILoginHandlerService"
+
+
+def _login_types(context):
+    """ILoginHandlerService and LoginDataResponse as Jython types, loaded through the bundle of
+    ODIS's own login handler. Our Jython handlers (PageLogin, ranked above ODIS's) come from no
+    bundle, so a handler without one is skipped rather than taken as the top-ranked service."""
+    from org.python.core import Py
+    for ref in context.getServiceReferences(LOGIN_HANDLER, None) or []:
+        handler = context.getService(ref)
+        try:
+            bundle = FrameworkUtil.getBundle(handler.getClass()) if handler is not None else None
+        finally:
+            context.ungetService(ref)
+        if bundle is not None:
+            return (Py.java2py(bundle.loadClass(LOGIN_HANDLER)),
+                    Py.java2py(bundle.loadClass("de.volkswagen.odis.vaudas.core.LoginDataResponse")))
+    raise Exception("ODIS has no login handler service")
+
+
+def _register_page_login(context, jid, log):
+    """Registers, above ODIS's own sign-in dialog (DialogLoginHandler), a login handler that asks
+    the page for the online sign-in and hands it to ODIS, which logs in to VW and decides. Returns
+    the registration to unregister, or None when ODIS keeps its own dialog. One left registered by
+    an earlier job that never finished is unregistered first (one job runs at a time), so it does
+    not keep answering ODIS's sign-in for a job that is gone."""
+    from java.util import Hashtable
+    from java.lang import Integer
+    stale = _KEEP.pop("page_login", None)
+    if stale is not None:
+        try:
+            stale.unregister()
+        except (Exception, Throwable):
+            pass  # already unregistered
+    try:
+        handler_type, response = _login_types(context)
+
+        class PageLogin(handler_type):
+            def performLogin(self, request):
+                failure = request.getPreviousFailure()
+                text = " ".join(t for t in [request.getTitle(), request.getLogonReason(), request.getLogonHint()] if t)
+                log.append({"kind": "login", "text": text or "ODIS online sign-in"})
+                try:
+                    creds = _job_ask(jid, {"kind": "login", "text": text or "Sign in to the VW online service (ODIS asks for it).",
+                                           "error": error_text(failure) if failure is not None else None,
+                                           "user": request.getUserId() or ""})
+                except Exception:
+                    creds = None
+                if not creds or not creds.get("username") or not creds.get("password"):
+                    return response(True, None, None)
+                return response(False, creds["username"], creds["password"])
+
+        props = Hashtable()
+        props.put("service.ranking", Integer(1000))
+        _KEEP["page_login"] = context.registerService(LOGIN_HANDLER, PageLogin(), props)
+        return _KEEP["page_login"]
+    except (Exception, Throwable) as e:
+        log.append({"kind": "note", "text": "sign-in stays in ODIS's own window (%s)" % error_text(e)})
+        return None
+
+
+GRP_LOGON = "de.volkswagen.odis.vaudas.infoservices.grp.IGRPLogonService"
+GRP_LOGIN_HANDLER = "de.volkswagen.odis.vaudas.infoservices.grp.IGRPLoginHandlerService"
+GRP_COMM = "de.volkswagen.odis.vaudas.infoservices.IGRPCommunicationService"
+GRP_TOKEN = "de.volkswagen.odis.vaudas.infoservices.grp.IGrpTokenProvider"
+
+
+def _grp_discovery(context):
+    """The GRP OpenID discovery URL ODIS is configured with ("grp.discovery" of its logon
+    configuration, behind the authentication method service), or None."""
+    auth, ref = gfs_service(context, "de.volkswagen.odis.vaudas.infoservices.IAuthenticationMethodService")
+    try:
+        logon = read_field(auth, "grp")
+        url = logon.getGrpDiscovery() or read_field(logon, "dict").get("grp.discovery")
+        return unicode(url) if url else None
+    except (Exception, Throwable):
+        return None
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
+
+def _register_grp_login(context, browse, trace):
+    """Registers the GRP sign-in ODIS looks for when it needs a token (IGRPLoginHandlerService;
+    this ODIS has none, so its online login fails with "no login handler specified"). ODIS signs
+    in to GRP by OAuth in a browser: the handler builds ODIS's login URL, browse(url, state) shows
+    it to the user and returns the address the browser was sent back to
+    (http://localhost/1?code=...&state=...), or None when the user gave up, and ODIS takes the
+    result from there. trace(dict) records each step. Returns the registration to unregister."""
+    from java.util import Hashtable
+    from java.lang import Integer
+    from org.python.core import Py
+    import uuid
+    grp, ref = gfs_service(context, GRP_LOGON)
+    try:
+        bundle = FrameworkUtil.getBundle(grp.getClass())
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    grp_type = Py.java2py(bundle.loadClass(GRP_LOGIN_HANDLER))
+    login_type, response = _login_types(context)
+
+    class GrpLogin(grp_type, login_type):
+        def setBrand(self, brand):
+            trace({"step": "setBrand", "value": unicode(brand)})
+
+        def setAdditionalBrands(self, brands):
+            trace({"step": "setAdditionalBrands", "value": unicode(brands)})
+
+        def setVin(self, vin):
+            trace({"step": "setVin", "value": unicode(vin)})
+
+        def updateLogoutButtonByGrpResult(self, ok):
+            trace({"step": "updateLogoutButtonByGrpResult", "value": bool(ok)})
+
+        def performLogin(self, request):
+            try:
+                comm, cref = gfs_service(context, GRP_COMM)
+                try:
+                    state = uuid.uuid4().hex
+                    try:
+                        url = comm.createLoginUrl(state, False, "")
+                    except (Exception, Throwable):
+                        # Nothing in this ODIS reads the discovery document before the first
+                        # sign-in (its browser sign-in component would); read it, then retry.
+                        discovery = _grp_discovery(context)
+                        trace({"step": "initialize", "value": discovery})
+                        comm.initialize(discovery)
+                        url = comm.createLoginUrl(state, False, "")
+                    trace({"step": "performLogin", "url": unicode(url)})
+                    back = browse(unicode(url), state)
+                    if not back:
+                        trace({"step": "cancelled"})
+                        return response(True, None, None)
+                    accepted = comm.setBrowserResult(state, back)
+                    trace({"step": "setBrowserResult", "value": bool(accepted)})
+                    if not accepted:
+                        return response(True, None, None)
+                    comm.retrieveTokens(state)  # the code for ODIS's GRP tokens (ODIS does not)
+                    trace({"step": "retrieveTokens", "user": unicode(comm.getUserId() or "")})
+                    return response(False, comm.getUserId(), None)
+                finally:
+                    if cref is not None:
+                        context.ungetService(cref)
+            except (Exception, Throwable) as e:  # ODIS would swallow it; record it
+                trace({"step": "error", "error": error_text(e)})
+                return response(True, None, None)
+
+    # ODIS finds its browser sign-in as a login handler with pwdType=browser
+    # (DefaultLoginHandlerProvider's filter). Registered through the GRP bundle: registered from
+    # ours, OSGi hides it from ODIS (our bundle is wired to other copies of these interfaces).
+    props = Hashtable()
+    props.put("pwdType", "browser")
+    props.put("service.ranking", Integer(1000))
+    return bundle.getBundleContext().registerService([LOGIN_HANDLER, GRP_LOGIN_HANDLER], GrpLogin(), props)
+
+
+def _grp_sign_in(context, browse):
+    """Asks ODIS for its GRP token the way an online function does (IGrpTokenProvider), with our
+    GRP sign-in registered for the duration; ODIS signs in when it has no valid token. browse is
+    as for _register_grp_login. Returns whether ODIS has a token afterwards, the GRP user, the
+    steps taken and, when it has none, ODIS's reason."""
+    steps = []
+    registration = _register_grp_login(context, browse, steps.append)
+    out = {"ok": True, "steps": steps}
+    try:
+        provider, pref = gfs_service(context, GRP_TOKEN)
+        try:
+            out["signed_in"] = bool(provider.getToken(None, True))
+        except (Exception, Throwable) as e:
+            out["signed_in"] = False
+            out["error"] = error_text(e)
+        finally:
+            if pref is not None:
+                context.ungetService(pref)
+    finally:
+        registration.unregister()
+    failed = [x["error"] for x in steps if x["step"] == "error"]
+    if failed:  # our part failed; that says more than ODIS's "no GRP Token available"
+        out["error"] = failed[-1]
+    out["cancelled"] = any(x["step"] == "cancelled" for x in steps)
+    out["asked"] = any(x["step"] == "performLogin" for x in steps)  # False: a token was still valid
+    comm, cref = gfs_service(context, GRP_COMM)
+    try:
+        out["user"] = unicode(comm.getUserId() or "")
+    finally:
+        if cref is not None:
+            context.ungetService(cref)
+    return out
+
+
+def _page_browse(jid):
+    """browse for _register_grp_login through the page: a job prompt "grp_browser" with the login
+    URL and its state, answered with the address the browser was sent back to (null to give up)."""
+    return lambda url, state: _job_ask(jid, {
+        "kind": "grp_browser", "text": "Sign in to the VW online service in your browser.",
+        "url": url, "state": state})
+
+
+def handle_grp_login(cmd):
+    """Signs ODIS in to the VW online service (GRP), as a job: the user signs in in their own
+    browser (job prompt "grp_browser" with the login URL and its state; the answer is the address
+    the browser was sent back to, null to give up). The job's result is _grp_sign_in's. Contacts
+    VW's servers; touches nothing in the car."""
+    context = get_context()
+
+    def run(progress, jid):
+        progress(0, "signing in to the VW online service", "sign-in")
+        return _grp_sign_in(context, _page_browse(jid))
+    return {"ok": True, "job_id": run_background(run, cmd, vehicle=False)}
+
+
+def _stub_browse(url, state):
+    """Development stand-in for the user's browser against Laertes's GRP stub (-grpstub): posts its dev
+    account (admin/admin) to the login URL and returns where the stub redirects."""
+    from java.net import URL
+    from java.lang import String as JString
+    conn = URL(url).openConnection()
+    conn.setInstanceFollowRedirects(False)
+    conn.setRequestMethod("POST")
+    conn.setDoOutput(True)
+    out = conn.getOutputStream()
+    out.write(JString("username=admin&password=admin").getBytes("UTF-8"))
+    out.close()
+    conn.getResponseCode()
+    return conn.getHeaderField("Location")
+
+
+def handle__grp_login_stub(cmd):
+    """Development: the GRP sign-in against Laertes's GRP stub (laertes.exe -grpstub) with its account,
+    without a browser. Debug token required."""
+    if cmd.get("token") != debug_token():
+        return {"ok": False, "error": "missing or wrong debug token (see %s)" % DEBUG_TOKEN_FILE}
+    return _grp_sign_in(get_context(), _stub_browse)
+
+
+def _page_ui_connector(context, gfs, jid, progress, log, done):
+    """An IGfsUiConnector that forwards the dialogs of an ODIS guided function to the page through
+    the job's prompt channel, and its messages to the job. ODIS runs the function and decides what
+    happens; the page only answers what ODIS asks."""
+    from java.lang import Integer
+    from java.util import List
+    from org.python.core import Py
+    bundle = FrameworkUtil.getBundle(gfs.getClass())
+    pkg = "de.volkswagen.odis.vaudas.gfs.execution."
+    ui_type = Py.java2py(bundle.loadClass(pkg + "IGfsUiConnector"))
+    result = Py.java2py(bundle.loadClass(pkg + "UiInputResult"))
+    action = Py.java2py(bundle.loadClass(pkg + "UiInputResult$EUserSpecialAction"))
+    rc_type = Py.java2py(bundle.loadClass(pkg + "IRuntimeControl"))
+
+    # ODIS drives cancellation and test-step synchronisation through this control. It must not be
+    # null (the test program calls it directly); cancel is tied to the job so the page's Stop works.
+    # The fields are underscore-named on purpose: a plain name like "cancelAllowed" would be a
+    # JavaBean property of the interface, so assigning it would re-enter the setter (StackOverflow).
+    class Runtime(rc_type):
+        def __init__(self):
+            self._sync = False
+            self._cancel_allowed = True
+            self._cancel_forbidden = False
+            self._teststep_running = False
+            self._cancelled = False
+
+        def isTestProgramSynchronized(self):
+            return self._sync
+
+        def setTestProgramSynchronized(self, value):
+            self._sync = bool(value)
+
+        def isCancelAllowed(self):
+            return self._cancel_allowed and not self._cancel_forbidden
+
+        def setCancelAllowed(self, value):
+            self._cancel_allowed = bool(value)
+
+        def setCancelForbidden(self, value):
+            self._cancel_forbidden = bool(value)
+
+        def isCancelTeststepRunning(self):
+            return self._teststep_running
+
+        def setCancelTeststepRunning(self, value):
+            self._teststep_running = bool(value)
+
+        def requestCancel(self):
+            self._cancelled = True
+
+        def isCancelled(self):
+            return self._cancelled or _job_cancelled(jid)
+
+    runtime = Runtime()
+
+    def text(t):
+        try:
+            return odis_text(context, t)
+        except (Exception, Throwable):
+            return unicode(t)
+
+    def note(kind, msg):
+        log.append({"kind": kind, "text": msg})
+        _job_set(jid, message=msg, data={"log": log})
+
+    def ask(prompt):
+        try:
+            return True, _job_ask(jid, prompt)
+        except Exception:  # cancelled, or the page went away: answer ODIS with "cancel"
+            return False, None
+
+    def cancelled():
+        return result(action.CANCEL, None)
+
+    class Connector(ui_type):
+        def getUserInput(self, title, options, *rest):
+            ok, value = ask({"kind": "input", "text": text(title),
+                             "initial": options.getInitialValue() if options is not None else None})
+            return result(unicode(value)) if ok and value is not None else cancelled()
+
+        def getUserSelection(self, choices, other, *rest):
+            items = [text(c) if hasattr(c, "getSource") else unicode(c) for c in (choices or other or [])]
+            ok, value = ask({"kind": "select", "text": "ODIS asks you to choose", "options": items})
+            return result(Integer(int(value))) if ok and value is not None else cancelled()
+
+        def getUserDialogDecisionToContinue(self, title, question):
+            ok, value = ask({"kind": "confirm", "text": " ".join(filter(None, [text(title), text(question)]))})
+            return bool(ok and value)
+
+        def showMessage(self, msg, wait):
+            body = "\n".join(text(m) for m in (msg if isinstance(msg, List) else [msg]))
+            note("message", body)
+            if wait:
+                ask({"kind": "message", "text": body})
+
+        def showErrorMessage(self, msg, error):
+            note("error", " ".join(filter(None, [text(msg), error_text(error) if error is not None else None])))
+
+        def showTestProgramTitle(self, title):
+            note("title", text(title))
+
+        def showProgress(self, title, *values):
+            note("progress", text(title))
+
+        def updateProgress(self, value):
+            pass
+
+        def hideProgess(self):
+            pass
+
+        def programStarted(self, handle, entry):
+            progress(10, "ODIS is running the guided function", "run")
+
+        def programFinished(self, handle):
+            done.set()
+
+        def programAborted(self, handle, error):
+            note("error", "aborted: %s" % error_text(error))
+            done.set()
+
+        def stepStateChanged(self, step, event):
+            pass
+
+        def setTestNodeStack(self, stack):
+            pass
+
+        def getUserInputForPartNumberAndSerialNumber(self):
+            return None
+
+        def getUserInputForNonDiagnosticComponents(self):
+            from java.util import ArrayList
+            return ArrayList()
+
+        def readMeasurementValues(self, *args):
+            from java.util import ArrayList
+            return ArrayList()
+
+        def showMeasurementValueTableResults(self, results):
+            pass
+
+        def doGatewayOperation(self, description):
+            description.setCanceled(True)
+            return description
+
+        def showHelp(self, *args):
+            pass
+
+        def showGlobalDocumentSelection(self, docs):
+            pass
+
+        def showLocalDocumentSelection(self, docs):
+            pass
+
+        def clearGlobalDocuments(self):
+            pass
+
+        def clearLocalDocuments(self):
+            pass
+
+        def getRuntimeControl(self):
+            return runtime
+
+        def isUiLocked(self):
+            return False
+
+        def lockUi(self, locked):
+            pass
+
+        def isVerificationMode(self, value):
+            return False
+
+        def clear(self):
+            pass
+
+        def dispose(self):
+            pass
+
+    return Connector()
+
+
+def handle_gf_run(cmd):
+    """Runs a guided function in ODIS, as a background job. ODIS executes it (it talks to the units
+    and to VW's online service) and decides the outcome; the page sees its messages and answers its
+    dialogs, including the online sign-in, through the job's prompt channel. The function is chosen
+    by cmd["key"] (a diag-object key from gf_functions, for vehicle-wide functions such as the
+    immobilizer) or, for component protection, by cmd["unit"] (a unit address, e.g. "5F"). Needs the
+    vehicle identified (gf_identify) and the car connected."""
+    key, unit = cmd.get("key"), cmd.get("unit") or ""
+    if not key and not unit:
+        return {"ok": False, "error": "missing key (a function from gf_functions) or unit (an address, e.g. 5F)"}
+    try:
+        context, gfs, kb, vehicle = _gfs_build(cmd)
+    except (Exception, Throwable) as e:
+        return {"ok": False, "error": error_text(e)}
+    if key:
+        obj, handle = _find_function_by_key(kb, key)
+        missing = "ODIS has no guided function with key %s for this vehicle" % key
+    else:
+        obj, handle = _find_cp_function(kb, unit)
+        missing = "ODIS has no component-protection guided function for unit %s" % unit
+    if obj is None or handle is None:
+        return {"ok": False, "error": missing}
+    name = odis_text(context, obj.getName())
+
+    def job(progress, jid):
+        from org.python.core import Py
+        log, done = [], threading.Event()
+        progress(5, "Starting %s in ODIS" % name, "prepare")
+        bundle = FrameworkUtil.getBundle(gfs.getClass())
+        origin = Py.java2py(bundle.loadClass("de.volkswagen.odis.vaudas.gfs.execution.ExecutionOrigin"))
+        start = [m for m in gfs.getClass().getMethods() if m.getName() == "startTestProgram"][0]
+        error_type = Py.java2py(start.getParameterTypes()[4])
+        registration = _register_page_login(context, jid, log)
+        # ODIS's online functions (e.g. component protection) sign in to GRP in the browser.
+        grp_registration = _register_grp_login(context, _page_browse(jid), lambda step: step["step"] == "error" and log.append(
+            {"kind": "error", "text": "VW online sign-in: %s" % step["error"]}))
+        try:
+            run = gfs.startTestProgram(handle, obj, _page_ui_connector(context, gfs, jid, progress, log, done),
+                                       False, error_type.UNDEFINED, origin.GuidedFunction)
+            # startTestProgram may return before the program ends; then wait for ODIS to report it.
+            while not done.is_set() and (run is None or run.getResult() is None):
+                if _job_cancelled(jid):
+                    raise Exception("cancelled")
+                done.wait(0.5)
+        finally:
+            grp_registration.unregister()
+            if registration is not None:
+                registration.unregister()
+        outcome = run.getResult() if run is not None else None
+        progress(100, "ODIS finished %s" % name, "done")
+        return {"function": name, "gfsid": unicode(obj.getDiagObjectGfsId()), "unit": unit,
+                "outcome": unicode(outcome) if outcome is not None else None, "log": log}
+
+    return {"ok": True, "job_id": run_background(job, cmd), "function": name}
+
+
 def handle_project_state(cmd):
     """Read-only: the current/available vehicle project, to design offline simulation."""
     from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
@@ -1395,6 +2109,86 @@ def handle_set_vehicle_project(cmd):
     return {"ok": True, "project": unicode(result), "ecu_count": len(ecus)}
 
 
+def _didb_connection(adapter, locale):
+    """The JDBC connection of an ODIS database adapter (AdapterRuntime, a non-public class, so its
+    getConnection(Locale) is called by reflection) for the texts of `locale`. It is ODIS's own
+    shared, cached connection: never close it (close only the statements and result sets)."""
+    from java.lang import Class
+    from java.util import Locale
+    m = Class.getMethod(adapter.getClass(), "getConnection", [Locale])
+    m.setAccessible(True)
+    return m.invoke(adapter, [locale])
+
+
+def didb_texts(keys, locale=None):
+    """{key: text} for the text keys (e.g. "GUID6828D7...", "displayName080044...") found in ODIS's
+    databases (Base and the brand's GFS texts, table TRANSLATEDTEXT) in `locale` (default the ODIS
+    language). Read-only; keys found nowhere are left out."""
+    from java.util import Locale
+    keys = [k for k in set(keys or []) if k]
+    found = {}
+    if not keys:
+        return found
+    context = get_context()
+    mgr, ref = gfs_service(context, "de.volkswagen.odis.vaudas.didb.adapter.IOdisAdapterManagerService")
+    try:
+        for adapter in mgr.getAdapters() or []:
+            try:
+                conn = _didb_connection(adapter, locale or Locale.getDefault())
+                st = conn.prepareStatement("SELECT TEXTID, TEXT FROM TRANSLATEDTEXT WHERE TEXTID IN (%s)"
+                                           % ",".join("?" * len(keys)))
+                for i, k in enumerate(keys):
+                    st.setString(i + 1, k)
+                rs = st.executeQuery()
+                while rs.next():
+                    found.setdefault(unicode(rs.getString(1)), unicode(rs.getString(2)))
+                rs.close()
+                st.close()
+            except (Exception, Throwable):
+                pass  # an adapter without this language/brand database
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+    return found
+
+
+_GFS_TEXTS = {}
+
+
+def gfs_db_text(key):
+    """Plain text of an ODIS database text key (guided-function texts such as "GUID6828D7..." or
+    "displayName080044..."), or None. Tried in the ODIS language first, then German: ODIS ships the
+    guided-function (GFS) texts only in German. Their XML markup (<BR/>, <Format>) is removed."""
+    from java.util import Locale
+    if key not in _GFS_TEXTS:  # only found texts are kept, so a failed lookup is retried
+        text = didb_texts([key]).get(key) or didb_texts([key], Locale.GERMANY).get(key)
+        if text and text.lstrip().startswith("<"):
+            text = re.sub(r"<BR\s*/>", "\n", re.sub(r"<\?xml[^>]*\?>", "", text))
+            text = re.sub(r"<[^>]+>", "", text)
+            for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&")):
+                text = text.replace(entity, char)
+            text = text.strip()
+        if not text:
+            return None
+        _GFS_TEXTS[key] = text
+    return _GFS_TEXTS[key]
+
+
+def handle_text_lookup(cmd):
+    """Read-only: the texts of the keys in cmd["keys"] from ODIS's databases, in cmd["locale"]
+    (a language tag such as "en-GB"; default the ODIS language), and each key's plain text as the
+    guided functions show it (German fallback, markup removed)."""
+    from java.util import Locale
+    locale = Locale.forLanguageTag(cmd["locale"]) if cmd.get("locale") else None
+    out = {"ok": True, "texts": didb_texts(cmd.get("keys"), locale), "plain": {}}
+    for k in cmd.get("keys") or []:
+        try:
+            out["plain"][k] = gfs_db_text(k)
+        except (Exception, Throwable) as e:
+            out["plain"][k] = "ERROR " + error_text(e)
+    return out
+
+
 def handle_list_services(cmd):
     """Read-only: registered OSGi service class names containing cmd['q'] (for exploration)."""
     q = (cmd.get("q") or "").lower()
@@ -1427,18 +2221,19 @@ def handle_service_methods(cmd):
 # (IProgrammingConfigReader + IProgrammingConfigExecutor). EXPERIMENTAL / UNTESTED: a wrong or
 # interrupted flash can leave a unit inoperable; recovery may need an online VW/ODIS SVM session.
 
-_JOBS = {}
+# Kept in the reload-surviving store (_KEEP) so a handler reload does not orphan jobs in flight.
+_JOBS = _KEEP.setdefault("jobs", {})
+_job_seq = _KEEP.setdefault("job_seq", [0])  # job ids stay unique across reloads
 _JOBS_LOCK = threading.Lock()
-_job_seq = [0]
 
 
-def _new_job():
+def _new_job(resume=None):
     with _JOBS_LOCK:
         _job_seq[0] += 1
         jid = "job%d" % _job_seq[0]
         _JOBS[jid] = {"status": "running", "percent": 0, "message": "starting", "phase": "prepare",
                       "result": None, "error": None, "cancel": False, "data": None,
-                      "polled": time.time()}
+                      "polled": time.time(), "seq": _job_seq[0], "resume": resume}
     return jid
 
 
@@ -1476,28 +2271,72 @@ def _job_finish(jid, result=None, error=None):
         if j is None:
             return
         j["status"] = "error" if error else "done"
+        j["finished"] = time.time()
         j["error"] = error
         j["result"] = result
         if not error:
             j["percent"] = 100
 
 
-def run_background(fn):
+def _job_ask(jid, prompt):
+    """Shows prompt to the page and waits for its answer (job_answer), which it returns. A prompt
+    is a dict with "kind" (login, input, select, confirm), "text" and, for select, "options".
+    job_status carries the open prompt. Raises when the job is cancelled or the page has stopped
+    polling, so a closed page does not leave the job waiting. Answers are not kept afterwards."""
+    with _JOBS_LOCK:
+        j = _JOBS[jid]
+        j["prompt_seq"] = j.get("prompt_seq", 0) + 1
+        j["prompt"], j["answer"] = dict(prompt, id=j["prompt_seq"]), None
+    try:
+        while True:
+            with _JOBS_LOCK:
+                if j["answer"] is not None:
+                    return j["answer"]["value"]
+            if _job_cancelled(jid):
+                raise Exception("cancelled")
+            # Long enough to close and reopen (or reload) the page and answer it there.
+            if _job_unpolled_for(jid) > 300:
+                raise Exception("the page stopped following the job")
+            time.sleep(0.2)
+    finally:
+        with _JOBS_LOCK:
+            j["prompt"], j["answer"] = None, None
+
+
+def handle_job_answer(cmd):
+    """Answers a job's open prompt: "prompt_id" (from job_status) and "value"."""
+    jid = cmd.get("job_id")
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None:
+            return {"ok": False, "error": "no such job: %s" % jid}
+        prompt = j.get("prompt")
+        if prompt is None or prompt["id"] != cmd.get("prompt_id"):
+            return {"ok": False, "error": "the job is not waiting for this answer"}
+        j["answer"] = {"value": cmd.get("value")}
+        return {"ok": True, "job_id": jid}
+
+
+def run_background(fn, cmd=None, vehicle=True):
     """Starts fn(progress, job_id) in a daemon thread and returns the job id. progress(percent,
-    message, phase) updates it. The job holds DIAG_LOCK for its lifetime, so no other vehicle
-    operation overlaps."""
-    jid = _new_job()
+    message, phase) updates it. A vehicle job holds DIAG_LOCK for its lifetime, so no other vehicle
+    operation overlaps; vehicle=False for one that does not touch the car. cmd["resume"] (what the
+    page needs to show the job again after a reload, opaque here) is kept with the job and listed
+    by job_list."""
+    jid = _new_job((cmd or {}).get("resume"))
 
     def worker():
         progress = lambda p, m=None, ph=None: _job_set(jid, p, m, ph)
-        DIAG_LOCK.acquire()
+        if vehicle:
+            DIAG_LOCK.acquire()
         try:
             _job_finish(jid, result=fn(progress, jid))
         except (Exception, Throwable) as e:
             traceback.print_exc()
             _job_finish(jid, error=error_text(e))
         finally:
-            DIAG_LOCK.release()
+            if vehicle:
+                DIAG_LOCK.release()
 
     t = threading.Thread(target=worker)
     t.setDaemon(True)
@@ -1516,12 +2355,22 @@ def handle_job_status(cmd):
         j["polled"] = time.time()
         out = {"ok": True, "job_id": jid, "status": j["status"], "percent": j["percent"],
                "message": j["message"], "phase": j["phase"], "cancel_requested": j["cancel"],
-               "data": j["data"]}
+               "data": j["data"], "prompt": j.get("prompt")}
         if j["status"] == "done":
             out["result"] = j["result"]
         if j["status"] == "error":
             out["job_error"] = j["error"]
         return out
+
+
+def handle_job_list(cmd):
+    """The jobs a reopened page can follow again: those still running and those that finished
+    after the page last polled them (oldest first), each with its id, status and resume data."""
+    with _JOBS_LOCK:
+        jobs = [(j["seq"], jid, j) for jid, j in _JOBS.items()
+                if j["status"] == "running" or j.get("finished", 0) > j["polled"]]
+        return {"ok": True, "jobs": [{"job_id": jid, "status": j["status"], "resume": j.get("resume")}
+                                     for _, jid, j in sorted(jobs)]}
 
 
 def handle_job_cancel(cmd):
@@ -1540,17 +2389,36 @@ def handle_job_cancel(cmd):
 
 FLASH_READER = "de.volkswagen.odis.vaudas.diag.flash.IProgrammingConfigReader"
 FLASH_EXECUTOR = "de.volkswagen.odis.vaudas.diag.flash.IProgrammingConfigExecutor"
+FLASH_FACTORY = "de.volkswagen.odis.vaudas.diag.flash.IProgrammingConfigFactory"
 
 
-def _read_programming_config(context, path):
+def _read_programming_config(context, path, cmd):
+    """The programming configuration to execute. An XML programming configuration file is read
+    as is; a flash container (.frf/.odx) is wrapped into a configuration with one FLASH-ECU step
+    on the logical link of the unit at cmd["address"]."""
     from java.io import File
+    f = File(path)
+    if not f.exists():
+        raise Exception("file not found on the ODIS PC: %s" % path)
+    if path.lower().endswith((".frf", ".odx")):
+        if not cmd.get("address"):
+            raise Exception("flashing a container file needs the unit address")
+        link = odx_link(cmd).getShortName()
+        factory, ref = gfs_service(context, FLASH_FACTORY)
+        try:
+            if factory is None:
+                raise Exception("IProgrammingConfigFactory not available")
+            content = factory.createProgrammingConfigContent()
+            # The flash sequencer trims the session name, so "no session" must be "" rather than null.
+            content.addProgrammingStep(factory.createFlashEcuProgrammingStep(link, f.getAbsolutePath(), ""))
+            return content
+        finally:
+            if ref is not None:
+                context.ungetService(ref)
     reader, ref = gfs_service(context, FLASH_READER)
     try:
         if reader is None:
             raise Exception("IProgrammingConfigReader not available")
-        f = File(path)
-        if not f.exists():
-            raise Exception("file not found on the ODIS PC: %s" % path)
         return reader.read(f)
     finally:
         if ref is not None:
@@ -1565,7 +2433,7 @@ def handle_flash_config(cmd):
         return {"ok": False, "error": "flash_config needs a file"}
 
     def read():
-        content = _read_programming_config(get_context(), path)
+        content = _read_programming_config(get_context(), path, cmd)
         return {"ok": True, "file": path, "content": to_data(content)}
     return with_database(read)
 
@@ -1587,7 +2455,7 @@ def handle_flash_run(cmd):
         progress(3, "Reading programming configuration...", "prepare")
         if _job_cancelled(jid):
             return {"cancelled": True, "stage": "before reading"}
-        content = _read_programming_config(context, path)
+        content = _read_programming_config(context, path, cmd)
         if _job_cancelled(jid):
             return {"cancelled": True, "stage": "after reading, before flashing"}
         vehicle = session_vehicle()
@@ -1601,8 +2469,12 @@ def handle_flash_run(cmd):
                 def callbackPerformed(self, event):
                     try:
                         uo = event.getUserObject()
-                        text = unicode(uo)[:300] if uo is not None else "flashing..."
-                        state["pct"] = min(97, state["pct"] + 2)
+                        if hasattr(uo, "getCurrentAction"):  # IProgrammingProgressInfo
+                            text = unicode(uo.getCurrentAction() or "flashing...")[:300]
+                            state["pct"] = max(state["pct"], min(97, 10 + int(uo.getTotalProgress() * 0.87)))
+                        else:
+                            text = unicode(uo)[:300] if uo is not None else "flashing..."
+                            state["pct"] = min(97, state["pct"] + 2)
                         progress(state["pct"], text, "flashing")
                     except (Exception, Throwable):
                         pass
@@ -1612,6 +2484,12 @@ def handle_flash_run(cmd):
 
             progress(10, "Starting programming. Do not switch off or disconnect.", "flashing")
             result = executor.execute(vehicle, content, _Listener(), reps)
+            # ODIS skips a step whose programming preconditions the unit does not meet (e.g. the
+            # immobiliser has not released it) and still reports the sequence as finished.
+            skipped = [l.split(": ", 1)[-1] for l in _flash_log_lines(log_offset)[0]
+                       if "Programming Precondition:" in l or "the flashing step is disabled" in l]
+            if skipped:
+                raise Exception("ODIS did not flash the unit: " + "; ".join(skipped))
             out = {"executed": True, "result": to_data(result)}
             if _job_cancelled(jid):
                 out["cancel_requested"] = True
@@ -1619,7 +2497,67 @@ def handle_flash_run(cmd):
         finally:
             if ref is not None:
                 context.ungetService(ref)
-    return {"ok": True, "job_id": run_background(job)}
+    log_offset = _engine_log_size()  # read by job() once execute returns
+    return {"ok": True, "job_id": run_background(job, cmd), "log_offset": log_offset}
+
+
+# ODIS logs every flash step (container loading, sessions, the programming sequence, errors) to
+# its engine.log. flash_log returns the flash-related entries from a byte offset on (flash_run
+# reports the offset at its start), so the page can show and keep them even if the flash fails.
+ODIS_ENGINE_LOG = r"C:\ProgramData\OE\log\engine.log"
+_LOG_ENTRY = re.compile(r"^(\d{8}) (\d\d:\d\d:\d\d):(\d{3}) \[(\w+)\s*\] \[[^\]]*\] ([\w$.]+)\([^)]*\) -> ?(.*)$")
+_FLASH_LOG_KEEP = re.compile(r"flash|programm|sequenc|session|ecumem|download|transfer|erase|checksum|"
+                             r"seed|security|fingerprint|routine|reset", re.I)
+_FLASH_LOG_NOISE = re.compile(r"WLAN_STATUS|WlanConnection|MCD LogicalLink = null")
+FLASH_LOG_READ_MAX = 8 << 20
+
+
+def _engine_log_size():
+    import os
+    try:
+        return os.path.getsize(ODIS_ENGINE_LOG)
+    except OSError:
+        return 0
+
+
+def handle_flash_log(cmd):
+    """Flash-related ODIS engine.log entries from byte "offset" on (no offset: the last 2 MB),
+    and "next", the offset to continue from."""
+    lines, next_offset = _flash_log_lines(int(cmd.get("offset", -1)))
+    return {"ok": True, "lines": lines, "next": next_offset}
+
+
+def _flash_log_lines(offset):
+    """(lines, next offset): the flash-related engine.log entries from byte offset on. Errors and
+    warnings are always kept; stack frames are dropped, "Caused by" lines kept."""
+    size = _engine_log_size()
+    partial = offset < 0 or offset > size  # unknown or log rolled over: start mid-file
+    if partial:
+        offset = max(0, size - (2 << 20))
+    f = open(ODIS_ENGINE_LOG, "rb")
+    try:
+        f.seek(offset)
+        data = f.read(min(size - offset, FLASH_LOG_READ_MAX))
+    finally:
+        f.close()
+    end = data.rfind("\n") + 1  # only whole lines; the rest is read next time
+    text = data[:end].decode("latin-1")
+    lines, keep = [], False
+    for i, line in enumerate(text.split("\n")):
+        line = line.rstrip("\r")
+        if i == 0 and partial and offset > 0:
+            continue
+        m = _LOG_ENTRY.match(line)
+        if m:
+            day, hms, ms, level, where, msg = m.groups()
+            keep = not _FLASH_LOG_NOISE.search(line) and (
+                level in ("ERROR", "WARN") or _FLASH_LOG_KEEP.search(where + " " + msg) is not None)
+            if keep:
+                where = ".".join(where.split(".")[-2:])
+                lines.append(("%s.%s %-5s %s: %s" % (hms, ms, level, where, msg))[:600])
+        elif keep and line.strip().startswith("Caused by"):
+            lines.append("      " + line.strip()[:400])
+    return lines[-3000:], offset + end
 
 
 
@@ -1697,23 +2635,31 @@ def handle_basic_setting_run(cmd):
                     diag.closeConnection(handle)
                 except (Exception, Throwable):
                     pass
-    return {"ok": True, "job_id": run_background(job)}
+    return {"ok": True, "job_id": run_background(job, cmd)}
 
 
 HANDLERS = {
     "_debug": handle__debug,
     "gfs_explore": handle_gfs_explore,
+    "gf_identify": handle_gf_identify,
+    "gf_functions": handle_gf_functions,
+    "cp_probe": handle_cp_probe,
+    "gf_run": handle_gf_run,
+    "job_answer": handle_job_answer,
     "fault_guidance": handle_fault_guidance,
     "service_methods": handle_service_methods,
     "list_services": handle_list_services,
+    "text_lookup": handle_text_lookup,
     "vehicle": handle_vehicle,
     "vin": handle_vin,
     "vci": handle_vci,
     "reset_vci": handle_reset_vci,
     "flash_config": handle_flash_config,
     "flash_run": handle_flash_run,
+    "flash_log": handle_flash_log,
     "job_cancel": handle_job_cancel,
     "job_status": handle_job_status,
+    "job_list": handle_job_list,
     "ignition_change": handle_ignition_change,
     "doip_activation": handle_doip_activation,
     "vehicle_projects": handle_vehicle_projects,
@@ -1741,6 +2687,8 @@ HANDLERS = {
     "write_adaptation": handle_write_adaptation,
     "list_access_modes": handle_list_access_modes,
     "login": handle_login,
+    "grp_login": handle_grp_login,
+    "_grp_login_stub": handle__grp_login_stub,
     "list_measurement_groups": handle_list_measurement_groups,
     "list_measurements": handle_list_measurements,
     "read_measurement": handle_read_measurement,
