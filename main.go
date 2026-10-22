@@ -58,7 +58,30 @@ func main() {
 	if *grpStub {
 		serveGRPStub()
 	}
-	log.Fatal(http.Serve(ln, sameOrigin(host, singleClient(routes(store, b, grp, filepath.Dir(*dbPath))))))
+	if err := installBridge(filepath.Join(odisDir, "macros")); err != nil {
+		log.Printf("bridge macro not installed: %v", err)
+	}
+	odis := &odisStarter{bridgeAddr: *bridgeAddr, project: func() string {
+		raw, _ := store.Settings()
+		p, _ := settingValue(raw, "odisProject").(string)
+		return p
+	}, vin: func() string {
+		raw, _ := store.Settings()
+		v, _ := settingValue(raw, "odisVin").(string)
+		return v
+	}}
+	if raw, err := store.Settings(); err == nil {
+		if on, set := settingValue(raw, "autoStartBridge").(bool); on || !set {
+			// Offline mode: no car to identify, so the chosen project is loaded directly.
+			project := ""
+			offline, _ := settingValue(raw, "odisOffline").(bool)
+			if offline {
+				project = odis.project()
+			}
+			odis.start(project, offline)
+		}
+	}
+	log.Fatal(http.Serve(ln, sameOrigin(host, singleClient(routes(store, b, grp, odis, filepath.Dir(*dbPath))))))
 }
 
 // adoptOldDatabase renames the database of the tool's former name (odishelper.db, with its
@@ -100,8 +123,32 @@ func sameOrigin(host string, next http.Handler) http.Handler {
 	})
 }
 
-func routes(store *Store, b *bridge, grp *grpReturns, dataDir string) http.Handler {
+func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir string) http.Handler {
 	mux := http.NewServeMux()
+	// Starting the bridge macro in ODIS without the user (see odisStarter).
+	mux.HandleFunc("GET /api/odis", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, odis.status(), nil)
+	})
+	mux.HandleFunc("GET /api/odis/projects", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, odisProjects(), nil)
+	})
+	mux.HandleFunc("POST /api/odis/start", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Project string `json:"project"`
+			Offline bool   `json:"offline"`
+		}
+		json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+		odis.start(strings.TrimSpace(req.Project), req.Offline)
+		reply(w, odis.status(), nil)
+	})
+	// The offline VCI's CAN trace (offlinevci.c canLog): the "VCI CAN" tab polls it to show the
+	// ISO15765 traffic between ODIS and the simulated units.
+	mux.HandleFunc("GET /api/vci/can", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, readCANLog(), nil)
+	})
+	mux.HandleFunc("POST /api/vci/can/clear", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, nil, clearCANLog())
+	})
 	// Browse the ODIS PC for a file to flash: lists one directory (folders first). Laertes runs
 	// on the same PC, so these are the paths the bridge can read.
 	mux.HandleFunc("GET /api/files", func(w http.ResponseWriter, r *http.Request) {

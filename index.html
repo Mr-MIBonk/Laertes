@@ -29,6 +29,9 @@ th, td { border:1px solid var(--line); padding:4px; vertical-align:top; }
 th { font-size:12px; color:var(--muted); font-weight:normal; }
 td.b { font-family:Consolas, monospace; white-space:nowrap; text-align:center; }
 td.f { min-width:220px; }
+table.can td { font-family:Consolas, monospace; font-size:12px; white-space:nowrap; padding:2px 6px; }
+table.can td.d { white-space:normal; word-break:break-all; }
+table.can tr.ev td { color:var(--muted); }
 .bit { display:flex; flex-direction:column; gap:3px; min-width:90px; }
 .bit label { display:flex; align-items:center; gap:4px; font-family:Consolas, monospace; cursor:pointer; }
 .bit.on label { color:var(--on); font-weight:bold; }
@@ -162,6 +165,7 @@ button.cp:hover, button.tr:hover { opacity:1; }
 .cpbox { position:relative; }
 .cpbox > button.cp { position:absolute; right:3px; top:3px; z-index:1; }
 .trout { color:var(--accent); font-style:italic; }
+.trd { text-decoration:underline dotted; text-underline-offset:3px; cursor:help; }
 body.busy button.op { opacity:.45; cursor:progress; }
 .tabs .busy { display:flex; align-items:center; gap:6px; font:12px system-ui, sans-serif; color:var(--chg); padding:0 6px; white-space:nowrap; max-width:380px; overflow:hidden; text-overflow:ellipsis; }
 .tabs .busy button, .tabs .conn button { font-size:11px; padding:1px 6px; }
@@ -224,7 +228,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     </g>
   </svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
-  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button data-tab="cp" onclick="showTab('cp')">CP</button><button data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <button data-tab="units" onclick="showTab('units')">Project units</button><button data-tab="odx" onclick="showTab('odx')">Unit database</button><button data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button data-tab="coding" onclick="showTab('coding')">Coding</button><button data-tab="history" onclick="showTab('history')">History</button><button data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button data-tab="cp" onclick="showTab('cp')">CP</button><button data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button data-tab="vci" onclick="showTab('vci')">VCI CAN</button><button data-tab="settings" onclick="showTab('settings')">Settings</button><button data-tab="guide" onclick="showTab('guide')">Guide</button>
   <span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
   <span id="retro" class="retro" hidden></span>
   <span id="srv" class="conn wait"><span class="dot"></span><span class="txt">Laertes…</span></span>
@@ -233,6 +237,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <span id="vci" class="veh" hidden></span>
   <button id="ignBtn" class="vcibtn" hidden onclick="ignitionChange()" title="Trigger an ODIS ignition change to wake the bus (ODIS has no set-to-position 0/1/2 call)">🔑 Ignition change</button>
   <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button>
+  <button id="startBridge" class="vcibtn" hidden onclick="startBridge()" title="Start ODIS in the background and run the bridge macro in it (ODIS must not be open with its window)">▶ Start bridge</button>
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <span id="ver" class="ver" title="Laertes version"></span></nav>
 <div id="main"></div>
@@ -259,30 +264,40 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="retrofit" class="db units" hidden></div>
 <div id="cp" class="db units" hidden></div>
 <div id="immo" class="db units" hidden></div>
+<div id="vci" class="db" hidden></div>
 <div id="settings" class="db help" hidden></div>
 <div id="guide" class="db help" hidden>
   <h1>Getting started with Laertes</h1>
   <p class="meta">Laertes runs next to ODIS. A small macro inside ODIS (the <b>bridge</b>) lets this web page read and change
     control units, so you do everything from one place while ODIS stays open in the background.</p>
 
-  <h2 class="sub">1. Install the bridge macros (once)</h2>
+  <h2 class="sub">1. The bridge macros (installed automatically)</h2>
   <ol>
-    <li>Copy <code>mcpserver.py</code> and <code>mcpserver_handlers.py</code> from this repository to
-      <code>C:\ProgramData\OE\macros\</code>.</li>
-    <li>Updating later: replace <code>mcpserver_handlers.py</code>; the bridge reloads it automatically when the
-      file changes, without restarting ODIS. A new <code>mcpserver.py</code> takes effect the next time you start the macro.</li>
-    <li>Coming from an older version: the macro used to be called <code>mcpserver_test.py</code>. Delete that file and
-      run <code>mcpserver.py</code> instead (only the new one has <i>Stop bridge</i>).</li>
+    <li><code>laertes.exe</code> contains <code>mcpserver.py</code> and <code>mcpserver_handlers.py</code> and copies them to
+      <code>C:\ProgramData\OE\macros\</code> every time it starts, when they are missing or differ, so the bridge always
+      matches this Laertes. A running bridge picks up the new <code>mcpserver_handlers.py</code> at once; a new
+      <code>mcpserver.py</code> takes effect the next time the macro starts.</li>
+    <li>Coming from an older version: the macro used to be called <code>mcpserver_test.py</code>. Delete that file.</li>
   </ol>
 
-  <h2 class="sub">2. Start the bridge in ODIS</h2>
+  <h2 class="sub">2. The bridge in ODIS (started automatically)</h2>
   <ol>
-    <li>Start <b>ODIS</b> and open the diagnostic session as usual (connect the VCI and the car or bench unit).</li>
-    <li>Open the <b>macros</b> function in ODIS and run <code>mcpserver.py</code>.</li>
-    <li>The macro keeps running and listens on <code>127.0.0.1:8765</code>. Leave it running; while it does, ODIS
-      itself cannot be operated, which is why everything is done from this page.</li>
-    <li>To use ODIS itself again, press <b>Stop bridge</b> in the top bar: the macro ends and ODIS is free. Run
-      <code>mcpserver.py</code> again to continue with Laertes.</li>
+    <li>Connect the VCI to the car or bench unit and switch the ignition on. You do not need to open ODIS.</li>
+    <li>When Laertes starts and the bridge is not running, it starts ODIS <b>in the background, without its window</b>,
+      as ODIS's automation web service (<code>OffboardDiagLauncher.exe -configuration …\laertes-webservice.ini</code>),
+      loads the vehicle project by reading the car's VIN, and runs <code>mcpserver.py</code> in it. The top bar shows
+      each step. If the car cannot be identified (e.g. a unit on a bench), the project from <b>Settings › ODIS bridge</b> is
+      used; it is filled in from the project ODIS had loaded last time. Press <b>▶ Start bridge</b> to try again.</li>
+    <li><b>Offline, without a VCI</b> (offline coding, the ODIS database): tick <b>Offline mode</b> in Settings › ODIS bridge and
+      choose the project (e.g. <code>VW37X</code>). Laertes registers its own <b>offline VCI</b> — a J2534 device without hardware,
+      <code>Laertes-Offline</code> (Windows asks for administrator rights once) — and lets the background ODIS use it, so ODIS opens
+      the project and runs the bridge with nothing connected. Loading the project takes about a minute and a half, because ODIS waits
+      for a VIN that never comes. Control units do not answer. Your own VCI choice in ODIS is put back when that ODIS ends.</li>
+    <li>This needs ODIS not to be open with its window: ODIS cannot run a macro started from outside then. If ODIS is
+      already open, open its <b>Macros</b> function and run <code>mcpserver.py</code> as before, or close ODIS and press
+      <b>▶ Start bridge</b>. Starting automatically can be turned off in Settings.</li>
+    <li>The macro listens on <code>127.0.0.1:8765</code>. <b>Stop bridge</b> in the top bar ends it; if Laertes started
+      ODIS in the background, that ODIS closes too, so you can open ODIS normally.</li>
   </ol>
 
   <h2 class="sub">3. Start Laertes</h2>
@@ -290,7 +305,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <li>Run <code>laertes.exe</code>. It opens this page in your browser (<code>http://127.0.0.1:23031/</code>,
       or another free port if that one is taken; the console window shows the address).</li>
     <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and <b>🔌 VCI connected</b>.
-      Red “ODIS bridge offline” means the macro is not running — go back to step 2.</li>
+      Red “ODIS bridge offline” means the macro is not running: hover it for the reason, then press
+      <b>▶ Start bridge</b> or see step 2.</li>
     <li>Optional switches: <code>-db</code> (database file),
       <code>-bridge</code> (bridge address), <code>-nobrowser</code>.</li>
     <li>Building from source: double-click <code>build.cmd</code> (needs <a href="https://go.dev/dl/">Go</a>); it runs the
@@ -347,8 +363,12 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <li>Writes change the control unit. Every write asks for confirmation and shows exactly what changes.</li>
     <li>One operation runs at a time: while one runs (shown in the top bar), others are refused. <b>Stop</b> ends long
       scans and live views after the current unit.</li>
-    <li>⧉ copies the text, table or fault next to it. 🌐 translates a fault or error text to English with Google
-      Translate — the text is sent to Google only when you press it.</li>
+    <li>⧉ copies the text, table or fault next to it; in coding and adaptation tables each row has its own ⧉ too.</li>
+    <li>🌐 translates a fault or error text, and <b>🌐 Translate</b> above a coding or adaptation table translates its
+      names and values, into the language chosen in Settings, with Google Translate — the texts are sent to Google only
+      when you press it, or as they are shown if you turn on automatic translation in Settings. A translated text is
+      underlined with dots; hover it for the original. What is written to a unit is never translated.</li>
+    <li>Hover a parameter for help: its ODX name, current value, bit position and possible values.</li>
     <li>ODIS guided fault finding documents appear only after the vehicle is identified and guided fault finding is
       started in ODIS; the general guidance works without it.</li>
     <li>Your data (labels, history, remembered choices) is in <code>laertes.db</code> next to
@@ -427,7 +447,7 @@ function laertesLink() {
 // Settings, stored in the database (so they survive restarts and are shared by every browser that
 // opens Laertes). dtcCheck: read the fault memory before and after each coding/adaptation write and
 // show what changed. Loaded once at startup; defaults apply until then.
-const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en'};
+const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en', autoTranslate: false, autoStartBridge: true, odisProject: '', odisOffline: false, odisVin: ''};
 async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
   try { geko = await api('GET', '/api/geko'); } catch (e) {}
@@ -561,6 +581,70 @@ async function trShow(btn, i) {
     window.open('https://translate.google.com/?' + new URLSearchParams({sl: 'auto', tl: trLang(), op: 'translate', text}), '_blank', 'noopener');
   }
 }
+// Coding and adaptation names and values (ODX texts, often German). txt() gives a text's known
+// translation, else the text; tx() the same as HTML with the original in the tooltip. With
+// settings.autoTranslate, texts without a translation are translated in the background and the
+// view is redrawn; trTableBtn translates one table's texts on request. Only shown text is
+// translated: values written to the unit always stay the original ones.
+try { Object.assign(trCache, JSON.parse(localStorage.getItem('laertesTr') || '{}')); } catch (e) {}
+const trPending = new Set(), trFailed = new Set(), trLists = [];
+let trTimer = null;
+const trWorthy = text => /\p{L}{2}/u.test(text);
+function txt(text) {
+  text = String(text == null ? '' : text);
+  const k = trKey(text);
+  if (k in trCache) return trCache[k];
+  if (settings.autoTranslate && trWorthy(text) && !trFailed.has(k)) {
+    trPending.add(text);
+    clearTimeout(trTimer); trTimer = setTimeout(trFlush, 300);
+  }
+  return text;
+}
+function tx(text) {
+  const t = txt(text);
+  return t === String(text) ? esc(t) : `<span class="trd" title="${esc('Original: ' + text)}">${esc(t)}</span>`;
+}
+// The tooltip attribute for a translated option or control: its original text.
+const txTitle = text => txt(text) === String(text) ? '' : ` title="${esc('Original: ' + text)}"`;
+async function trFlush() {
+  const list = [...trPending]; trPending.clear();
+  if (list.length && await translateMany(list)) trRedraw();
+}
+// Translates texts in batches of lines (one request per batch), keeping them in trCache and the
+// browser. A batch whose answer does not split back into its lines is left untranslated.
+async function translateMany(texts) {
+  const todo = [...new Set(texts.map(String))].filter(t => trWorthy(t) && !(trKey(t) in trCache) && !trFailed.has(trKey(t)) && !t.includes('\n'));
+  let done = 0;
+  for (let i = 0; i < todo.length;) {
+    const batch = [todo[i++]];
+    let len = batch[0].length;
+    while (i < todo.length && batch.length < 60 && len + todo[i].length < 1800) { len += todo[i].length + 1; batch.push(todo[i++]); }
+    try {
+      const lines = (await translate(batch.join('\n'))).split('\n');
+      delete trCache[trKey(batch.join('\n'))];
+      if (lines.length !== batch.length) throw new Error('lines do not match');
+      batch.forEach((t, j) => { trCache[trKey(t)] = lines[j].trim() || t; });
+      done += batch.length;
+    } catch (e) { batch.forEach(t => trFailed.add(trKey(t))); }
+  }
+  try { localStorage.setItem('laertesTr', JSON.stringify(trCache)); } catch (e) {}
+  return done > 0;
+}
+function trRedraw() {
+  if (currentTab() === 'units') renderKeepFocus();
+  else if (currentTab() === 'coding' && sel()) render();
+}
+// A "🌐 Translate" button for a table, translating the given texts once.
+function trTableBtn(texts) {
+  texts = texts.filter(t => t && trWorthy(String(t)));
+  if (!texts.length || texts.every(t => trKey(String(t)) in trCache)) return '';
+  return `<button class="tr" title="Translate the names and values of this table into ${esc(trLang())} with Google Translate (the texts are sent to Google)" onclick="trTable(this, ${trLists.push(texts) - 1})">🌐 Translate</button>`;
+}
+async function trTable(btn, i) {
+  btn.disabled = true; btn.textContent = '🌐 Translating…';
+  if (!await translateMany(trLists[i])) { btn.disabled = false; btn.textContent = '🌐 Translate'; toast('Translation failed: Google Translate could not be reached.', true); return; }
+  trRedraw();
+}
 
 // --- One operation at a time ---------------------------------------------------------------
 // Everything that talks to a control unit or the ODIS database runs through op(). While one
@@ -602,9 +686,11 @@ async function pingBridge() {
   try {
     await api('POST', '/api/bridge', {action: 'ping'});
     el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver.py).';
-    $('#stopBridge').hidden = false; $('#resetVci').hidden = false; $('#ignBtn').hidden = false;
+    $('#stopBridge').hidden = false; $('#resetVci').hidden = false; $('#ignBtn').hidden = false; $('#startBridge').hidden = true;
     try {
       const v = await api('POST', '/api/bridge', {action: 'vehicle'});
+      // Remembered for starting the bridge when the car cannot be identified by its VIN.
+      if (v.project && v.project !== settings.odisProject) { settings.odisProject = v.project; saveSettings(); }
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
       veh.title = v.project ? 'Vehicle project loaded in ODIS' : 'No vehicle project loaded in ODIS';
     } catch (e) { veh.hidden = true; }
@@ -619,7 +705,24 @@ async function pingBridge() {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
     $('#stopBridge').hidden = true; $('#resetVci').hidden = true; $('#ignBtn').hidden = true;
     veh.hidden = true; $('#vci').hidden = true;
+    // Laertes may be starting the bridge itself (ODIS in the background, see odis.go).
+    let o = {};
+    try { o = await api('GET', '/api/odis'); } catch (e2) {}
+    $('#startBridge').hidden = o.state === 'starting';
+    if (o.state === 'starting') { el.className = 'conn wait'; txt.textContent = o.message; el.title = 'Laertes is starting ODIS and the bridge macro.'; }
+    else if (o.state === 'error') { txt.textContent = 'ODIS bridge offline ⚠'; el.title = o.message + '\n\n' + e.message; }
+    if (o.state === 'error' && o.message !== odisShown) toast(o.message, true);
+    odisShown = o.message;
   }
+}
+let odisShown = '';
+// Starts ODIS in the background and the bridge macro in it; the top bar shows the progress.
+// Offline, the chosen project is loaded directly; otherwise ODIS identifies the car first.
+async function startBridge() {
+  if (settings.odisOffline && !settings.odisProject) { showTab('settings'); toast('Offline mode: choose the vehicle project first (Settings › ODIS bridge).', true); return; }
+  try { await api('POST', '/api/odis/start', {project: settings.odisOffline ? settings.odisProject : '', offline: !!settings.odisOffline}); }
+  catch (e) { toast(e.message, true); }
+  pingBridge();
 }
 async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
 
@@ -650,7 +753,9 @@ function ignitionChange() {
 // Ends the bridge macro inside ODIS, so ODIS itself can be operated again. Start the macro
 // again from the ODIS macro function to continue with Laertes.
 async function stopBridge() {
-  if (!confirm(`Stop the ODIS bridge macro?\n\nODIS can then be used again. To continue with Laertes, run mcpserver.py from the ODIS macro function again.${busy ? `\n\nStill running here: ${busy.label} — it will fail.` : ''}`)) return;
+  let launched = false;
+  try { launched = (await api('GET', '/api/odis')).launched; } catch (e) {}
+  if (!confirm(`Stop the ODIS bridge macro?\n\n${launched ? 'Laertes started ODIS in the background for it; that ODIS closes too, so you can open ODIS normally. Press ▶ Start bridge to continue with Laertes.' : 'ODIS can then be used again. To continue with Laertes, close ODIS and press ▶ Start bridge, or run mcpserver.py from the ODIS macro function again.'}${busy ? `\n\nStill running here: ${busy.label} — it will fail.` : ''}`)) return;
   try {
     await api('POST', '/api/bridge', {action: 'shutdown'});
     toast('Bridge stopped. ODIS can be used again.');
@@ -817,7 +922,7 @@ function render() {
       const m = mask(f.lo, f.hi), cur = b & m, known = f.options.some(o => o.value === cur);
       return `<div class="field ${cur !== (orig[i] & m) ? 'chg' : ''}">Bits ${f.lo}–${f.hi}
         <select onchange="setField(${i},${m},+this.value)">${known ? '' : `<option selected value="${cur}">0x${hex(cur)} (unknown)</option>`}
-        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}>0x${hex(o.value)} ${esc(o.text)}</option>`).join('')}</select></div>`;
+        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}${txTitle(o.text)}>0x${hex(o.value)} ${esc(txt(o.text))}</option>`).join('')}</select></div>`;
     }).join('');
     const bl = label(i, 0, 7, -1);
     rows += `<tr><td class="b">Byte ${i}<br>${hex(b)}${b !== orig[i] ? ` <small>(was ${hex(orig[i])})</small>` : ''}<br>${b.toString(2).padStart(8, '0')}</td>
@@ -828,9 +933,9 @@ function render() {
       <span class="meta">Live coding of ${esc(r.ecu)} — not a saved reading</span></div>` : ''}
     <h1>${esc(r.ecu || r.subsystem)}</h1>
     <div class="meta">${esc(r.variant)} · ${esc(r.subsystem)}
-      · <button onclick="$('#lbl').click()">Import .lbl labels</button>
+      · <button onclick="$('#lbl').click()" title="Load VCDS-style .lbl label texts for this variant and subsystem">Import .lbl labels</button> ${trTableBtn(labels.map(l => l.text))}
       · <button onclick="clearCoding()" title="Close this coding and start with new bytes">New coding</button></div>
-    ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${esc(n.text)}</li>`).join('')}</ul>` : ''}
+    ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${tx(n.text)}</li>`).join('')}</ul>` : ''}
     Original coding<div class="code"><span>${r.coding}</span><button onclick="copy('${r.coding}')">Copy</button></div>
     New coding<div class="code"><span>${newHex}</span><button onclick="copy(work.map(hex).join(''))">Copy</button><button onclick="resetCoding()">Reset</button>
       <span class="meta">To write to a unit, open it under Project units.</span></div>
@@ -881,7 +986,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', vci: 'vci', settings: 'settings', guide: 'guide'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -892,6 +997,8 @@ function showTab(tab) {
   try { localStorage.setItem('tab', tab); } catch (e) {}
   activeTab = tab;
   stopLive();  // a live measurement view only updates while the units tab shows it
+  stopVci();   // the VCI CAN trace only polls while its tab is open
+  if (tab === 'vci') loadVciTab();
   if (tab === 'units' && !units) loadUnits();
   else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
@@ -905,7 +1012,28 @@ function showTab(tab) {
 function renderSettings() {
   $('#settings').innerHTML = `<h1>Settings</h1>
     <p class="meta">Stored in laertes.db, so they apply in every browser and survive restarts.</p>
-    <div class="cards"><section class="card"><h2 class="sub">After a write</h2>
+    <div class="cards"><section class="card"><h2 class="sub">ODIS bridge</h2>
+    <label style="align-items:flex-start" title="Laertes installs mcpserver.py into C:\ProgramData\OE\macros, starts ODIS without its window and runs the macro in it">
+      <input type="checkbox" ${settings.autoStartBridge ? 'checked' : ''} onchange="settings.autoStartBridge = this.checked; saveSettings()">
+      <span>Start the bridge when Laertes starts: ODIS runs in the background and the bridge macro runs in it, nothing to click in ODIS.
+        <br><span class="meta">Only while ODIS is not open with its window. Stop bridge closes that background ODIS again.</span></span>
+    </label>
+    <label style="align-items:flex-start" title="For offline coding: decode and edit codings, load coding files and browse the database with no car connected">
+      <input type="checkbox" ${settings.odisOffline ? 'checked' : ''} onchange="settings.odisOffline = this.checked; saveSettings()">
+      <span>Offline mode (no VCI): ODIS uses Laertes's offline VCI and loads the vehicle project below.
+        <br><span class="meta">The bridge runs without a car or interface, for offline coding and the ODIS database; control units do not answer. The first time, Windows asks for administrator rights to register the offline VCI. Your own VCI choice in ODIS is put back when that ODIS ends.</span></span>
+    </label>
+    <label style="align-items:center" title="Offline mode loads this project. Online it is used when the car cannot be identified from its VIN, e.g. a unit on a bench. Filled in from the project ODIS loaded last time.">
+      <span>Vehicle project:</span>
+      <input id="odisProject" type="text" list="odisProjects" placeholder="e.g. VWVIN" value="${esc(settings.odisProject || '')}" onchange="settings.odisProject = this.value.trim(); saveSettings()">
+      <datalist id="odisProjects"></datalist>
+    </label>
+    <label style="align-items:center" title="Offline/simulation mode: the VIN the simulated control units report (identification DID 0xF190). Empty uses the built-in default. Takes effect the next time the bridge starts.">
+      <span>Simulation VIN:</span>
+      <input id="odisVin" type="text" maxlength="17" placeholder="e.g. WVWZZZ1KZAW000001" value="${esc(settings.odisVin || '')}" oninput="this.value = this.value.toUpperCase()" onchange="settings.odisVin = this.value.trim(); saveSettings()">
+    </label>
+    <div class="bar"><button class="op" onclick="startBridge()" title="Start ODIS in the background and run the bridge macro now">▶ Start bridge</button></div>
+    </section><section class="card"><h2 class="sub">After a write</h2>
     <label style="align-items:flex-start">
       <input type="checkbox" id="setDtcCheck" ${settings.dtcCheck ? 'checked' : ''} onchange="settings.dtcCheck = this.checked; saveSettings()">
       <span>Read the fault memory before and after each coding/adaptation write and show which faults are new or gone.
@@ -918,6 +1046,11 @@ function renderSettings() {
         ${[['en', 'English'], ['de', 'German'], ['cs', 'Czech'], ['sk', 'Slovak'], ['pl', 'Polish'], ['fr', 'French'], ['es', 'Spanish'], ['it', 'Italian'], ['nl', 'Dutch'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['tr', 'Turkish'], ['pt', 'Portuguese'], ['ro', 'Romanian'], ['hu', 'Hungarian']]
           .map(([c, n]) => `<option value="${c}" ${settings.transLang === c ? 'selected' : ''}>${n}</option>`).join('')}
       </select>
+    </label>
+    <label style="align-items:flex-start">
+      <input type="checkbox" ${settings.autoTranslate ? 'checked' : ''} onchange="settings.autoTranslate = this.checked; saveSettings(); renderUnitDetail()">
+      <span>Translate coding and adaptation names and values automatically.
+        <br><span class="meta">Sends those texts to Google Translate as they are shown. Off: press 🌐 Translate above a table to translate it once. The original text stays in the tooltip, and what is written to the unit is never translated.</span></span>
     </label>
     </section><section class="card"><h2 class="sub">Dangerous functions</h2>
     <label style="align-items:flex-start">
@@ -934,6 +1067,88 @@ function renderSettings() {
       <tr><td>Password</td><td><input id="gekoPass" type="password" autocomplete="new-password" value="${esc(geko.password || '')}"></td></tr>
     </table>
     <div class="bar"><button onclick="saveGeko()">Save</button></div></section></div>`;
+  api('GET', '/api/odis/projects').then(ps => { const dl = $('#odisProjects'); if (dl) dl.innerHTML = ps.map(p => `<option value="${esc(p)}">`).join(''); }, () => {});
+}
+
+// VCI CAN tab: the offline VCI (offlinevci.c) appends every ISO15765 request/response to vci-can.log;
+// Laertes serves it at /api/vci/can. This polls it and shows the traffic between ODIS and the
+// simulated units, so an unanswered request (e.g. a functional TesterPresent) is visible.
+let vciTimer = null, vciPaused = false;
+const UDS_SERVICE = {0x10: 'DiagnosticSessionControl', 0x11: 'ECUReset', 0x14: 'ClearDTC', 0x19: 'ReadDTC',
+  0x22: 'ReadDataByIdentifier', 0x27: 'SecurityAccess', 0x28: 'CommunicationControl', 0x2E: 'WriteDataByIdentifier',
+  0x2F: 'IOControl', 0x31: 'RoutineControl', 0x34: 'RequestDownload', 0x36: 'TransferData', 0x37: 'TransferExit',
+  0x3E: 'TesterPresent', 0x85: 'ControlDTCSetting',
+  0x50: 'DiagnosticSessionControl+', 0x51: 'ECUReset+', 0x59: 'ReadDTC+', 0x62: 'ReadDataByIdentifier+',
+  0x67: 'SecurityAccess+', 0x6E: 'WriteDataByIdentifier+', 0x71: 'RoutineControl+', 0x7E: 'TesterPresent+'};
+const NRC = {0x10: 'generalReject', 0x11: 'serviceNotSupported', 0x13: 'incorrectMessageLength',
+  0x22: 'conditionsNotCorrect', 0x31: 'requestOutOfRange', 0x33: 'securityAccessDenied', 0x35: 'invalidKey',
+  0x78: 'responsePending', 0x7F: 'serviceNotSupportedInActiveSession'};
+function udsLabel(b) {
+  if (!b.length) return '';
+  if (b[0] === 0x7F) return 'NegativeResponse ' + (NRC[b[2]] || (b.length > 2 ? '0x' + hexByte(b[2]) : ''));
+  return UDS_SERVICE[b[0]] || '';
+}
+const hexByte = x => x.toString(16).toUpperCase().padStart(2, '0');
+// isoTp decodes one raw 8-byte CAN frame (requests are logged as sent on the bus): the ISO-TP frame
+// type and the UDS bytes it carries, without the PCI byte and the 0x55 padding. Anything else
+// (responses are logged as whole UDS messages) is shown as is.
+function isoTp(b) {
+  if (b.length !== 8) return {type: b.length > 7 ? 'multi' : 'single', uds: b};
+  const t = b[0] >> 4, lo = b[0] & 0xF;
+  if (t === 0 && lo >= 1 && lo <= 7) return {type: 'single', uds: b.slice(1, 1 + lo)};
+  if (t === 1) return {type: 'first ' + ((lo << 8) | b[1]) + 'B', uds: b.slice(2)};
+  if (t === 2) { let e = 8; while (e > 1 && b[e - 1] === 0x55) e--; return {type: 'cons #' + lo, uds: b.slice(1, e), cont: true}; }
+  if (t === 3) return {type: 'flow ' + (['CTS', 'WAIT', 'OVFL'][lo] || lo), uds: [], note: 'block ' + b[1] + ', gap ' + b[2] + ' ms'};
+  return {type: '', uds: b};
+}
+function loadVciTab() {
+  vciPaused = false;
+  $('#vci').innerHTML = `<h1>VCI CAN</h1>
+    <p class="meta">CAN messages between ODIS and the simulated units (offline mode), recorded all the time, also while this tab is closed. ▶ is ODIS → unit, ◀ is unit → ODIS. Only the offline VCI is traced; a real VCI is not.</p>
+    <div class="bar"><button id="vciPauseBtn" onclick="toggleVciPause()">⏸ Pause</button><button onclick="clearVci()">Clear</button>
+      <label><input type="checkbox" id="vciEvents" onchange="pollVci(true)"> Setup events (connect, filters, ioctls)</label><span class="meta" id="vciInfo"></span></div>
+    <div id="vciRows" style="max-height:70vh;overflow:auto"></div>`;
+  pollVci();
+  vciTimer = setInterval(pollVci, 1000);
+}
+function stopVci() { if (vciTimer) { clearInterval(vciTimer); vciTimer = null; } }
+function toggleVciPause() { vciPaused = !vciPaused; $('#vciPauseBtn').textContent = vciPaused ? '▶ Resume' : '⏸ Pause'; if (!vciPaused) pollVci(); }
+// Trace lines (offlinevci.c): "<ms> R|T|P <canId> <hex>" are messages (R ODIS -> unit as a raw CAN
+// frame, P a periodic one, T unit -> ODIS as a whole UDS response); any other kind (OPEN, CONN, FILT,
+// IOCTL, F) is a setup event. <ms> is the PC's millisecond tick, shown relative to the first line.
+async function pollVci(force) {
+  if (vciPaused && !force) return;
+  let lines;
+  try { lines = await api('GET', '/api/vci/can'); } catch (e) { return; }
+  const rows = $('#vciRows');
+  if (!rows) return;
+  const events = $('#vciEvents') && $('#vciEvents').checked;
+  const atBottom = rows.scrollHeight - rows.scrollTop - rows.clientHeight < 40;
+  const t0 = lines.length ? Number(lines[0].split(' ')[0]) : 0;
+  let msgs = 0;
+  const body = lines.map(l => {
+    const p = l.split(' '), kind = p[1];
+    const t = ((Number(p[0]) - t0) / 1000).toFixed(3);
+    if (kind !== 'R' && kind !== 'T' && kind !== 'P') {
+      return events ? `<tr class="ev"><td>${t}</td><td colspan="5">${esc(p.slice(1).join(' '))}</td></tr>` : '';
+    }
+    msgs++;
+    const raw = ((p[3] || '').match(/../g) || []).map(x => parseInt(x, 16));
+    const f = kind === 'T' ? {type: raw.length > 7 ? 'multi' : 'single', uds: raw} : isoTp(raw);
+    const neg = f.uds[0] === 0x7F && !f.cont;
+    const color = kind === 'T' ? (neg ? '#c33' : '#2a2') : 'var(--text)';
+    const dir = kind === 'T' ? '◀' : kind === 'P' ? '▶ periodic' : '▶';
+    const label = f.note || (f.cont ? '' : udsLabel(f.uds));
+    return `<tr style="color:${color}"><td>${t}</td><td>${dir}</td><td>${esc(p[2] || '')}</td><td>${esc(f.type)}</td>`
+      + `<td class="d">${f.uds.map(hexByte).join(' ')}</td><td>${esc(label)}</td></tr>`;
+  }).join('');
+  rows.innerHTML = `<table class="can"><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>service</th></tr>${body}</table>`;
+  $('#vciInfo').textContent = msgs + ' messages';
+  if (atBottom) rows.scrollTop = rows.scrollHeight;
+}
+async function clearVci() {
+  try { await api('POST', '/api/vci/can/clear'); const r = $('#vciRows'); if (r) r.innerHTML = ''; $('#vciInfo').textContent = '0 messages'; }
+  catch (e) { toast('Could not clear the trace: ' + e.message, true); }
 }
 
 // The bridge describes a unit only by its toString(), e.g.
@@ -1147,8 +1362,8 @@ function renderUnitDetail() {
     const next = UNIT_NEXT[step.cmd.action];
     body = `<input type="text" placeholder="Filter" oninput="filterNames(this)">
       <div class="names">${step.res.names.map((n, i) => next
-      ? `<button class="op" onclick="unitOpen(${i})">${esc(n)}</button>` : `<span>${esc(n)}</span>`).join('')}</div>
-      <div class="meta">${copyBtn(step.res.names.join('\n'), 'Copy all names')} copy the list</div>`;
+      ? `<button class="op" onclick="unitOpen(${i})" title="${esc(n)}">${esc(txt(n))}</button>` : `<span title="${esc(n)}">${esc(txt(n))}</span>`).join('')}</div>
+      <div class="meta">${copyBtn(step.res.names.join('\n'), 'Copy all names')} copy the list ${trTableBtn(step.res.names)}</div>`;
   } else if (step && step.res && step.res.event_memory) {
     body = eventMemoryHTML(step.res, u.id) + `<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
   } else if (step && step.res && step.cmd.action === 'read_coding') {
@@ -1309,14 +1524,15 @@ function codingEditorHTML(step) {
   const changed = step.work.some((b, i) => b !== step.orig[i]);
   const newHex = step.work.map((b, i) => b !== step.orig[i] ? `<span class="chg">${hex(b)}</span>` : hex(b)).join(' ');
   const inputs = step.work.map((b, i) =>
-    `<input class="${b !== step.orig[i] ? 'chg' : ''}" maxlength="2" value="${hex(b)}" title="Byte ${i}" onchange="codingByte(${i}, this.value)">`).join('');
+    `<input class="${b !== step.orig[i] ? 'chg' : ''}" maxlength="2" value="${hex(b)}" title="Byte ${i}: ${hex(b)} = ${b.toString(2).padStart(8, '0')}${b !== step.orig[i] ? ` (was ${hex(step.orig[i])})` : ''} — type two hex digits 00–FF" onchange="codingByte(${i}, this.value)">`).join('');
   const subs = step.codings.length > 1 ? `<div class="meta">This unit has ${step.codings.length} codings (master and slaves/subsystems):</div>
     <div class="names short">${step.codings.map((c, i) => `<button class="${i === step.entry ? 'on' : ''}" onclick="codingPick(${i})">${esc(c.systemName || 'master')}</button>`).join('')}</div>` : '';
   return `${subs}<h2 class="sub">Change coding (${esc(step.sysName)})</h2>
     <div class="meta">Starts from <span class="mono">${step.orig.map(hex).join(' ')}</span> ${copyBtn(step.orig.map(hex).join(''), 'Copy the unit’s coding')}</div>
+    <div class="meta">Edit a byte here, or change a setting in the tables below: both edit the same coding. Changed bytes are marked.</div>
     <div class="byteedit">${inputs}</div>
-    <div class="code"><span class="mono">${newHex}</span>${copyBtn(step.work.map(hex).join(''), 'Copy the new coding')}<button onclick="codingReset()">Reset</button>
-      <button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing coding', codingWrite)">Write to unit…</button>
+    <div class="code"><span class="mono">${newHex}</span>${copyBtn(step.work.map(hex).join(''), 'Copy the new coding')}<button onclick="codingReset()" title="Undo all changes: back to the unit’s coding">Reset</button>
+      <button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing coding', codingWrite)" title="Shows the changes and asks for confirmation, then writes the coding and reads it back to verify">Write to unit…</button>
       <button onclick="openUnitCodingInTab()" title="Open this coding in the Coding tab for the full bit grid and label editing">Open in Coding tab</button>
       ${step.writeMsg ? `<div class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}${step.writeErr ? ' ' + trBtn(step.writeMsg) + copyBtn(step.writeMsg) : ''}</div>` : ''}</div>`;
 }
@@ -1512,8 +1728,8 @@ function lblDecodeHTML(step) {
   const ls = step.unitLabels || [], where = `${esc(step.unitVariant || '?')} / ${esc(step.sysName)}`;
   const btn = `<button onclick="importUnitLBL()">Import .lbl for ${where}…</button>`;
   if (!ls.length) return `<div class="meta">No .lbl labels stored for ${where}.</div>${btn}`;
-  return `<div class="meta">${ls.length} labels for ${where}. ${btn}</div>
-    <table class="vals"><tr><th>Byte / bits</th><th>Value</th></tr>${decodeLbl(step.work, ls)}</table>`;
+  return `<div class="meta">${ls.length} labels for ${where}. ${btn} ${trTableBtn(ls.map(l => l.text))}</div>
+    ${copyNext(`<table class="vals"><tr><th>Byte / bits</th><th>Value</th></tr>${decodeLbl(step.work, ls)}</table>`, 'Copy the decoded labels')}`;
 }
 function decodeLbl(work, ls) {
   const find = (byte, lo, hi, value) => ls.find(l => l.byte === byte && l.lo === lo && l.hi === hi && l.value === value);
@@ -1522,23 +1738,23 @@ function decodeLbl(work, ls) {
     ls.filter(l => l.byte === i && l.value >= 0).forEach(l => { const k = l.lo + '~' + l.hi; (fs[k] = fs[k] || {lo: l.lo, hi: l.hi, options: []}).options.push(l); });
     return Object.values(fs);
   };
-  let rows = ls.filter(l => l.byte === -1).sort((a, b) => a.lo - b.lo).map(n => `<tr><td colspan="2" class="meta">${esc(n.text)}</td></tr>`).join('');
+  let rows = ls.filter(l => l.byte === -1).sort((a, b) => a.lo - b.lo).map(n => `<tr><td colspan="2" class="meta">${tx(n.text)}</td></tr>`).join('');
   work.forEach((b, i) => {
     const bl = find(i, 0, 7, -1);
-    if (bl) rows += `<tr><th colspan="2">Byte ${i} (${hex(b)}) — ${esc(bl.text)}</th></tr>`;
+    if (bl) rows += `<tr><th colspan="2">Byte ${i} (${hex(b)}) — ${tx(bl.text)}</th></tr>`;
     fieldsOf(i).forEach(f => {
       const m = mask(f.lo, f.hi), cur = b & m, known = f.options.some(o => o.value === cur);
       const sel = `<select onchange="codingSetField(${i},${m},+this.value)">
         ${known ? '' : `<option selected value="${cur}">0x${hex(cur)} (unknown)</option>`}
-        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}>${esc(o.text)} (0x${hex(o.value)})</option>`).join('')}</select>`;
-      rows += `<tr><td class="mono">Byte ${i} bits ${f.lo}–${f.hi}</td><td>${sel}</td></tr>`;
+        ${f.options.map(o => `<option value="${o.value}" ${o.value === cur ? 'selected' : ''}${txTitle(o.text)}>${esc(txt(o.text))} (0x${hex(o.value)})</option>`).join('')}</select>`;
+      rows += `<tr><td class="mono" title="Bits ${f.lo}–${f.hi} of byte ${i}: now 0x${hex(cur)}, ${f.options.length} labelled values">Byte ${i} bits ${f.lo}–${f.hi}</td><td>${sel}</td></tr>`;
     });
     for (let bit = 7; bit >= 0; bit--) {
       const l = find(i, bit, bit, -1);
       if (l) {
         const on = (b >> bit) & 1;
         rows += `<tr><td class="mono">Byte ${i} bit ${bit}</td><td><label><input type="checkbox" ${on ? 'checked' : ''}
-          onchange="codingSetField(${i},${1 << bit},this.checked?${1 << bit}:0)"> ${esc(l.text)}</label></td></tr>`;
+          onchange="codingSetField(${i},${1 << bit},this.checked?${1 << bit}:0)"> ${tx(l.text)}</label></td></tr>`;
       }
     }
   });
@@ -1571,31 +1787,41 @@ function adaptationEditorHTML(step) {
   const params = ad ? (ad.adaptationValues || []).map(v => v.adaptationValue).filter(Boolean) : [];
   if (!params.length) return '';
   step.newVals = step.newVals || {};
+  const pname = p => p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name;
   const rows = params.map(p => {
-    const nv = (p.name in step.newVals) ? step.newVals[p.name] : p.value;
+    const nv = (p.name in step.newVals) ? step.newVals[p.name] : p.value, unit = p.unit ? ' ' + p.unit : '';
+    const opts = (step.options || {})[p.name] || [];
+    const tip = [`ODX name: ${p.name}`, `Current value: ${p.value}${unit}`,
+      opts.length ? `${opts.length} possible values — pick one in the New value column` : 'Type the new value in the New value column',
+      String(nv) !== String(p.value) ? `Will be written: ${nv}${unit}` : ''].filter(Boolean).join('\n');
     return `<tr class="${String(nv) !== String(p.value) ? 'changed' : ''}">
-      <td>${esc(p.translatedName && p.translatedName !== '---' ? p.translatedName : p.name)}</td>
-      <td class="mono">${esc(p.value)}${p.unit ? ' ' + esc(p.unit) : ''}</td>
-      <td>${adaptControl(step, p.name, nv)}</td></tr>`;
+      <td title="${esc(tip)}">${tx(pname(p))}</td>
+      <td class="mono" title="Value in the unit now">${tx(p.value)}${esc(unit)}</td>
+      <td>${adaptControl(step, p.name, nv)}${esc(unit)}</td>
+      <td>${copyBtn(`${pname(p)}: ${p.value}${unit}${String(nv) !== String(p.value) ? ` → ${nv}${unit}` : ''}`, 'Copy this parameter')}</td></tr>`;
   }).join('');
   const changed = params.some(p => (p.name in step.newVals) && String(step.newVals[p.name]) !== String(p.value));
+  const texts = params.flatMap(p => [pname(p), p.value, ...((step.options || {})[p.name] || [])]);
   return `${step.cp ? `<div class="warnbox"><b>Component-protection test.</b> Writing this locks the unit; it will not work until reactivated online through an ODIS/VW SVM session with valid credentials.</div>` : ''}
-    <h2 class="sub">Change adaptation (${esc(step.cmd.channel)})</h2>
-    <table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th></tr>${rows}</table>
-    <div class="bar"><button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing adaptation', adaptWrite)">${step.cp ? 'Write — lock the unit…' : 'Write to unit…'}</button>
+    <h2 class="sub">Change adaptation (${esc(step.cmd.channel)}) ${trTableBtn(texts)}</h2>
+    <div class="meta">Pick or type a new value; changed rows are marked. Hover a name for its ODX name and current value.</div>
+    ${copyNext(`<table class="vals"><tr><th>Parameter</th><th>Current</th><th>New value</th><th></th></tr>${rows}</table>`, 'Copy the parameters')}
+    <div class="bar"><button class="warn op" ${changed ? '' : 'disabled'} onclick="op('Writing adaptation', adaptWrite)" title="Shows the changes and asks for confirmation, then writes them and reads the channel back to verify">${step.cp ? 'Write — lock the unit…' : 'Write to unit…'}</button>
+      <button ${changed ? '' : 'disabled'} onclick="adaptReset()" title="Undo all changes in this table">Reset</button>
       ${step.writeMsg ? `<span class="status ${step.writeErr ? 'err' : ''}">${esc(step.writeMsg)}${step.writeErr ? ' ' + trBtn(step.writeMsg) + copyBtn(step.writeMsg) : ''}</span>` : ''}</div>`;
 }
 // A dropdown of the channel's enumerated options (from ODX) when it has them, else a free input.
 function adaptControl(step, name, nv) {
   const opts = (step.options || {})[name];
   if (opts && opts.length) {
-    const extra = opts.includes(nv) ? '' : `<option selected value="${esc(nv)}">${esc(nv)} (current)</option>`;
-    return `<select onchange="adaptSet('${esc(jsStr(name))}', this.value)">${extra}${opts.map(o =>
-      `<option value="${esc(o)}" ${o === nv ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    const extra = opts.includes(nv) ? '' : `<option selected value="${esc(nv)}">${esc(txt(nv))} (current)</option>`;
+    return `<select onchange="adaptSet('${esc(jsStr(name))}', this.value)"${txTitle(nv)}>${extra}${opts.map(o =>
+      `<option value="${esc(o)}" ${o === nv ? 'selected' : ''}${txTitle(o)}>${esc(txt(o))}</option>`).join('')}</select>`;
   }
-  return `<input value="${esc(nv)}" onchange="adaptSet('${esc(jsStr(name))}', this.value)">`;
+  return `<input value="${esc(nv)}" title="Type the new value, then press Tab or click elsewhere" onchange="adaptSet('${esc(jsStr(name))}', this.value)">`;
 }
 function adaptSet(name, v) { const s = curStep(); if (s) { (s.newVals = s.newVals || {})[name] = v; s.writeMsg = ''; renderKeepFocus(); } }
+function adaptReset() { const s = curStep(); if (s) { s.newVals = {}; s.writeMsg = ''; renderUnitDetail(); } }
 async function adaptWrite() {
   const step = curStep(), u = units.find(u => u.index === unitSel), ad = step.res.adaptation;
   const params = (ad.adaptationValues || []).map(v => v.adaptationValue).filter(Boolean);
@@ -1719,21 +1945,33 @@ function decodeCoding(hexBytes, table) {
 // When editable, each parameter is a dropdown (enumerated values) or a number input that writes
 // the chosen value back into the coding bytes at its byte/bit position (shown in the Bits column).
 function decodedTable(hexBytes, table, editable) {
-  return `<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th></tr>${decodeCoding(hexBytes, table).map(d => {
+  const ds = decodeCoding(hexBytes, table);
+  const rows = ds.map(d => {
     const discrete = (d.values || []).filter(c => Number(c.low) === Number(c.high));
+    const tip = [d.name, d.raw, discrete.length ? `${discrete.length} possible values: ${discrete.slice(0, 12).map(c => txt(c.text)).join(', ')}${discrete.length > 12 ? ', …' : ''}`
+      : d.bit_length ? `A number of ${d.bit_length} bits (0–${2 ** Math.min(d.bit_length, 53) - 1})${d.unit ? ' in ' + d.unit : ''}` : ''].filter(Boolean).join('\n');
     let cell;
     if (editable && d.editable && discrete.length) {
       const known = discrete.some(c => Number(c.low) === d.cur);
-      cell = `<select onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},+this.value)">
+      cell = `<select onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},+this.value)" title="${esc(tip)}">
         ${known ? '' : `<option selected value="${d.cur}">0x${d.cur.toString(16).toUpperCase()} (unknown)</option>`}
-        ${discrete.map(c => `<option value="${Number(c.low)}" ${Number(c.low) === d.cur ? 'selected' : ''}>${esc(c.text)} (0x${Number(c.low).toString(16).toUpperCase()})</option>`).join('')}</select>`;
+        ${discrete.map(c => `<option value="${Number(c.low)}" ${Number(c.low) === d.cur ? 'selected' : ''}${txTitle(c.text)}>${esc(txt(c.text))} (0x${Number(c.low).toString(16).toUpperCase()})</option>`).join('')}</select>`;
     } else if (editable && d.editable && d.byte_pos !== undefined) {
-      cell = `<input class="num" value="${d.cur}" onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},this.value)">${d.unit ? ' ' + esc(d.unit) : ''}`;
+      cell = `<input class="num" value="${d.cur}" title="${esc(tip)}" onchange="codingSetParam(${d.byte_pos},${d.bit_pos},${d.bit_length},this.value)">${d.unit ? ' ' + esc(d.unit) : ''}`;
     } else {
-      cell = esc(d.value);
+      cell = tx(d.value);
     }
-    return `<tr class="${d.bad ? 'err' : ''}"><td>${esc(d.name)}</td><td>${cell}</td><td class="mono">${esc(d.raw)}</td></tr>`;
-  }).join('')}</table>`;
+    return `<tr class="${d.bad ? 'err' : ''}"><td title="${esc(tip)}">${tx(d.name)}</td><td>${cell}</td><td class="mono">${esc(d.raw)}</td>
+      <td>${copyBtn(`${d.name}: ${d.value} (${d.raw})`, 'Copy this setting')}</td></tr>`;
+  }).join('');
+  const texts = ds.flatMap(d => [d.name, ...(d.values || []).map(c => c.text)]);
+  return `<div class="bar">${trTableBtn(texts)}<input type="text" placeholder="Filter settings" oninput="filterRows(this)" title="Show only the settings whose name or value contains this text"></div>
+    ${copyNext(`<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th><th></th></tr>${rows}</table>`, 'Copy the decoded coding')}`;
+}
+// Hides the rows of the table after the filter's bar that do not contain its text.
+function filterRows(input) {
+  const q = input.value.trim().toLowerCase(), table = input.closest('.bar').nextElementSibling.querySelector('table');
+  [...table.rows].slice(1).forEach(r => { r.hidden = !!q && !textOf(r).toLowerCase().includes(q) && !(r.cells[0].title || '').toLowerCase().includes(q); });
 }
 
 // Writes value into the working coding at byte_pos/bit_pos for bit_length bits (big-endian).
@@ -2855,7 +3093,7 @@ function jsonFill(el) {
 
 function filterNames(input) {
   const q = input.value.trim().toLowerCase();
-  input.nextElementSibling.querySelectorAll('button, span, label').forEach(b => b.hidden = q && !b.textContent.toLowerCase().includes(q));
+  input.nextElementSibling.querySelectorAll('button, span, label').forEach(b => b.hidden = q && !(b.textContent + ' ' + (b.title || '')).toLowerCase().includes(q));
 }
 function unitBack(i) { unitPath = unitPath.slice(0, i + 1); renderUnitDetail(); }
 

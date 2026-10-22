@@ -2,3 +2,5 @@
 *.cmd text eol=crlf
 # Shell scripts run on Linux runners and must keep LF line endings.
 *.sh text eol=lf
+# The offline VCI DLL is a build output committed on purpose (see offlinevci/build.cmd).
+*.dll binary

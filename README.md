@@ -24,7 +24,12 @@ editable options. (The data shown is illustrative.)*
 ## Build
 
 Double-click `build.cmd` (needs [Go](https://go.dev/dl/)) — it runs the tests and builds
-`laertes.exe`. Install the bridge by copying both `mcpserver_*.py` files to `C:\ProgramData\OE\macros\`.
+`laertes.exe`. The two bridge scripts are embedded in it: on every start it copies them to
+`C:\ProgramData\OE\macros\` when they are missing or differ, and, if the bridge is not running and ODIS
+is not open with its window, starts ODIS in the background as its automation web service and runs
+`mcpserver.py` there (`executeMacro`). For use without a VCI it also embeds an offline VCI, a
+hardware-less J2534 device built from `offlinevci/offlinevci.c` (the DLL is committed; rebuild it with
+`offlinevci\build.cmd`, which needs [zig](https://ziglang.org)).
 
 For development, `laertes.exe -grpstub` also serves a stand-in for VW's online (GRP) sign-in on
 `127.0.0.1:7000` (account `admin`/`admin`); ODIS uses it when its `grp.discovery` points there.
