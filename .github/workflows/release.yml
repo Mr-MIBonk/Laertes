@@ -13,7 +13,11 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # Windows, because Laertes uses Windows-only packages (registry, DPAPI) and its tests must run.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 

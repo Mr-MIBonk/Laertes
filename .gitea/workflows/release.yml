@@ -41,9 +41,11 @@ jobs:
 
       - name: Test and build
         working-directory: src
+        # Laertes uses Windows-only packages (registry, DPAPI), so on this Linux runner the code and
+        # its tests are checked for Windows and the tests compiled, not run (build.cmd runs them).
         run: |
-          go vet ./...
-          go test ./...
+          GOOS=windows go vet ./...
+          GOOS=windows go test -c -o /dev/null .
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o laertes.exe .
           GOOS=windows sh scripts/licenses.sh > THIRD_PARTY_LICENSES.txt
 
