@@ -29,9 +29,19 @@ th, td { border:1px solid var(--line); padding:4px; vertical-align:top; }
 th { font-size:12px; color:var(--muted); font-weight:normal; }
 td.b { font-family:Consolas, monospace; white-space:nowrap; text-align:center; }
 td.f { min-width:220px; }
-table.can td { font-family:Consolas, monospace; font-size:12px; white-space:nowrap; padding:2px 6px; }
-table.can td.d { white-space:normal; word-break:break-all; }
-table.can tr.ev td { color:var(--muted); }
+.canwrap { max-height:72vh; overflow:auto; border:1px solid var(--line); border-radius:6px; }
+table.can td { font-family:Consolas, monospace; font-size:12px; white-space:nowrap; padding:2px 6px; border-width:0 0 1px; cursor:help; }
+table.can th { position:sticky; top:0; background:var(--panel); border-width:0 0 1px; text-align:left; z-index:1; }
+table.can td.d { white-space:normal; word-break:break-all; color:var(--muted); }
+table.can td.m { font-family:system-ui, sans-serif; white-space:normal; }
+table.can td.dir { font-weight:bold; }
+table.can tr:hover td { background:color-mix(in srgb, var(--accent) 10%, transparent); }
+table.can tr.req td.dir { color:var(--accent); }
+table.can tr.pos td.dir, table.can tr.pos td.m { color:var(--on); }
+table.can tr.neg td.dir, table.can tr.neg td.m { color:var(--warn); }
+table.can tr.pend td.dir, table.can tr.pend td.m { color:var(--chg); }
+table.can tr.ev td { color:var(--muted); font-style:italic; }
+table.can tr.wake td.dir, table.can tr.wake td.m { color:var(--muted); }
 .bit { display:flex; flex-direction:column; gap:3px; min-width:90px; }
 .bit label { display:flex; align-items:center; gap:4px; font-family:Consolas, monospace; cursor:pointer; }
 .bit.on label { color:var(--on); font-weight:bold; }
@@ -234,10 +244,10 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <span id="srv" class="conn wait"><span class="dot"></span><span class="txt">Laertes…</span></span>
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
-  <span id="vci" class="veh" hidden></span>
-  <button id="ignBtn" class="vcibtn" hidden onclick="ignitionChange()" title="Trigger an ODIS ignition change to wake the bus (ODIS has no set-to-position 0/1/2 call)">🔑 Ignition change</button>
+  <span id="vciState" class="veh" hidden></span>
   <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button>
-  <button id="startBridge" class="vcibtn" hidden onclick="startBridge()" title="Start ODIS in the background and run the bridge macro in it (ODIS must not be open with its window)">▶ Start bridge</button>
+  <button id="startBridge" class="vcibtn" hidden onclick="startBridge(false)" title="Start ODIS in the background with your own VCI and run the bridge macro in it (ODIS must not be open with its window)">▶ Start bridge</button>
+  <button id="startVirtual" class="vcibtn" hidden onclick="startBridge(true)" title="Start ODIS in the background with Laertes's virtual VCI (no interface, simulated units) and the vehicle project from Settings, and run the bridge macro in it">▶ Bridge + virtual VCI</button>
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <span id="ver" class="ver" title="Laertes version"></span></nav>
 <div id="main"></div>
@@ -288,11 +298,15 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       loads the vehicle project by reading the car's VIN, and runs <code>mcpserver.py</code> in it. The top bar shows
       each step. If the car cannot be identified (e.g. a unit on a bench), the project from <b>Settings › ODIS bridge</b> is
       used; it is filled in from the project ODIS had loaded last time. Press <b>▶ Start bridge</b> to try again.</li>
-    <li><b>Offline, without a VCI</b> (offline coding, the ODIS database): tick <b>Offline mode</b> in Settings › ODIS bridge and
-      choose the project (e.g. <code>VW37X</code>). Laertes registers its own <b>offline VCI</b> — a J2534 device without hardware,
+    <li><b>Offline, without a VCI</b> (offline coding, the ODIS database): choose the project (e.g. <code>VW37X</code>) in
+      Settings › ODIS bridge and press <b>▶ Bridge + virtual VCI</b> (tick <b>Start automatically with the virtual VCI</b> to
+      have Laertes start that way). Laertes registers its own <b>offline VCI</b> — a J2534 device without hardware,
       <code>Laertes-Offline</code> (Windows asks for administrator rights once) — and lets the background ODIS use it, so ODIS opens
       the project and runs the bridge with nothing connected. Loading the project takes about a minute and a half, because ODIS waits
       for a VIN that never comes. Control units do not answer. Your own VCI choice in ODIS is put back when that ODIS ends.</li>
+    <li><b>A unit on a bench</b> that sleeps without ignition: turn on <b>Settings › Clamp 15 wake-up</b>. ODIS then uses your J2534 VCI
+      through Laertes's VCI DLL, which sends VW's clamp status frame (<code>0x3C0</code>, clamp 15 on) every 100 ms while the bridge runs.
+      The units wake up and act as if the ignition were on. The top bar shows it as <i>… via Laertes (clamp 15 wake-up)</i>.</li>
     <li>This needs ODIS not to be open with its window: ODIS cannot run a macro started from outside then. If ODIS is
       already open, open its <b>Macros</b> function and run <code>mcpserver.py</code> as before, or close ODIS and press
       <b>▶ Start bridge</b>. Starting automatically can be turned off in Settings.</li>
@@ -304,7 +318,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <ol>
     <li>Run <code>laertes.exe</code>. It opens this page in your browser (<code>http://127.0.0.1:23031/</code>,
       or another free port if that one is taken; the console window shows the address).</li>
-    <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and <b>🔌 VCI connected</b>.
+    <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and the VCI ODIS uses (🔌) as <b>connected</b>.
       Red “ODIS bridge offline” means the macro is not running: hover it for the reason, then press
       <b>▶ Start bridge</b> or see step 2.</li>
     <li>Optional switches: <code>-db</code> (database file),
@@ -447,7 +461,8 @@ function laertesLink() {
 // Settings, stored in the database (so they survive restarts and are shared by every browser that
 // opens Laertes). dtcCheck: read the fault memory before and after each coding/adaptation write and
 // show what changed. Loaded once at startup; defaults apply until then.
-const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en', autoTranslate: false, autoStartBridge: true, odisProject: '', odisOffline: false, odisVin: ''};
+const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en', autoTranslate: false, autoStartBridge: true, odisProject: '', odisOffline: false, odisVin: '', odisDirectProject: false,
+  wakeOn: false, wakeId: '3C0', wakeData: '00 00 03 00', wakeE2E: 'C3', wakeMs: 100};
 async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
   try { geko = await api('GET', '/api/geko'); } catch (e) {}
@@ -680,13 +695,20 @@ function renderBusy() {
 }
 
 // Bridge connection indicator: pings the ODIS bridge (mcpserver.py) so a lost connection
-// shows in the top bar without having to run a command.
+// shows in the top bar without having to run a command. The VCI pill always names the VCI ODIS
+// is set to use (vci.properties), with its state while the bridge runs.
 async function pingBridge() {
-  const el = $('#conn'), txt = el.querySelector('.txt'), veh = $('#veh');
+  const el = $('#conn'), txt = el.querySelector('.txt'), veh = $('#veh'), vci = $('#vciState');
+  let o = {};
+  try { o = await api('GET', '/api/odis'); } catch (e) {}
+  const vciName = o.vci || 'no VCI selected';
+  vci.hidden = false; vci.textContent = '🔌 ' + vciName; vci.classList.add('off');
+  vci.title = 'VCI selected in ODIS: ' + vciName;
   try {
     await api('POST', '/api/bridge', {action: 'ping'});
-    el.className = 'conn on'; txt.textContent = 'ODIS bridge'; el.title = 'Connected to the ODIS bridge (mcpserver.py).';
-    $('#stopBridge').hidden = false; $('#resetVci').hidden = false; $('#ignBtn').hidden = false; $('#startBridge').hidden = true;
+    el.className = 'conn on'; txt.textContent = 'ODIS bridge';
+    el.title = 'Connected to the ODIS bridge (mcpserver.py).' + (o.took ? ` Started in ${Math.round(o.took)} s.` : '');
+    $('#stopBridge').hidden = false; $('#resetVci').hidden = false; $('#startBridge').hidden = $('#startVirtual').hidden = true;
     try {
       const v = await api('POST', '/api/bridge', {action: 'vehicle'});
       // Remembered for starting the bridge when the car cannot be identified by its VIN.
@@ -695,32 +717,45 @@ async function pingBridge() {
       veh.title = v.project ? 'Vehicle project loaded in ODIS' : 'No vehicle project loaded in ODIS';
     } catch (e) { veh.hidden = true; }
     try {
-      const vci = $('#vci'), c = await api('POST', '/api/bridge', {action: 'vci'});
+      const c = await api('POST', '/api/bridge', {action: 'vci'});
       const state = (c.state || '').toLowerCase(), on = state === 'connected' || state === 'on';
-      vci.hidden = false; vci.textContent = '🔌 VCI ' + (c.state || '?');
+      vci.textContent = '🔌 ' + vciName + ' · ' + (c.state || '?');
       vci.classList.toggle('off', !on);
-      vci.title = `VCI ${c.state || '?'}${c.clamp15 ? ' · clamp 15 ' + c.clamp15 : ''}${c.clamp30 ? ' · clamp 30 ' + c.clamp30 : ''}${(c.doip && c.doip.length) ? ' · DoIP: ' + c.doip.join(', ') : ''}`;
-    } catch (e) { $('#vci').hidden = true; }
+      vci.title = `VCI selected in ODIS: ${vciName} · ${c.state || '?'}${c.clamp15 ? ' · clamp 15 ' + c.clamp15 : ''}${c.clamp30 ? ' · clamp 30 ' + c.clamp30 : ''}${(c.doip && c.doip.length) ? ' · DoIP: ' + c.doip.join(', ') : ''}`;
+    } catch (e) {}
   } catch (e) {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
-    $('#stopBridge').hidden = true; $('#resetVci').hidden = true; $('#ignBtn').hidden = true;
-    veh.hidden = true; $('#vci').hidden = true;
+    $('#stopBridge').hidden = true; $('#resetVci').hidden = true;
+    veh.hidden = true;
     // Laertes may be starting the bridge itself (ODIS in the background, see odis.go).
-    let o = {};
-    try { o = await api('GET', '/api/odis'); } catch (e2) {}
-    $('#startBridge').hidden = o.state === 'starting';
-    if (o.state === 'starting') { el.className = 'conn wait'; txt.textContent = o.message; el.title = 'Laertes is starting ODIS and the bridge macro.'; }
+    $('#startBridge').hidden = $('#startVirtual').hidden = o.state === 'starting';
+    if (o.state === 'starting') { el.className = 'conn wait'; el.title = 'Laertes is starting ODIS and the bridge macro.'; startTimer(o); }
     else if (o.state === 'error') { txt.textContent = 'ODIS bridge offline ⚠'; el.title = o.message + '\n\n' + e.message; }
     if (o.state === 'error' && o.message !== odisShown) toast(o.message, true);
     odisShown = o.message;
   }
 }
 let odisShown = '';
+// The bridge start timer in the top bar: the step and the time since the start began (from
+// Laertes, so it also counts a start that began before the page opened), every second.
+let startTick = null, startAt = 0, startMsg = '';
+function startTimer(o) {
+  startAt = Date.now() - (o.elapsed || 0) * 1000; startMsg = o.message;
+  const show = () => {
+    const el = $('#conn'), s = Math.floor((Date.now() - startAt) / 1000);
+    if (!el.classList.contains('wait')) { clearInterval(startTick); startTick = null; return; }
+    el.querySelector('.txt').textContent = `${startMsg} ⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  show();
+  if (!startTick) startTick = setInterval(show, 1000);
+}
 // Starts ODIS in the background and the bridge macro in it; the top bar shows the progress.
-// Offline, the chosen project is loaded directly; otherwise ODIS identifies the car first.
-async function startBridge() {
-  if (settings.odisOffline && !settings.odisProject) { showTab('settings'); toast('Offline mode: choose the vehicle project first (Settings › ODIS bridge).', true); return; }
-  try { await api('POST', '/api/odis/start', {project: settings.odisOffline ? settings.odisProject : '', offline: !!settings.odisOffline}); }
+// With the virtual VCI (offline), or when identifying by VIN is turned off for a bench, the chosen
+// project is loaded directly; otherwise ODIS uses the user's own VCI and identifies the car first.
+async function startBridge(virtual) {
+  const direct = virtual || settings.odisDirectProject;
+  if (direct && !settings.odisProject) { showTab('settings'); toast(`${virtual ? 'Virtual VCI' : 'Load the project directly'}: choose the vehicle project first (Settings › ODIS bridge).`, true); return; }
+  try { await api('POST', '/api/odis/start', {project: direct ? settings.odisProject : '', offline: virtual}); }
   catch (e) { toast(e.message, true); }
   pingBridge();
 }
@@ -734,18 +769,6 @@ function resetVci() {
   op('Restarting VCI', async () => {
     const r = await bridge({action: 'reset_vci'});
     toast('VCI restarted' + (r.state ? ': ' + r.state : '') + '.');
-    await pingBridge();
-  });
-}
-
-// Triggers an ODIS ignition change to wake the bus. ODIS's automation API has no set-to-position
-// 0/1/2 call and no raw CAN wake-up injection, so this is the closest available action.
-function ignitionChange() {
-  if (busy) { toast(`Busy: ${busy.label}. Wait for it to finish or press Stop.`, true); return; }
-  if (!confirm('Trigger an ignition change (wake the bus)?\n\nODIS has no set-to-position 0/1/2 call; this performs ODIS’s own ignition change, which wakes the bus.')) return;
-  op('Ignition change', async () => {
-    const r = await bridge({action: 'ignition_change'});
-    toast('Ignition change done' + (r.clamp15 ? ' (clamp 15 ' + r.clamp15 + ')' : '') + '.');
     await pingBridge();
   });
 }
@@ -999,7 +1022,7 @@ function showTab(tab) {
   stopLive();  // a live measurement view only updates while the units tab shows it
   stopVci();   // the VCI CAN trace only polls while its tab is open
   if (tab === 'vci') loadVciTab();
-  if (tab === 'units' && !units) loadUnits();
+  if (tab === 'units' && !(units && units.length)) loadUnits();
   else if (tab === 'units' && synced) renderUnitDetail();
   if (tab === 'history') loadHistory();
   if (tab === 'retrofit') loadRetrofitTab();
@@ -1020,7 +1043,7 @@ function renderSettings() {
     </label>
     <label style="align-items:flex-start" title="For offline coding: decode and edit codings, load coding files and browse the database with no car connected">
       <input type="checkbox" ${settings.odisOffline ? 'checked' : ''} onchange="settings.odisOffline = this.checked; saveSettings()">
-      <span>Offline mode (no VCI): ODIS uses Laertes's offline VCI and loads the vehicle project below.
+      <span>Start automatically with the virtual VCI (no interface): ODIS uses Laertes's virtual VCI and loads the vehicle project below.
         <br><span class="meta">The bridge runs without a car or interface, for offline coding and the ODIS database; control units do not answer. The first time, Windows asks for administrator rights to register the offline VCI. Your own VCI choice in ODIS is put back when that ODIS ends.</span></span>
     </label>
     <label style="align-items:center" title="Offline mode loads this project. Online it is used when the car cannot be identified from its VIN, e.g. a unit on a bench. Filled in from the project ODIS loaded last time.">
@@ -1028,11 +1051,38 @@ function renderSettings() {
       <input id="odisProject" type="text" list="odisProjects" placeholder="e.g. VWVIN" value="${esc(settings.odisProject || '')}" onchange="settings.odisProject = this.value.trim(); saveSettings()">
       <datalist id="odisProjects"></datalist>
     </label>
+    <label style="align-items:flex-start" title="ODIS otherwise reads the VIN through SERVICE and ENGINEERING identification first, which fails on a bench and costs about 15 seconds">
+      <input type="checkbox" ${settings.odisDirectProject ? 'checked' : ''} onchange="settings.odisDirectProject = this.checked; saveSettings()">
+      <span>Load this project directly, without identifying the car by its VIN (bench).
+        <br><span class="meta">Starts about 15 seconds faster when the unit cannot be identified anyway. Leave it off for a car, so a different car gets its own project.</span>
+        <br><span class="meta">How: normally ODIS first tries to work out the project from the car's VIN, once as ODIS Service (about 9 s) and once as ODIS Engineering (about 7 s).
+          A unit on a bench has no VIN that matches a project, so both attempts fail and Laertes then loads this project anyway. With this on, Laertes loads it straight away.
+          The rest of a start (ODIS booting, about 20 s; loading the project, about 15 s; ODIS's script engine, about 6 s) is inside ODIS and stays the same.</span></span>
+    </label>
     <label style="align-items:center" title="Offline/simulation mode: the VIN the simulated control units report (identification DID 0xF190). Empty uses the built-in default. Takes effect the next time the bridge starts.">
       <span>Simulation VIN:</span>
       <input id="odisVin" type="text" maxlength="17" placeholder="e.g. WVWZZZ1KZAW000001" value="${esc(settings.odisVin || '')}" oninput="this.value = this.value.toUpperCase()" onchange="settings.odisVin = this.value.trim(); saveSettings()">
     </label>
-    <div class="bar"><button class="op" onclick="startBridge()" title="Start ODIS in the background and run the bridge macro now">▶ Start bridge</button></div>
+    <div class="bar"><button class="op" onclick="startBridge(false)" title="Start ODIS in the background with your own VCI and run the bridge macro now">▶ Start bridge</button>
+      <button class="op" onclick="startBridge(true)" title="Start ODIS in the background with Laertes's virtual VCI and the vehicle project above, and run the bridge macro now">▶ Bridge + virtual VCI</button></div>
+    </section><section class="card"><h2 class="sub">Clamp 15 wake-up (bench)</h2>
+    <label style="align-items:flex-start" title="Laertes's VCI DLL sits between ODIS and your VCI's J2534 driver, forwards everything and sends this frame periodically on the CAN bus">
+      <input type="checkbox" ${settings.wakeOn ? 'checked' : ''} onchange="settings.wakeOn = this.checked; saveSettings()">
+      <span>Send a clamp 15 frame periodically while the bridge runs, so units on a bench wake up and act as if the ignition were on.
+        <br><span class="meta">With your own VCI it goes on the bus: ODIS then uses your VCI through Laertes's VCI DLL. This needs a VCI that ODIS uses as a J2534 device. With the virtual VCI the frames only appear in the VCI CAN trace.
+        Through a car's OBD port the gateway usually does not pass the frame on. Takes effect the next time the bridge starts.</span></span>
+    </label>
+    <label style="align-items:center" title="Hex CAN ID; up to 7FF is 11-bit, above is 29-bit. VW Klemmen_Status_01 is 3C0.">
+      <span>CAN ID:</span><input type="text" maxlength="8" style="width:90px" value="${esc(settings.wakeId)}" oninput="this.value = this.value.toUpperCase()" onchange="settings.wakeId = this.value.trim(); saveSettings()">
+      <span>every</span><input type="number" min="10" max="5000" step="10" style="width:80px" value="${esc(settings.wakeMs)}" onchange="settings.wakeMs = Number(this.value); saveSettings()"><span>ms</span>
+    </label>
+    <label style="align-items:center" title="Data bytes in hex. Klemmen_Status_01: byte 0 CRC, byte 1 counter (low nibble), byte 2 bit 0 clamp S, bit 1 clamp 15, bit 2 clamp X, bit 3 clamp 50 (start).">
+      <span>Data:</span><input type="text" maxlength="23" style="width:200px" value="${esc(settings.wakeData)}" oninput="this.value = this.value.toUpperCase()" onchange="settings.wakeData = this.value.trim(); saveSettings()">
+    </label>
+    <label style="align-items:center" title="VW E2E protection: byte 1's low nibble counts 0..15 and byte 0 becomes the CRC-8 (AUTOSAR 0x2F) over the other bytes and this data ID. C3 is Klemmen_Status_01's. Empty sends the data unchanged (older units without E2E).">
+      <span>E2E data ID:</span><input type="text" maxlength="2" style="width:50px" value="${esc(settings.wakeE2E)}" oninput="this.value = this.value.toUpperCase()" onchange="settings.wakeE2E = this.value.trim(); saveSettings()">
+      <span class="meta">empty: no counter/CRC</span>
+    </label>
     </section><section class="card"><h2 class="sub">After a write</h2>
     <label style="align-items:flex-start">
       <input type="checkbox" id="setDtcCheck" ${settings.dtcCheck ? 'checked' : ''} onchange="settings.dtcCheck = this.checked; saveSettings()">
@@ -1072,82 +1122,244 @@ function renderSettings() {
 
 // VCI CAN tab: the offline VCI (offlinevci.c) appends every ISO15765 request/response to vci-can.log;
 // Laertes serves it at /api/vci/can. This polls it and shows the traffic between ODIS and the
-// simulated units, so an unanswered request (e.g. a functional TesterPresent) is visible.
-let vciTimer = null, vciPaused = false;
-const UDS_SERVICE = {0x10: 'DiagnosticSessionControl', 0x11: 'ECUReset', 0x14: 'ClearDTC', 0x19: 'ReadDTC',
-  0x22: 'ReadDataByIdentifier', 0x27: 'SecurityAccess', 0x28: 'CommunicationControl', 0x2E: 'WriteDataByIdentifier',
-  0x2F: 'IOControl', 0x31: 'RoutineControl', 0x34: 'RequestDownload', 0x36: 'TransferData', 0x37: 'TransferExit',
-  0x3E: 'TesterPresent', 0x85: 'ControlDTCSetting',
-  0x50: 'DiagnosticSessionControl+', 0x51: 'ECUReset+', 0x59: 'ReadDTC+', 0x62: 'ReadDataByIdentifier+',
-  0x67: 'SecurityAccess+', 0x6E: 'WriteDataByIdentifier+', 0x71: 'RoutineControl+', 0x7E: 'TesterPresent+'};
-const NRC = {0x10: 'generalReject', 0x11: 'serviceNotSupported', 0x13: 'incorrectMessageLength',
-  0x22: 'conditionsNotCorrect', 0x31: 'requestOutOfRange', 0x33: 'securityAccessDenied', 0x35: 'invalidKey',
-  0x78: 'responsePending', 0x7F: 'serviceNotSupportedInActiveSession'};
-function udsLabel(b) {
-  if (!b.length) return '';
-  if (b[0] === 0x7F) return 'NegativeResponse ' + (NRC[b[2]] || (b.length > 2 ? '0x' + hexByte(b[2]) : ''));
-  return UDS_SERVICE[b[0]] || '';
-}
+// simulated units, so an unanswered request (e.g. a functional TesterPresent) is visible. Each
+// message is decoded (UDS service, identifiers, values) into a short meaning and a tooltip.
+let vciTimer = null, vciPaused = false, vciShown = '';
+const UDS_SERVICE = {0x10: 'DiagnosticSessionControl', 0x11: 'ECUReset', 0x14: 'ClearDiagnosticInformation', 0x19: 'ReadDTCInformation',
+  0x22: 'ReadDataByIdentifier', 0x23: 'ReadMemoryByAddress', 0x27: 'SecurityAccess', 0x28: 'CommunicationControl',
+  0x2E: 'WriteDataByIdentifier', 0x2F: 'InputOutputControlByIdentifier', 0x31: 'RoutineControl', 0x34: 'RequestDownload',
+  0x35: 'RequestUpload', 0x36: 'TransferData', 0x37: 'RequestTransferExit', 0x3D: 'WriteMemoryByAddress', 0x3E: 'TesterPresent',
+  0x85: 'ControlDTCSetting', 0x86: 'ResponseOnEvent', 0x87: 'LinkControl'};
+const NRC = {0x10: 'generalReject', 0x11: 'serviceNotSupported', 0x12: 'subFunctionNotSupported', 0x13: 'incorrectMessageLengthOrInvalidFormat',
+  0x14: 'responseTooLong', 0x21: 'busyRepeatRequest', 0x22: 'conditionsNotCorrect', 0x24: 'requestSequenceError',
+  0x25: 'noResponseFromSubnetComponent', 0x26: 'failurePreventsExecutionOfRequestedAction', 0x31: 'requestOutOfRange',
+  0x33: 'securityAccessDenied', 0x35: 'invalidKey', 0x36: 'exceedNumberOfAttempts', 0x37: 'requiredTimeDelayNotExpired',
+  0x70: 'uploadDownloadNotAccepted', 0x71: 'transferDataSuspended', 0x72: 'generalProgrammingFailure', 0x73: 'wrongBlockSequenceCounter',
+  0x78: 'requestCorrectlyReceived-ResponsePending', 0x7E: 'subFunctionNotSupportedInActiveSession', 0x7F: 'serviceNotSupportedInActiveSession'};
+const NRC_HELP = {0x11: 'the unit does not know this service', 0x12: 'the unit does not know this sub-function',
+  0x13: 'wrong length or format', 0x21: 'the unit is busy, ODIS repeats the request', 0x22: 'preconditions not met (session, speed, ignition…)',
+  0x24: 'requests in the wrong order (e.g. key before seed)', 0x31: 'identifier or value not supported', 0x33: 'security access (login) needed first',
+  0x35: 'the security key is wrong', 0x36: 'too many wrong keys', 0x37: 'wait before the next security attempt',
+  0x78: 'the unit is working on it; the real answer follows', 0x7E: 'not available in the current session',
+  0x7F: 'not available in the current session'};
+const SESSION = {0x01: 'default session', 0x02: 'programming session', 0x03: 'extended diagnostic session', 0x4F: 'VW development session'};
+const RESET = {0x01: 'hard reset', 0x02: 'key off/on reset', 0x03: 'soft reset', 0x04: 'enable rapid power shutdown', 0x05: 'disable rapid power shutdown'};
+const DTC_REPORT = {0x01: 'number of DTCs by status mask', 0x02: 'DTCs by status mask', 0x03: 'snapshot identification',
+  0x04: 'snapshot record by DTC', 0x06: 'extended data record by DTC', 0x0A: 'all supported DTCs', 0x14: 'DTC fault detection counters'};
+const DTC_STATUS = ['testFailed', 'testFailedThisOperationCycle', 'pending', 'confirmed', 'testNotCompletedSinceLastClear',
+  'testFailedSinceLastClear', 'testNotCompletedThisOperationCycle', 'warningIndicatorRequested'];
+const ROUTINE = {0x01: 'start', 0x02: 'stop', 0x03: 'request results'};
+const DID = {0xF15B: 'fingerprint (last programming)', 0xF17C: 'FAZIT identification', 0xF186: 'active diagnostic session',
+  0xF187: 'VW spare part number', 0xF189: 'VW application software version', 0xF18A: 'system supplier', 0xF18B: 'ECU manufacturing date',
+  0xF18C: 'ECU serial number', 0xF190: 'VIN', 0xF191: 'VW ECU hardware number', 0xF197: 'VW system name / engine type',
+  0xF19E: 'ASAM/ODX file identifier', 0xF1A2: 'ASAM/ODX file version', 0xF1A3: 'VW ECU hardware version',
+  0xF1AA: 'VW workshop system name', 0xF1DF: 'ECU programming information', 0x0600: 'VW coding value'};
 const hexByte = x => x.toString(16).toUpperCase().padStart(2, '0');
+const hexBytes = b => b.map(hexByte).join(' ');
+const hex16 = (b, i) => ((b[i] << 8) | b[i + 1]).toString(16).toUpperCase().padStart(4, '0');
+const didName = id => DID[id] ? `0x${id.toString(16).toUpperCase().padStart(4, '0')} ${DID[id]}` : `0x${id.toString(16).toUpperCase().padStart(4, '0')}`;
+// A data value as text when it is printable (part numbers, VIN, names), else as hex.
+function valueText(b) {
+  if (!b.length) return '(empty)';
+  const printable = b.every(x => x === 0 || (x >= 0x20 && x < 0x7F));
+  const s = String.fromCharCode(...b.filter(x => x)).trim();
+  return printable && s ? `"${s}"` : hexBytes(b);
+}
+function dtcText(b, i) {
+  const code = 'PCBU'[b[i] >> 6] + ((b[i] >> 4) & 3) + hexBytes([b[i] & 0xF]).slice(1) + hexByte(b[i + 1]) + ' ' + hexByte(b[i + 2]);
+  const st = b[i + 3], bits = DTC_STATUS.filter((_, k) => st & (1 << k));
+  return `${hexByte(b[i])}${hexByte(b[i + 1])}${hexByte(b[i + 2])} (${code}) status 0x${hexByte(st)}${bits.length ? ': ' + bits.join(', ') : ''}`;
+}
+// udsDescribe explains one whole UDS message: a short meaning for the table and details for the tooltip.
+function udsDescribe(b) {
+  if (!b.length) return {short: '', details: []};
+  const sid = b[0], resp = sid >= 0x40 && sid !== 0x7F && UDS_SERVICE[sid - 0x40], req = resp ? sid - 0x40 : sid;
+  const name = UDS_SERVICE[req];
+  const d = [], sub = b[1] & 0x7F, suppress = !resp && [0x10, 0x11, 0x19, 0x27, 0x28, 0x31, 0x3E, 0x85, 0x87].includes(req) && (b[1] & 0x80);
+  if (sid === 0x7F) {
+    const help = NRC_HELP[b[2]];
+    return {short: `✖ ${UDS_SERVICE[b[1]] || '0x' + hexByte(b[1])} refused: ${NRC[b[2]] || '0x' + hexByte(b[2])}`,
+      details: [`Negative response to ${UDS_SERVICE[b[1]] || 'service 0x' + hexByte(b[1])} (0x${hexByte(b[1])})`,
+        `NRC 0x${hexByte(b[2])} ${NRC[b[2]] || 'unknown'}${help ? ' — ' + help : ''}`]};
+  }
+  if (!name) return {short: `service 0x${hexByte(sid)}`, details: [`Unknown service 0x${hexByte(sid)}`]};
+  let short = resp ? name + ' ✔' : name;
+  d.push(`${resp ? 'Positive response: ' : 'Request: '}${name} (0x${hexByte(sid)})`);
+  if (suppress) d.push('Sub-function bit 0x80: the unit should not answer when it succeeds');
+  switch (req) {
+    case 0x10:
+      short += ': ' + (SESSION[sub] || '0x' + hexByte(sub));
+      d.push('Session: ' + (SESSION[sub] || 'manufacturer specific 0x' + hexByte(sub)));
+      if (resp && b.length >= 6) d.push(`P2 ${(b[2] << 8) | b[3]} ms, P2* ${((b[4] << 8) | b[5]) * 10} ms (response timing)`);
+      break;
+    case 0x11: short += ': ' + (RESET[sub] || '0x' + hexByte(sub)); d.push('Reset: ' + (RESET[sub] || '0x' + hexByte(sub))); break;
+    case 0x14:
+      if (!resp) { const g = b.slice(1, 4).map(hexByte).join(''); short += g === 'FFFFFF' ? ': all DTCs' : ': group ' + g; d.push('DTC group ' + g + (g === 'FFFFFF' ? ' (all)' : '')); }
+      break;
+    case 0x19:
+      short += ': ' + (DTC_REPORT[sub] || '0x' + hexByte(sub));
+      d.push('Report type: ' + (DTC_REPORT[sub] || '0x' + hexByte(sub)));
+      if (!resp && (sub === 0x01 || sub === 0x02)) d.push('Status mask 0x' + hexByte(b[2]) + ': ' + DTC_STATUS.filter((_, k) => b[2] & (1 << k)).join(', '));
+      if (resp && sub === 0x01 && b.length >= 6) { short += ` = ${(b[4] << 8) | b[5]}`; d.push(`Number of DTCs: ${(b[4] << 8) | b[5]}`); }
+      if (resp && (sub === 0x02 || sub === 0x0A)) {
+        const n = Math.floor((b.length - 3) / 4);
+        short += ` = ${n} DTC${n === 1 ? '' : 's'}`;
+        d.push(`${n} DTC${n === 1 ? '' : 's'}:`);
+        for (let i = 3; i + 3 < b.length; i += 4) d.push('  ' + dtcText(b, i));
+      }
+      break;
+    case 0x22:
+      if (!resp) {
+        const ids = []; for (let i = 1; i + 1 < b.length; i += 2) ids.push((b[i] << 8) | b[i + 1]);
+        short += ': ' + ids.map(didName).join(', '); ids.forEach(id => d.push('Read ' + didName(id)));
+      } else if (b.length >= 3) {
+        const id = (b[1] << 8) | b[2], v = valueText(b.slice(3));
+        short += `: ${didName(id)} = ${v.length > 40 ? v.slice(0, 40) + '…' : v}`;
+        d.push(didName(id), 'Value: ' + v, 'Hex: ' + hexBytes(b.slice(3)));
+      }
+      break;
+    case 0x2E:
+      if (b.length >= 3) {
+        const id = (b[1] << 8) | b[2];
+        short += ': ' + didName(id);
+        d.push('Write ' + didName(id));
+        if (!resp) d.push('Value: ' + valueText(b.slice(3)), 'Hex: ' + hexBytes(b.slice(3)));
+      }
+      break;
+    case 0x2F:
+      if (b.length >= 3) { short += ': ' + didName((b[1] << 8) | b[2]); d.push('Output ' + didName((b[1] << 8) | b[2]), 'Control: ' + hexBytes(b.slice(3))); }
+      break;
+    case 0x27: {
+      const seed = sub % 2 === 1;
+      short += seed ? (resp ? ': seed' : ': request seed') : (resp ? ': unlocked' : ': send key');
+      d.push(`Level ${Math.ceil(sub / 2)} (0x${hexByte(sub)}): ${seed ? 'request seed' : 'send key'}`);
+      if (b.length > 2) d.push(`${seed ? (resp ? 'Seed' : 'Data') : 'Key'}: ${hexBytes(b.slice(2))}`);
+      break;
+    }
+    case 0x28: short += `: control 0x${hexByte(sub)}`; d.push(`Control type 0x${hexByte(sub)} (0 enable rx+tx, 1 enable rx/disable tx, 3 disable rx+tx), communication type 0x${hexByte(b[2] || 0)}`); break;
+    case 0x31:
+      if (b.length >= 4) {
+        short += `: ${ROUTINE[sub] || '0x' + hexByte(sub)} 0x${hex16(b, 2)}`;
+        d.push(`Routine 0x${hex16(b, 2)}: ${ROUTINE[sub] || '0x' + hexByte(sub)}`);
+        if (b.length > 4) d.push(`${resp ? 'Result' : 'Parameters'}: ${hexBytes(b.slice(4))}`);
+      }
+      break;
+    case 0x34: if (!resp) d.push('Download request: ' + hexBytes(b.slice(1))); break;
+    case 0x36: short += `: block ${b[1]}`; d.push(`Block sequence counter ${b[1]}, ${Math.max(0, b.length - 2)} data bytes`); break;
+    case 0x3E: if (suppress) short += ' (no answer wanted)'; d.push('Keeps the diagnostic session open'); break;
+    case 0x85: short += sub === 1 ? ': on' : sub === 2 ? ': off' : ''; d.push('DTC setting ' + (sub === 1 ? 'on: the unit records faults' : sub === 2 ? 'off: the unit stops recording faults' : '0x' + hexByte(sub))); break;
+  }
+  return {short, details: d};
+}
 // isoTp decodes one raw 8-byte CAN frame (requests are logged as sent on the bus): the ISO-TP frame
 // type and the UDS bytes it carries, without the PCI byte and the 0x55 padding. Anything else
 // (responses are logged as whole UDS messages) is shown as is.
 function isoTp(b) {
-  if (b.length !== 8) return {type: b.length > 7 ? 'multi' : 'single', uds: b};
+  if (b.length !== 8) return {type: b.length > 7 ? 'multi' : 'single', uds: b, whole: true};
   const t = b[0] >> 4, lo = b[0] & 0xF;
-  if (t === 0 && lo >= 1 && lo <= 7) return {type: 'single', uds: b.slice(1, 1 + lo)};
-  if (t === 1) return {type: 'first ' + ((lo << 8) | b[1]) + 'B', uds: b.slice(2)};
-  if (t === 2) { let e = 8; while (e > 1 && b[e - 1] === 0x55) e--; return {type: 'cons #' + lo, uds: b.slice(1, e), cont: true}; }
-  if (t === 3) return {type: 'flow ' + (['CTS', 'WAIT', 'OVFL'][lo] || lo), uds: [], note: 'block ' + b[1] + ', gap ' + b[2] + ' ms'};
-  return {type: '', uds: b};
+  if (t === 0 && lo >= 1 && lo <= 7) return {type: 'single', uds: b.slice(1, 1 + lo), whole: true, pci: `Single frame, ${lo} bytes`};
+  if (t === 1) { const n = (lo << 8) | b[1]; return {type: 'first ' + n + 'B', uds: b.slice(2), first: n, pci: `First frame of a ${n}-byte message`}; }
+  if (t === 2) { let e = 8; while (e > 1 && b[e - 1] === 0x55) e--; return {type: 'cons #' + lo, uds: b.slice(1, e), cont: true, pci: `Consecutive frame, sequence ${lo}`}; }
+  if (t === 3) return {type: 'flow ' + (['CTS', 'WAIT', 'OVFL'][lo] || lo), uds: [], note: 'block ' + b[1] + ', gap ' + b[2] + ' ms',
+    pci: `Flow control: ${['continue to send', 'wait', 'overflow (abort)'][lo] || lo}; block size ${b[1] || 'unlimited'}, separation time ${b[2]} ms`};
+  return {type: '', uds: b, whole: true};
 }
+// Setup events of the trace (offlinevci.c): what each J2534 call means.
+// The wake-up frame (kind W, offlinevci.c wakeLoop); Klemmen_Status_01 is decoded.
+function wakeDescribe(id, b) {
+  if (id.toUpperCase() !== '3C0' || b.length < 3) return {short: 'wake-up frame', details: ['Periodic wake-up frame sent by Laertes']};
+  const on = ['S', '15', 'X', '50'].filter((_, k) => b[2] & (1 << k));
+  return {short: `Klemmen_Status_01: clamp ${on.length ? on.join(', ') : 'none'} on`,
+    details: ['VW Klemmen_Status_01 (clamp status), sent by Laertes to wake the units', `CRC 0x${hexByte(b[0])}, counter ${b[1] & 0xF}`,
+      `Clamp S (key in) ${b[2] & 1 ? 'on' : 'off'}, clamp 15 (ignition) ${b[2] & 2 ? 'on' : 'off'}, clamp X ${b[2] & 4 ? 'on' : 'off'}, clamp 50 (start) ${b[2] & 8 ? 'on' : 'off'}`]};
+}
+const VCI_EVENT = {OPEN: 'PassThruOpen: ODIS opened the VCI', CONN: 'PassThruConnect: ODIS opened a channel (proto 5 = CAN, 6 = ISO15765; baud in hex, 7A120 = 500 kbit/s)',
+  FILT: 'PassThruStartMsgFilter: channel, filter type (1 pass, 2 block, 3 flow control), mask, pattern, flow-control ID',
+  IOCTL: 'PassThruIoctl: channel and ioctl ID (3 = READ_VBATT battery voltage, 800E = VW vendor specific)',
+  WAKE: 'The clamp 15 wake-up (Settings › Clamp 15 wake-up)'};
 function loadVciTab() {
-  vciPaused = false;
+  vciPaused = false; vciShown = '';
   $('#vci').innerHTML = `<h1>VCI CAN</h1>
-    <p class="meta">CAN messages between ODIS and the simulated units (offline mode), recorded all the time, also while this tab is closed. ▶ is ODIS → unit, ◀ is unit → ODIS. Only the offline VCI is traced; a real VCI is not.</p>
+    <p class="meta">CAN messages between ODIS and the simulated units (offline mode), recorded all the time, also while this tab is closed. ▶ is ODIS → unit, ◀ is unit → ODIS.
+      Hover a message to read what it means. Only the virtual VCI is traced; a real VCI is not.</p>
     <div class="bar"><button id="vciPauseBtn" onclick="toggleVciPause()">⏸ Pause</button><button onclick="clearVci()">Clear</button>
-      <label><input type="checkbox" id="vciEvents" onchange="pollVci(true)"> Setup events (connect, filters, ioctls)</label><span class="meta" id="vciInfo"></span></div>
-    <div id="vciRows" style="max-height:70vh;overflow:auto"></div>`;
+      <input id="vciFilter" type="search" placeholder="Filter: CAN ID, service, DID…" oninput="pollVci(true)" style="width:220px">
+      <label><input type="checkbox" id="vciEvents" onchange="pollVci(true)"> Setup events (connect, filters, ioctls)</label>
+      <label title="The periodic clamp 15 frame (Settings › Clamp 15 wake-up); only the latest are kept"><input type="checkbox" id="vciWake" onchange="pollVci(true)"> Wake-up frames</label><span class="meta" id="vciInfo"></span></div>
+    <div id="vciRows" class="canwrap"></div>`;
   pollVci();
   vciTimer = setInterval(pollVci, 1000);
 }
 function stopVci() { if (vciTimer) { clearInterval(vciTimer); vciTimer = null; } }
 function toggleVciPause() { vciPaused = !vciPaused; $('#vciPauseBtn').textContent = vciPaused ? '▶ Resume' : '⏸ Pause'; if (!vciPaused) pollVci(); }
-// Trace lines (offlinevci.c): "<ms> R|T|P <canId> <hex>" are messages (R ODIS -> unit as a raw CAN
-// frame, P a periodic one, T unit -> ODIS as a whole UDS response); any other kind (OPEN, CONN, FILT,
-// IOCTL, F) is a setup event. <ms> is the PC's millisecond tick, shown relative to the first line.
+// Trace lines (offlinevci.c canLog): "<ms> R|T|P <channel> <canId> <hex>" are messages (R ODIS -> unit
+// as a raw CAN frame, P a periodic one, T unit -> ODIS as a whole UDS response); any other kind (OPEN,
+// CONN, FILT, IOCTL) is a setup event. <ms> is the PC's millisecond tick, shown relative to the first
+// line. A multi-frame request is reassembled, and decoded on the frame that completes it. The table
+// is only rebuilt when something changed, so an open tooltip stays.
 async function pollVci(force) {
   if (vciPaused && !force) return;
   let lines;
   try { lines = await api('GET', '/api/vci/can'); } catch (e) { return; }
   const rows = $('#vciRows');
   if (!rows) return;
-  const events = $('#vciEvents') && $('#vciEvents').checked;
+  const events = $('#vciEvents').checked, wakes = $('#vciWake').checked, filter = $('#vciFilter').value.trim().toLowerCase();
+  const key = lines.length + '\n' + lines[lines.length - 1] + '\n' + events + '\n' + wakes + '\n' + filter;
+  if (key === vciShown) return;
+  vciShown = key;
   const atBottom = rows.scrollHeight - rows.scrollTop - rows.clientHeight < 40;
   const t0 = lines.length ? Number(lines[0].split(' ')[0]) : 0;
-  let msgs = 0;
+  const pending = {}; // multi-frame request being reassembled, by channel and CAN ID
+  let msgs = 0, shown = 0;
   const body = lines.map(l => {
     const p = l.split(' '), kind = p[1];
     const t = ((Number(p[0]) - t0) / 1000).toFixed(3);
+    if (kind === 'W') {
+      if (!wakes) return '';
+      const id = p[3] || '', b = ((p[4] || '').match(/../g) || []).map(x => parseInt(x, 16)), u = wakeDescribe(id, b);
+      if (filter && !(t + ' ' + id + ' ' + hexBytes(b) + ' ' + u.short).toLowerCase().includes(filter)) return '';
+      return `<tr class="wake" title="${esc(['Laertes → bus · CAN ID 0x' + id, ...u.details].join('\n'))}"><td>${t}</td><td class="dir">▶ wake</td><td>${esc(id)}</td><td>raw</td>`
+        + `<td class="d">${hexBytes(b)}</td><td class="m">${esc(u.short)}</td></tr>`;
+    }
     if (kind !== 'R' && kind !== 'T' && kind !== 'P') {
-      return events ? `<tr class="ev"><td>${t}</td><td colspan="5">${esc(p.slice(1).join(' '))}</td></tr>` : '';
+      if (!events && kind !== 'WAKE') return '';
+      const text = p.slice(1).join(' ');
+      if (filter && !text.toLowerCase().includes(filter)) return '';
+      return `<tr class="ev" title="${esc(VCI_EVENT[kind] || '')}"><td>${t}</td><td colspan="6">${esc(text)}</td></tr>`;
     }
     msgs++;
-    const raw = ((p[3] || '').match(/../g) || []).map(x => parseInt(x, 16));
-    const f = kind === 'T' ? {type: raw.length > 7 ? 'multi' : 'single', uds: raw} : isoTp(raw);
-    const neg = f.uds[0] === 0x7F && !f.cont;
-    const color = kind === 'T' ? (neg ? '#c33' : '#2a2') : 'var(--text)';
+    const ch = p[2] || '', id = p[3] || '', raw = ((p[4] || '').match(/../g) || []).map(x => parseInt(x, 16));
+    const f = kind === 'T' ? {type: raw.length > 7 ? 'multi' : 'single', uds: raw, whole: true} : isoTp(raw);
+    // Reassemble: the first frame opens a message, consecutive frames add to it until it is complete.
+    let whole = f.whole ? f.uds : null;
+    const pk = ch + ' ' + id;
+    if (f.first) pending[pk] = {need: f.first, data: f.uds.slice()};
+    else if (f.cont && pending[pk]) {
+      const m = pending[pk];
+      m.data.push(...f.uds);
+      if (m.data.length >= m.need) { whole = m.data.slice(0, m.need); delete pending[pk]; }
+    }
+    const u = whole ? udsDescribe(whole) : {short: f.first ? '(multi-frame message starts)' : f.note || '', details: []};
+    if (f.cont && whole) u.short = '⤷ ' + u.short;
     const dir = kind === 'T' ? '◀' : kind === 'P' ? '▶ periodic' : '▶';
-    const label = f.note || (f.cont ? '' : udsLabel(f.uds));
-    return `<tr style="color:${color}"><td>${t}</td><td>${dir}</td><td>${esc(p[2] || '')}</td><td>${esc(f.type)}</td>`
-      + `<td class="d">${f.uds.map(hexByte).join(' ')}</td><td>${esc(label)}</td></tr>`;
+    const cls = kind === 'T' ? (whole && whole[0] === 0x7F ? (whole[2] === 0x78 ? 'pend' : 'neg') : 'pos') : 'req';
+    const tip = [`${kind === 'T' ? 'Unit → ODIS' : 'ODIS → unit'}${kind === 'P' ? ' (periodic, sent by the VCI itself)' : ''} · CAN ID 0x${id} · channel ${ch}`];
+    if (f.pci) tip.push('ISO-TP: ' + f.pci);
+    if (whole && !f.whole) tip.push(`Reassembled ${whole.length}-byte message: ${hexBytes(whole)}`);
+    tip.push(...u.details);
+    const text = [t, id, f.type, hexBytes(f.uds), u.short].join(' ').toLowerCase();
+    if (filter && !text.includes(filter)) return '';
+    shown++;
+    return `<tr class="${cls}" title="${esc(tip.join('\n'))}"><td>${t}</td><td class="dir">${dir}</td><td>${esc(id)}</td><td>${esc(f.type)}</td>`
+      + `<td class="d">${hexBytes(f.uds)}</td><td class="m">${esc(u.short)}</td></tr>`;
   }).join('');
-  rows.innerHTML = `<table class="can"><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>service</th></tr>${body}</table>`;
-  $('#vciInfo').textContent = msgs + ' messages';
+  rows.innerHTML = msgs || events || wakes ? `<table class="can"><thead><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>meaning</th></tr></thead><tbody>${body}</tbody></table>`
+    : '<div class="empty">No CAN messages yet. Start the bridge with the virtual VCI (▶ Bridge + virtual VCI) to see ODIS talk to the simulated units.</div>';
+  $('#vciInfo').textContent = filter ? `${shown} of ${msgs} messages` : msgs + ' messages';
   if (atBottom) rows.scrollTop = rows.scrollHeight;
 }
 async function clearVci() {
-  try { await api('POST', '/api/vci/can/clear'); const r = $('#vciRows'); if (r) r.innerHTML = ''; $('#vciInfo').textContent = '0 messages'; }
+  try { await api('POST', '/api/vci/can/clear'); vciShown = ''; pollVci(true); }
   catch (e) { toast('Could not clear the trace: ' + e.message, true); }
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -95,6 +96,8 @@ func serveSocket(w http.ResponseWriter, r *http.Request, o *owner) {
 		return
 	}
 	defer o.release(id)
+	log.Printf("page connected (%s)", r.RemoteAddr)
+	defer log.Printf("page disconnected (%s)", r.RemoteAddr)
 	ctx := c.CloseRead(r.Context()) // done when the page closes the socket
 	ping, _ := json.Marshal(map[string]string{"type": "ping", "version": version})
 	t := time.NewTicker(pingEvery)

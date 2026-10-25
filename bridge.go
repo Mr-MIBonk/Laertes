@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -40,6 +41,7 @@ func (b *bridge) call(cmd json.RawMessage) (json.RawMessage, error) {
 			return nil, fmt.Errorf("ODIS bridge at %s is not reachable (run mcpserver.py in ODIS): %w", b.addr, err)
 		}
 		b.conn, b.r = conn, bufio.NewReader(conn)
+		log.Printf("connected to the ODIS bridge at %s", b.addr)
 	}
 	// Some actions read from the control unit, which can take a while.
 	b.conn.SetDeadline(time.Now().Add(2 * time.Minute))
@@ -81,6 +83,7 @@ func (b *bridge) alive() bool {
 }
 
 func (b *bridge) drop() {
+	log.Printf("connection to the ODIS bridge closed")
 	b.conn.Close()
 	b.conn, b.r = nil, nil
 }

@@ -2017,23 +2017,6 @@ def handle_reset_vci(cmd):
     return with_database(reset)
 
 
-def handle_ignition_change(cmd):
-    """Triggers an ODIS ignition change, which wakes the bus (the closest the automation API has to
-    a key turn; there is no set-to-position-0/1/2 call). Reports the clamp 15/30 state afterwards."""
-    from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
-
-    def run():
-        diag = Factory.getInstance()
-        out = {"ok": True, "changed": diag.performIgnitionChange()}
-        for k, fn in (("clamp15", diag.getClamp15State), ("clamp30", diag.getClamp30State)):
-            try:
-                out[k] = unicode(fn())
-            except (Exception, Throwable):
-                pass
-        return out
-    return with_database(run)
-
-
 def handle_doip_activation(cmd):
     """Sets the DoIP activation line on or off (the DoIP wake-up for Ethernet-diagnosed cars)."""
     from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
@@ -2660,7 +2643,6 @@ HANDLERS = {
     "job_cancel": handle_job_cancel,
     "job_status": handle_job_status,
     "job_list": handle_job_list,
-    "ignition_change": handle_ignition_change,
     "doip_activation": handle_doip_activation,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,

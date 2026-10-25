@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.5.0"
+const version = "0.6.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -69,19 +70,24 @@ func main() {
 		raw, _ := store.Settings()
 		v, _ := settingValue(raw, "odisVin").(string)
 		return v
+	}, wake: func() wakeConfig {
+		raw, _ := store.Settings()
+		return wakeFromSettings(raw)
 	}}
 	if raw, err := store.Settings(); err == nil {
 		if on, set := settingValue(raw, "autoStartBridge").(bool); on || !set {
-			// Offline mode: no car to identify, so the chosen project is loaded directly.
+			// Offline, or a bench unit that cannot be identified by a VIN: the chosen project is
+			// loaded directly.
 			project := ""
 			offline, _ := settingValue(raw, "odisOffline").(bool)
-			if offline {
+			direct, _ := settingValue(raw, "odisDirectProject").(bool)
+			if offline || direct {
 				project = odis.project()
 			}
 			odis.start(project, offline)
 		}
 	}
-	log.Fatal(http.Serve(ln, sameOrigin(host, singleClient(routes(store, b, grp, odis, filepath.Dir(*dbPath))))))
+	log.Fatal(http.Serve(ln, sameOrigin(host, singleClient(logRequests(routes(store, b, grp, odis, filepath.Dir(*dbPath)))))))
 }
 
 // adoptOldDatabase renames the database of the tool's former name (odishelper.db, with its
@@ -138,6 +144,11 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 			Offline bool   `json:"offline"`
 		}
 		json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&req)
+		if req.Offline {
+			log.Printf("start bridge requested: virtual VCI, vehicle project %q", strings.TrimSpace(req.Project))
+		} else {
+			log.Printf("start bridge requested: own VCI (%s)", selectedVCI())
+		}
 		odis.start(strings.TrimSpace(req.Project), req.Offline)
 		reply(w, odis.status(), nil)
 	})
@@ -409,7 +420,16 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 			http.Error(w, "bridge command must be a JSON object with an action", http.StatusBadRequest)
 			return
 		}
+		start := time.Now()
 		res, err := b.call(body)
+		// The page polls ping, vehicle and vci every few seconds; logging them would bury the rest.
+		if !slices.Contains([]string{"ping", "vehicle", "vci"}, cmd.Action) {
+			if err != nil {
+				log.Printf("bridge %s failed after %v: %v", cmd.Action, time.Since(start).Round(time.Millisecond), err)
+			} else {
+				log.Printf("bridge %s done in %v", cmd.Action, time.Since(start).Round(time.Millisecond))
+			}
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
@@ -418,6 +438,47 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 		w.Write(res)
 	})
 	return mux
+}
+
+// logRequests logs the page's API calls with their outcome in the console, except the status
+// polls (and /api/bridge, which logs its action itself). A failed call also logs its error text.
+func logRequests(next http.Handler) http.Handler {
+	quiet := []string{"GET /api/odis", "GET /api/vci/can", "GET /api/version", "POST /api/bridge"}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req := r.Method + " " + r.URL.Path
+		if !strings.HasPrefix(r.URL.Path, "/api/") || slices.Contains(quiet, req) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		start := time.Now()
+		lw := &loggedWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(lw, r)
+		took := time.Since(start).Round(time.Millisecond)
+		if lw.status >= 400 {
+			log.Printf("%s -> %d in %v: %s", req, lw.status, took, strings.TrimSpace(lw.body.String()))
+		} else {
+			log.Printf("%s -> %d in %v", req, lw.status, took)
+		}
+	})
+}
+
+// loggedWriter records a response's status, and the start of an error response's text.
+type loggedWriter struct {
+	http.ResponseWriter
+	status int
+	body   strings.Builder
+}
+
+func (w *loggedWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *loggedWriter) Write(b []byte) (int, error) {
+	if w.status >= 400 && w.body.Len() < 300 {
+		w.body.Write(b[:min(len(b), 300-w.body.Len())])
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 func reply(w http.ResponseWriter, v any, err error) {

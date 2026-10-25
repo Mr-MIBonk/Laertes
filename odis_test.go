@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestInstallBridge(t *testing.T) {
@@ -39,5 +40,43 @@ Project not available.</faultstring></S:Fault></S:Body></S:Envelope>`
 	ok := `<S:Envelope xmlns:S="http://schemas.xmlsoap.org/soap/envelope/"><S:Body><ns2:exitResponse xmlns:ns2="x"/></S:Body></S:Envelope>`
 	if got := soapFault([]byte(ok)); got != "" {
 		t.Errorf("no fault expected, got %q", got)
+	}
+}
+
+func TestWakeFromSettings(t *testing.T) {
+	def := wakeConfig{ID: "3C0", Data: "00000300", E2E: "C3", Ms: 100}
+	if got := wakeFromSettings(nil); got != def {
+		t.Errorf("defaults = %+v", got)
+	}
+	got := wakeFromSettings([]byte(`{"wakeOn":true,"wakeId":"1b000010","wakeData":"00 01 02","wakeE2E":"","wakeMs":200}`))
+	if want := (wakeConfig{On: true, ID: "1B000010", Data: "000102", E2E: "", Ms: 200}); got != want {
+		t.Errorf("wake = %+v, want %+v", got, want)
+	}
+	// Malformed values (and anything that could add a line to offline.conf) keep the defaults.
+	got = wakeFromSettings([]byte(`{"wakeId":"3C0\npassthru=x","wakeData":"0G","wakeE2E":"C3C3","wakeMs":1}`))
+	if got != def {
+		t.Errorf("malformed = %+v", got)
+	}
+}
+
+func TestParseSelectedVCI(t *testing.T) {
+	props := "#Do not change\r\ntype_of_vci_selection=DEVICE\r\nvci_modulename=Laertes-Offline\r\nvci_moduletype=J2534\r\n"
+	if got := parseSelectedVCI(props); got != "Laertes-Offline (J2534)" {
+		t.Errorf("vci = %q", got)
+	}
+	if got := parseSelectedVCI("type_of_vci_selection=DEVICE\nvci_modulename=\n"); got != "" {
+		t.Errorf("no VCI expected, got %q", got)
+	}
+}
+
+func TestStartTimer(t *testing.T) {
+	o := &odisStarter{since: time.Now().Add(-2 * time.Second)}
+	o.set("starting", "Loading vehicle project")
+	if st := o.status(); st.Elapsed < 2 || st.Took != 0 {
+		t.Errorf("while starting: %+v", st)
+	}
+	o.set("running", "The ODIS bridge is running.")
+	if st := o.status(); st.Elapsed != 0 || st.Took < 2 {
+		t.Errorf("after the start: %+v", st)
 	}
 }

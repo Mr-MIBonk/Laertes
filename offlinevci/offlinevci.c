@@ -11,14 +11,24 @@
 // (0x3E) and ReadDataByIdentifier (0x22) -- with canned values. It also supports coding through
 // DID 0x0600 and SecurityAccess (0x27) with a zero seed.
 //
+// Pass-through: when offline.conf names a real J2534 driver (passthru=), every call is forwarded to
+// it instead, so ODIS works with the real interface through this DLL.
+//
+// Wake-up: with wake=1, once ODIS connects a channel a thread sends one CAN frame periodically
+// (by default VW Klemmen_Status_01 0x3C0 with clamp 15 on, with its E2E counter and CRC), so units
+// on a bench wake up and act as if the ignition were on. Through a real driver it goes on the bus;
+// on the simulated device it only appears in the trace (kind W).
+//
 // Build (32-bit): offlinevci\build.cmd
 
 #include <windows.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 
 #define STATUS_NOERROR          0x00
 #define ERR_NULL_PARAMETER      0x04
+#define ERR_DEVICE_NOT_CONNECTED 0x08
 #define ERR_TIMEOUT             0x09
 #define ERR_BUFFER_EMPTY        0x10
 
@@ -32,6 +42,9 @@
 
 #define LOOPBACK    0x03
 #define TX_MSG_TYPE 0x01
+
+#define CAN_29BIT_ID 0x100
+#define CAN_ID_BOTH  0x800
 
 typedef struct {
     unsigned long Parameter;
@@ -388,7 +401,61 @@ static void canLogFilter(unsigned long ch, unsigned long type,
 
 static void confPath(char *out, unsigned long cap) { laertesFile(out, cap, "offline.conf"); }
 
+// --- Pass-through and wake-up configuration (see the top of this file) ---------------------------
+
+static char passthruPath[MAX_PATH];
+static int wakeOn;
+static unsigned long wakeId = 0x3C0;
+static unsigned char wakeData[8] = {0x00, 0x00, 0x03, 0x00}; // clamp S and 15 on
+static unsigned long wakeLen = 4;
+static int wakeE2E = 0xC3; // E2E data ID of Klemmen_Status_01; -1 sends wakeData unchanged
+static unsigned long wakeMs = 100;
+
+static int hexVal(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 static void applyConfig(const char *key, const char *value) {
+    if (lstrcmpA(key, "passthru") == 0) {
+        lstrcpynA(passthruPath, value, MAX_PATH);
+        return;
+    }
+
+    if (lstrcmpA(key, "wake") == 0) {
+        wakeOn = value[0] == '1';
+        return;
+    }
+
+    if (lstrcmpA(key, "wake_id") == 0 && value[0]) {
+        wakeId = strtoul(value, 0, 16);
+        return;
+    }
+
+    if (lstrcmpA(key, "wake_data") == 0 && value[0]) {
+        unsigned long n = 0;
+        for (const char *p = value; p[0] && p[1] && n < 8; p += 2) {
+            int hi = hexVal(p[0]), lo = hexVal(p[1]);
+            if (hi < 0 || lo < 0) break;
+            wakeData[n++] = (unsigned char)(hi << 4 | lo);
+        }
+        if (n) wakeLen = n;
+        return;
+    }
+
+    if (lstrcmpA(key, "wake_e2e") == 0) {
+        wakeE2E = value[0] ? (int)strtoul(value, 0, 16) : -1;
+        return;
+    }
+
+    if (lstrcmpA(key, "wake_ms") == 0 && value[0]) {
+        wakeMs = strtoul(value, 0, 10);
+        if (wakeMs < 10) wakeMs = 10;
+        return;
+    }
+
     if (lstrcmpA(key, "vin") == 0 && value[0]) {
         unsigned long i = 0;
         while (value[i] && i < sizeof(vin) - 1) { vin[i] = value[i]; i++; }
@@ -429,6 +496,9 @@ static void loadConfig(void) {
     buf[got] = 0;
 
     AcquireSRWLockExclusive(&lock);
+
+    passthruPath[0] = 0; // a session without these lines uses the simulated device and no wake-up
+    wakeOn = 0;
 
     char *line = buf;
     while (line && *line) {
@@ -705,6 +775,165 @@ static void handleCanFrame(Channel *c, unsigned long reqId, const unsigned char 
     }
 }
 
+// --- Pass-through to a real J2534 driver ---------------------------------------------------------
+
+typedef long(WINAPI *OpenFn)(void *, unsigned long *);
+typedef long(WINAPI *CloseFn)(unsigned long);
+typedef long(WINAPI *ConnectFn)(unsigned long, unsigned long, unsigned long, unsigned long, unsigned long *);
+typedef long(WINAPI *DisconnectFn)(unsigned long);
+typedef long(WINAPI *MsgsFn)(unsigned long, void *, unsigned long *, unsigned long);
+typedef long(WINAPI *StartPeriodicFn)(unsigned long, void *, unsigned long *, unsigned long);
+typedef long(WINAPI *StopFn)(unsigned long, unsigned long);
+typedef long(WINAPI *StartFilterFn)(unsigned long, unsigned long, void *, void *, void *, unsigned long *);
+typedef long(WINAPI *VoltageFn)(unsigned long, unsigned long, unsigned long);
+typedef long(WINAPI *VersionFn)(unsigned long, char *, char *, char *);
+typedef long(WINAPI *LastErrorFn)(char *);
+typedef long(WINAPI *IoctlFn)(unsigned long, unsigned long, void *, void *);
+
+static struct {
+    HMODULE lib;
+    OpenFn open;
+    CloseFn close;
+    ConnectFn connect;
+    DisconnectFn disconnect;
+    MsgsFn read, write;
+    StartPeriodicFn startPeriodic;
+    StopFn stopPeriodic, stopFilter;
+    StartFilterFn startFilter;
+    VoltageFn voltage;
+    VersionFn version;
+    LastErrorFn lastError;
+    IoctlFn ioctl;
+} real;
+
+// loadReal loads the driver named by passthru= once; it reports whether every entry point is there.
+static int loadReal(void) {
+    if (real.lib) return 1;
+    HMODULE lib = LoadLibraryA(passthruPath);
+    if (!lib) return 0;
+
+    real.open = (OpenFn)GetProcAddress(lib, "PassThruOpen");
+    real.close = (CloseFn)GetProcAddress(lib, "PassThruClose");
+    real.connect = (ConnectFn)GetProcAddress(lib, "PassThruConnect");
+    real.disconnect = (DisconnectFn)GetProcAddress(lib, "PassThruDisconnect");
+    real.read = (MsgsFn)GetProcAddress(lib, "PassThruReadMsgs");
+    real.write = (MsgsFn)GetProcAddress(lib, "PassThruWriteMsgs");
+    real.startPeriodic = (StartPeriodicFn)GetProcAddress(lib, "PassThruStartPeriodicMsg");
+    real.stopPeriodic = (StopFn)GetProcAddress(lib, "PassThruStopPeriodicMsg");
+    real.startFilter = (StartFilterFn)GetProcAddress(lib, "PassThruStartMsgFilter");
+    real.stopFilter = (StopFn)GetProcAddress(lib, "PassThruStopMsgFilter");
+    real.voltage = (VoltageFn)GetProcAddress(lib, "PassThruSetProgrammingVoltage");
+    real.version = (VersionFn)GetProcAddress(lib, "PassThruReadVersion");
+    real.lastError = (LastErrorFn)GetProcAddress(lib, "PassThruGetLastError");
+    real.ioctl = (IoctlFn)GetProcAddress(lib, "PassThruIoctl");
+
+    if (!real.open || !real.close || !real.connect || !real.disconnect || !real.read || !real.write ||
+        !real.startPeriodic || !real.stopPeriodic || !real.startFilter || !real.stopFilter ||
+        !real.voltage || !real.version || !real.lastError || !real.ioctl) {
+        FreeLibrary(lib);
+        memset(&real, 0, sizeof real);
+        return 0;
+    }
+
+    real.lib = lib;
+    return 1;
+}
+
+// --- Wake-up frame -------------------------------------------------------------------------------
+
+static HANDLE wakeThread;
+static volatile LONG wakeRun;
+static unsigned long wakeAnchor; // the ODIS channel whose connection started the wake-up
+static unsigned long wakeCh;     // the channel the frame is sent on
+static int wakeOwnCh;            // wakeCh was opened here (ODIS's channel is ISO15765, not raw CAN)
+
+// crc8h2f is the AUTOSAR CRC-8 (polynomial 0x2F) the VW E2E protection uses, over data and then
+// the message's data ID byte.
+static unsigned char crc8h2f(const unsigned char *data, unsigned long n, unsigned char dataId) {
+    unsigned char crc = 0xFF;
+    for (unsigned long i = 0; i <= n; i++) {
+        crc ^= i < n ? data[i] : dataId;
+        for (int b = 0; b < 8; b++) crc = crc & 0x80 ? (unsigned char)(crc << 1 ^ 0x2F) : (unsigned char)(crc << 1);
+    }
+    return crc ^ 0xFF;
+}
+
+static DWORD WINAPI wakeLoop(LPVOID arg) {
+    (void)arg;
+    static PASSTHRU_MSG m;
+    unsigned counter = 0, failures = 0;
+
+    while (wakeRun) {
+        unsigned char d[8];
+        memcpy(d, wakeData, wakeLen);
+        // E2E: byte 1's low nibble counts 0..15, byte 0 is the CRC over bytes 1.. and the data ID.
+        if (wakeE2E >= 0 && wakeLen >= 2) {
+            d[1] = (unsigned char)((d[1] & 0xF0) | (counter & 0x0F));
+            d[0] = crc8h2f(d + 1, wakeLen - 1, (unsigned char)wakeE2E);
+        }
+        counter++;
+
+        if (real.lib) {
+            memset(&m, 0, offsetof(PASSTHRU_MSG, Data));
+            m.ProtocolID = CAN;
+            m.TxFlags = wakeId > 0x7FF ? CAN_29BIT_ID : 0;
+            m.DataSize = 4 + wakeLen;
+            m.Data[0] = (unsigned char)(wakeId >> 24);
+            m.Data[1] = (unsigned char)(wakeId >> 16);
+            m.Data[2] = (unsigned char)(wakeId >> 8);
+            m.Data[3] = (unsigned char)wakeId;
+            memcpy(m.Data + 4, d, wakeLen);
+            unsigned long n = 1;
+            long err = real.write(wakeCh, &m, &n, 0);
+            if (err && failures++ < 3) {
+                char b[48];
+                unsigned long o = 0;
+                const char *p = "WAKE write failed err=";
+                while (*p) b[o++] = *p++;
+                putHexU32(b, &o, (unsigned long)err, 1);
+                logWrite(b, o);
+            }
+        }
+        canLog('W', wakeCh, wakeId, d, wakeLen);
+        Sleep(wakeMs);
+    }
+    return 0;
+}
+
+// startWake starts the wake-up frame after ODIS connected channel ch, once per session.
+static void startWake(unsigned long deviceId, unsigned long ch, unsigned long protocolId,
+                      unsigned long baudrate) {
+    if (!wakeOn || wakeThread) return;
+
+    wakeCh = ch;
+    wakeOwnCh = 0;
+    if (real.lib && protocolId != CAN) {
+        // An ISO15765 channel cannot send a raw frame: open a raw CAN channel next to it.
+        if (real.connect(deviceId, CAN, CAN_ID_BOTH, baudrate, &wakeCh)) {
+            logStr("WAKE could not open a raw CAN channel next to ODIS's channel");
+            return;
+        }
+        wakeOwnCh = 1;
+    }
+
+    wakeAnchor = ch;
+    wakeRun = 1;
+    wakeThread = CreateThread(0, 0, wakeLoop, 0, 0, 0);
+    logStr(real.lib ? "WAKE started on the real interface" : "WAKE started (simulated device: trace only)");
+}
+
+static void stopWake(void) {
+    if (!wakeThread) return;
+
+    wakeRun = 0;
+    WaitForSingleObject(wakeThread, 2000);
+    CloseHandle(wakeThread);
+    wakeThread = 0;
+    if (wakeOwnCh && real.lib) real.disconnect(wakeCh);
+    wakeOwnCh = 0;
+    logStr("WAKE stopped");
+}
+
 // --- J2534 entry points --------------------------------------------------------------------------
 
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved) {
@@ -736,21 +965,38 @@ long WINAPI PassThruOpen(void *name, unsigned long *deviceId) {
     while (*p) b[o++] = *p++;
     for (char *s = host; *s; s++) b[o++] = *s;
 
+    if (passthruPath[0]) {
+        p = " passthru=";
+        while (*p) b[o++] = *p++;
+        for (char *s = passthruPath; *s && o < sizeof b - 1; s++) b[o++] = *s;
+    }
+
     logWrite(b, o);
+
+    if (passthruPath[0]) {
+        if (!loadReal()) {
+            logStr("OPEN the real J2534 driver could not be loaded");
+            return ERR_DEVICE_NOT_CONNECTED;
+        }
+        return real.open(name, deviceId);
+    }
 
     return newId(deviceId);
 }
 
 long WINAPI PassThruClose(unsigned long deviceId) {
-    (void)deviceId;
+    stopWake();
+    if (real.lib) return real.close(deviceId);
     return STATUS_NOERROR;
 }
 
 long WINAPI PassThruConnect(unsigned long deviceId, unsigned long protocolId, unsigned long flags,
                             unsigned long baudrate, unsigned long *channelId) {
-    (void)deviceId;
-    (void)flags;
-    (void)baudrate;
+    if (real.lib) {
+        long err = real.connect(deviceId, protocolId, flags, baudrate, channelId);
+        if (!err) startWake(deviceId, *channelId, protocolId, baudrate);
+        return err;
+    }
 
     unsigned long err = newId(channelId);
     if (err) return err;
@@ -781,10 +1027,14 @@ long WINAPI PassThruConnect(unsigned long deviceId, unsigned long protocolId, un
 
     ReleaseSRWLockExclusive(&lock);
 
+    startWake(deviceId, *channelId, protocolId, baudrate);
     return STATUS_NOERROR;
 }
 
 long WINAPI PassThruDisconnect(unsigned long channelId) {
+    if (wakeThread && channelId == wakeAnchor) stopWake();
+    if (real.lib) return real.disconnect(channelId);
+
     AcquireSRWLockExclusive(&lock);
 
     Channel *c = findChannel(channelId);
@@ -796,6 +1046,7 @@ long WINAPI PassThruDisconnect(unsigned long channelId) {
 
 long WINAPI PassThruReadMsgs(unsigned long channelId, void *msgs, unsigned long *numMsgs,
                              unsigned long timeout) {
+    if (real.lib) return real.read(channelId, msgs, numMsgs, timeout);
     if (!numMsgs) return ERR_NULL_PARAMETER;
     if (!msgs && *numMsgs) return ERR_NULL_PARAMETER;
 
@@ -898,7 +1149,7 @@ long WINAPI PassThruReadMsgs(unsigned long channelId, void *msgs, unsigned long 
 
 long WINAPI PassThruWriteMsgs(unsigned long channelId, void *msgs, unsigned long *numMsgs,
                               unsigned long timeout) {
-    (void)timeout;
+    if (real.lib) return real.write(channelId, msgs, numMsgs, timeout);
 
     if (!numMsgs) return ERR_NULL_PARAMETER;
     if (!msgs && *numMsgs) return ERR_NULL_PARAMETER;
@@ -954,8 +1205,7 @@ long WINAPI PassThruWriteMsgs(unsigned long channelId, void *msgs, unsigned long
 
 long WINAPI PassThruStartPeriodicMsg(unsigned long channelId, void *msg, unsigned long *msgId,
                                      unsigned long interval) {
-    (void)channelId;
-    (void)interval;
+    if (real.lib) return real.startPeriodic(channelId, msg, msgId, interval);
 
     PASSTHRU_MSG *m = (PASSTHRU_MSG *)msg;
     if (m && m->DataSize >= 4) {
@@ -968,6 +1218,7 @@ long WINAPI PassThruStartPeriodicMsg(unsigned long channelId, void *msg, unsigne
 }
 
 long WINAPI PassThruStopPeriodicMsg(unsigned long channelId, unsigned long msgId) {
+    if (real.lib) return real.stopPeriodic(channelId, msgId);
     (void)channelId;
     (void)msgId;
     return STATUS_NOERROR;
@@ -975,6 +1226,8 @@ long WINAPI PassThruStopPeriodicMsg(unsigned long channelId, unsigned long msgId
 
 long WINAPI PassThruStartMsgFilter(unsigned long channelId, unsigned long filterType, void *mask,
                                    void *pattern, void *flowControl, unsigned long *filterId) {
+    if (real.lib) return real.startFilter(channelId, filterType, mask, pattern, flowControl, filterId);
+
     unsigned long err = newId(filterId);
     if (err) return err;
 
@@ -1006,6 +1259,7 @@ long WINAPI PassThruStartMsgFilter(unsigned long channelId, unsigned long filter
 }
 
 long WINAPI PassThruStopMsgFilter(unsigned long channelId, unsigned long filterId) {
+    if (real.lib) return real.stopFilter(channelId, filterId);
     (void)channelId;
     (void)filterId;
     return STATUS_NOERROR;
@@ -1013,6 +1267,7 @@ long WINAPI PassThruStopMsgFilter(unsigned long channelId, unsigned long filterI
 
 long WINAPI PassThruSetProgrammingVoltage(unsigned long deviceId, unsigned long pin,
                                           unsigned long voltage) {
+    if (real.lib) return real.voltage(deviceId, pin, voltage);
     (void)deviceId;
     (void)pin;
     (void)voltage;
@@ -1020,7 +1275,7 @@ long WINAPI PassThruSetProgrammingVoltage(unsigned long deviceId, unsigned long 
 }
 
 long WINAPI PassThruReadVersion(unsigned long deviceId, char *firmware, char *dll, char *api) {
-    (void)deviceId;
+    if (real.lib) return real.version(deviceId, firmware, dll, api);
 
     if (!firmware || !dll || !api) return ERR_NULL_PARAMETER;
 
@@ -1032,12 +1287,14 @@ long WINAPI PassThruReadVersion(unsigned long deviceId, char *firmware, char *dl
 }
 
 long WINAPI PassThruGetLastError(char *description) {
+    if (real.lib) return real.lastError(description);
     if (!description) return ERR_NULL_PARAMETER;
     lstrcpynA(description, "Laertes offline VCI: no interface, gateway simulated", 256);
     return STATUS_NOERROR;
 }
 
 long WINAPI PassThruIoctl(unsigned long id, unsigned long ioctlId, void *input, void *output) {
+    if (real.lib) return real.ioctl(id, ioctlId, input, output);
     {
         char b[24];
         unsigned long o = 0;

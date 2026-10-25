@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	_ "embed"
 	"encoding/json"
 	"encoding/xml"
@@ -94,30 +95,63 @@ type odisStarter struct {
 	bridgeAddr string
 	project    func() string // the last vehicle project used, for when the car cannot be identified
 	vin        func() string // the simulation VIN for offline mode (nil or "" keeps the VCI default)
+	wake       func() wakeConfig // the clamp 15 wake-up frame (nil: none)
 
 	mu       sync.Mutex
 	state    string // "": not tried, "starting", "running", "error"
 	message  string
 	launched bool // ODIS was started here and is closed again when the bridge ends
+	since    time.Time     // when the running start began (zero when none runs)
+	took     time.Duration // how long the last start took until the bridge listened
 }
 
 type odisStatus struct {
-	State    string `json:"state"`
-	Message  string `json:"message"`
-	Launched bool   `json:"launched"`
+	State    string  `json:"state"`
+	Message  string  `json:"message"`
+	Launched bool    `json:"launched"`
+	VCI      string  `json:"vci"`     // the VCI ODIS is set to use (selectedVCI)
+	Elapsed  float64 `json:"elapsed"` // seconds since the running start began, for the page's timer
+	Took     float64 `json:"took"`    // seconds the last start took
+}
+
+func (o *odisStarter) wakeFrame() wakeConfig {
+	if o.wake == nil {
+		return wakeConfig{}
+	}
+	return o.wake()
 }
 
 func (o *odisStarter) status() odisStatus {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return odisStatus{o.state, o.message, o.launched}
+	st := odisStatus{o.state, o.message, o.launched, selectedVCI(), 0, o.took.Seconds()}
+	if !o.since.IsZero() {
+		st.Elapsed = time.Since(o.since).Seconds()
+	}
+	return st
 }
 
+// set reports a step of the start, logged with the time since the start began; "running" and
+// "error" end the start.
 func (o *odisStarter) set(state, format string, args ...any) {
 	o.mu.Lock()
 	o.state, o.message = state, fmt.Sprintf(format, args...)
+	msg, elapsed := o.message, time.Duration(0)
+	if !o.since.IsZero() {
+		elapsed = time.Since(o.since).Round(100 * time.Millisecond)
+		if state != "starting" {
+			o.since = time.Time{}
+			if state == "running" {
+				o.took = elapsed
+			}
+		}
+	}
 	o.mu.Unlock()
-	log.Printf("ODIS bridge start: %s", o.message)
+	if elapsed > 0 {
+		log.Printf("ODIS bridge start [%v]: %s", elapsed, msg)
+	} else {
+		log.Printf("ODIS bridge start: %s", msg)
+	}
 }
 
 // start begins starting the bridge in the background with the given vehicle project ("" to
@@ -130,6 +164,7 @@ func (o *odisStarter) start(project string, offline bool) {
 		return
 	}
 	o.state, o.message = "starting", "Starting the ODIS bridge…"
+	o.since = time.Now()
 	o.mu.Unlock()
 	go func() {
 		err := o.run(project, offline)
@@ -170,15 +205,33 @@ func (o *odisStarter) run(project string, offline bool) error {
 			if err := installOfflineVCI(); err != nil {
 				return err
 			}
-			vin := ""
+			conf := offlineConfig{Wake: o.wakeFrame()}
 			if o.vin != nil {
-				vin = o.vin()
+				conf.VIN = o.vin()
 			}
-			if err := writeOfflineConfig(vin); err != nil {
+			if err := writeOfflineConfig(conf); err != nil {
 				return fmt.Errorf("write the offline VCI configuration: %w", err)
 			}
 			if err := useOfflineVCI(); err != nil {
 				return fmt.Errorf("select the offline VCI for ODIS: %w", err)
+			}
+		} else if wake := o.wakeFrame(); wake.On {
+			// ODIS uses Laertes's VCI DLL, which forwards to the user's own VCI and sends the
+			// wake-up frame next to ODIS's traffic.
+			o.set("starting", "Setting up the clamp 15 wake-up on your VCI…")
+			name, lib, err := userJ2534Driver()
+			if err != nil {
+				return err
+			}
+			log.Printf("clamp 15 wake-up: forwarding to %s (%s), frame %s#%s every %d ms", name, lib, wake.ID, wake.Data, wake.Ms)
+			if err := installOfflineVCI(); err != nil {
+				return err
+			}
+			if err := writeOfflineConfig(offlineConfig{Wake: wake, Passthru: lib, PassthruName: name}); err != nil {
+				return fmt.Errorf("write the VCI configuration: %w", err)
+			}
+			if err := useOfflineVCI(); err != nil {
+				return fmt.Errorf("select Laertes's VCI for ODIS: %w", err)
 			}
 		} else {
 			restoreVCI()
@@ -187,6 +240,7 @@ func (o *odisStarter) run(project string, offline bool) error {
 			return err
 		}
 	}
+	log.Printf("ODIS uses VCI: %s", cmp.Or(selectedVCI(), "none selected"))
 	o.set("starting", "Starting the bridge macro in ODIS…")
 	err := o.execMacro(macro)
 	if err == nil {
