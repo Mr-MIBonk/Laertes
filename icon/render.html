@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Renders laertes.svg at the icon sizes Windows uses; build.cmd runs it in headless Edge and
+     reads the PNGs (base64) from the page's text. -->
+<pre id="out"></pre>
+<script>
+const img = new Image();
+img.onload = () => {
+  const out = {};
+  for (const n of [16, 20, 24, 32, 40, 48, 64, 128, 256]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    c.getContext('2d').drawImage(img, 0, 0, n, n);
+    out[n] = c.toDataURL('image/png').split(',')[1];
+  }
+  document.getElementById('out').textContent = 'ICONS' + JSON.stringify(out) + 'ICONS';
+};
+img.src = 'laertes.svg';
+</script>

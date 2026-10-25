@@ -2346,6 +2346,24 @@ def handle_job_status(cmd):
         return out
 
 
+def handle_threads(cmd):
+    """Diagnostics, read-only: the state and stack of ODIS's threads, all of them or those whose name
+    or stack contains cmd["match"] (case-insensitive), at most cmd["depth"] frames each. Shows what
+    a guided function or job is waiting for while it seems to hang."""
+    from java.lang import Thread
+    match = (cmd.get("match") or "").lower()
+    depth = int(cmd.get("depth", 40))
+    out = []
+    for e in Thread.getAllStackTraces().entrySet():
+        t = e.getKey()
+        stack = [unicode(f) for f in e.getValue()]
+        if match and match not in (unicode(t.getName()) + "\n" + "\n".join(stack)).lower():
+            continue
+        out.append({"name": unicode(t.getName()), "state": unicode(t.getState()), "stack": stack[:depth]})
+    out.sort(key=lambda t: t["name"])
+    return {"ok": True, "threads": out}
+
+
 def handle_job_list(cmd):
     """The jobs a reopened page can follow again: those still running and those that finished
     after the page last polled them (oldest first), each with its id, status and resume data."""
@@ -2643,6 +2661,7 @@ HANDLERS = {
     "job_cancel": handle_job_cancel,
     "job_status": handle_job_status,
     "job_list": handle_job_list,
+    "threads": handle_threads,
     "doip_activation": handle_doip_activation,
     "vehicle_projects": handle_vehicle_projects,
     "set_vehicle_project": handle_set_vehicle_project,

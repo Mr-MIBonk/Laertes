@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,6 +57,26 @@ func TestWakeFromSettings(t *testing.T) {
 	got = wakeFromSettings([]byte(`{"wakeId":"3C0\npassthru=x","wakeData":"0G","wakeE2E":"C3C3","wakeMs":1}`))
 	if got != def {
 		t.Errorf("malformed = %+v", got)
+	}
+}
+
+func TestReadCANLog(t *testing.T) {
+	old := offlineCANLogPath
+	offlineCANLogPath = filepath.Join(t.TempDir(), "vci-can.log")
+	defer func() { offlineCANLogPath = old }()
+	var b strings.Builder
+	b.WriteString("1 R 8 700 03222A2F55555555\n")
+	for i := 0; i < 5000; i++ {
+		b.WriteString("2 RD ch=8 to=0 req=1 got=0\n")
+	}
+	for i := 0; i < 80; i++ {
+		b.WriteString("3 W 8 3C0 74000300\n")
+	}
+	b.WriteString("4 T 8 76A 622A2F00\n")
+	os.WriteFile(offlineCANLogPath, []byte(b.String()), 0o644)
+	lines := readCANLog()
+	if len(lines) != 52 || lines[0] != "1 R 8 700 03222A2F55555555" || lines[51] != "4 T 8 76A 622A2F00" {
+		t.Errorf("got %d lines, first %q, last %q", len(lines), lines[0], lines[len(lines)-1])
 	}
 }
 

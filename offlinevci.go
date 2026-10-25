@@ -34,13 +34,41 @@ var offlineVCIPath = filepath.Join(odisDir, "laertes", "laertes_vci32.dll")
 // written next to the DLL so the DLL finds it in its own folder.
 var offlineConfPath = filepath.Join(odisDir, "laertes", "offline.conf")
 
+// wakeFlagPath switches the wake-up frame (offlinevci.c wakeLoop): sent while this file exists.
+var wakeFlagPath = filepath.Join(odisDir, "laertes", "wake.on")
+
+// setIgnition switches the periodic wake-up frame on or off, live (the Ignition button).
+func setIgnition(on bool) error {
+	if !on {
+		if err := os.Remove(wakeFlagPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(wakeFlagPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(wakeFlagPath, []byte("Written by Laertes: the VCI sends the clamp 15 wake-up frame while this file exists.\r\n"), 0o644)
+}
+
+// ignitionState reports whether ODIS runs on Laertes's VCI with the wake-up configured (so the
+// Ignition button can switch it), and whether the frame is switched on.
+func ignitionState() (available, on bool) {
+	props, _ := os.ReadFile(vciProperties())
+	conf, _ := os.ReadFile(offlineConfPath)
+	available = parseProperties(string(props))["vci_modulename"] == offlineVCIName && parseProperties(string(conf))["wake"] == "1"
+	_, err := os.Stat(wakeFlagPath)
+	return available, err == nil
+}
+
 // offlineCANLogPath is the CAN trace the offline VCI appends to (offlinevci.c canLog), read by the
 // "VCI CAN" monitor. It is next to the DLL, in the DLL's own folder.
 var offlineCANLogPath = filepath.Join(odisDir, "laertes", "vci-can.log")
 
 // readCANLog returns the recent lines of the VCI CAN trace (the VCI caps the file, so it is small),
 // newest last, empty when there is no trace yet. Of the wake-up frames (kind W, several a second)
-// only the latest few are kept, so they do not push the diagnostic traffic out.
+// only the latest few are kept, so they do not push the diagnostic traffic out. Read polls (RD, one
+// per PassThruReadMsgs call, written by older VCI DLLs) are left out: they would push out the rest.
 func readCANLog() []string {
 	data, err := os.ReadFile(offlineCANLogPath)
 	if err != nil {
@@ -55,7 +83,11 @@ func readCANLog() []string {
 		if l == "" {
 			continue
 		}
-		if f := strings.Fields(l); len(f) > 1 && f[1] == "W" {
+		f := strings.Fields(l)
+		if len(f) > 1 && f[1] == "RD" {
+			continue
+		}
+		if len(f) > 1 && f[1] == "W" {
 			if wake++; wake > maxWake {
 				continue
 			}

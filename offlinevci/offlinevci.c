@@ -17,7 +17,8 @@
 // Wake-up: with wake=1, once ODIS connects a channel a thread sends one CAN frame periodically
 // (by default VW Klemmen_Status_01 0x3C0 with clamp 15 on, with its E2E counter and CRC), so units
 // on a bench wake up and act as if the ignition were on. Through a real driver it goes on the bus;
-// on the simulated device it only appears in the trace (kind W).
+// on the simulated device it only appears in the trace (kind W). It is sent only while the file
+// wake.on exists next to this DLL: Laertes's Ignition button creates and deletes it.
 //
 // Build (32-bit): offlinevci\build.cmd
 
@@ -862,8 +863,21 @@ static DWORD WINAPI wakeLoop(LPVOID arg) {
     (void)arg;
     static PASSTHRU_MSG m;
     unsigned counter = 0, failures = 0;
+    int was = -1;
+    char flag[MAX_PATH];
+    laertesFile(flag, sizeof flag, "wake.on");
 
     while (wakeRun) {
+        int on = flag[0] && GetFileAttributesA(flag) != INVALID_FILE_ATTRIBUTES;
+        if (on != was) {
+            logStr(on ? "WAKE ignition on: sending the wake-up frame" : "WAKE ignition off: not sending");
+            was = on;
+        }
+        if (!on) {
+            Sleep(wakeMs);
+            continue;
+        }
+
         unsigned char d[8];
         memcpy(d, wakeData, wakeLen);
         // E2E: byte 1's low nibble counts 0..15, byte 0 is the CRC over bytes 1.. and the data ID.
@@ -1119,24 +1133,6 @@ long WINAPI PassThruReadMsgs(unsigned long channelId, void *msgs, unsigned long 
     ReleaseSRWLockExclusive(&lock);
 
     *numMsgs = out;
-
-    {
-        char b[128];
-        unsigned long o = 0;
-        const char *p = "RD ch=";
-        while (*p) b[o++] = *p++;
-        putHexU32(b, &o, channelId, 1);
-        p = " to=";
-        while (*p) b[o++] = *p++;
-        putHexU32(b, &o, timeout, 1);
-        p = " req=";
-        while (*p) b[o++] = *p++;
-        putHexU32(b, &o, cap, 1);
-        p = " got=";
-        while (*p) b[o++] = *p++;
-        putHexU32(b, &o, out, 1);
-        logWrite(b, o);
-    }
 
     if (out == cap)
         return STATUS_NOERROR;

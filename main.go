@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.6.0"
+const version = "0.7.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -156,6 +156,22 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 	// ISO15765 traffic between ODIS and the simulated units.
 	mux.HandleFunc("GET /api/vci/can", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, readCANLog(), nil)
+	})
+	// The Ignition button: switches the VCI's periodic clamp 15 wake-up frame on or off, live.
+	mux.HandleFunc("POST /api/vci/ignition", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			On bool `json:"on"`
+		}
+		json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req)
+		if available, _ := ignitionState(); !available {
+			http.Error(w, "the clamp 15 wake-up is not active: turn it on in Settings and start the bridge again", http.StatusConflict)
+			return
+		}
+		err := setIgnition(req.On)
+		if err == nil {
+			log.Printf("ignition (wake-up frame) %s", map[bool]string{true: "on", false: "off"}[req.On])
+		}
+		reply(w, odis.status(), err)
 	})
 	mux.HandleFunc("POST /api/vci/can/clear", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, nil, clearCANLog())

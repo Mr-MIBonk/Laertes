@@ -112,6 +112,8 @@ type odisStatus struct {
 	VCI      string  `json:"vci"`     // the VCI ODIS is set to use (selectedVCI)
 	Elapsed  float64 `json:"elapsed"` // seconds since the running start began, for the page's timer
 	Took     float64 `json:"took"`    // seconds the last start took
+	Wake     bool    `json:"wake"`     // the wake-up frame can be switched (ignitionState)
+	Ignition bool    `json:"ignition"` // the wake-up frame is switched on
 }
 
 func (o *odisStarter) wakeFrame() wakeConfig {
@@ -124,7 +126,8 @@ func (o *odisStarter) wakeFrame() wakeConfig {
 func (o *odisStarter) status() odisStatus {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	st := odisStatus{o.state, o.message, o.launched, selectedVCI(), 0, o.took.Seconds()}
+	st := odisStatus{State: o.state, Message: o.message, Launched: o.launched, VCI: selectedVCI(), Took: o.took.Seconds()}
+	st.Wake, st.Ignition = ignitionState()
 	if !o.since.IsZero() {
 		st.Elapsed = time.Since(o.since).Seconds()
 	}
@@ -206,6 +209,9 @@ func (o *odisStarter) run(project string, offline bool) error {
 				return err
 			}
 			conf := offlineConfig{Wake: o.wakeFrame()}
+			if conf.Wake.On {
+				setIgnition(true) // a session with the wake-up starts with the ignition on
+			}
 			if o.vin != nil {
 				conf.VIN = o.vin()
 			}
@@ -227,6 +233,7 @@ func (o *odisStarter) run(project string, offline bool) error {
 			if err := installOfflineVCI(); err != nil {
 				return err
 			}
+			setIgnition(true) // a session with the wake-up starts with the ignition on
 			if err := writeOfflineConfig(offlineConfig{Wake: wake, Passthru: lib, PassthruName: name}); err != nil {
 				return fmt.Errorf("write the VCI configuration: %w", err)
 			}

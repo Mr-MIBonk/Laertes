@@ -24,11 +24,13 @@ const pingEvery = 5 * time.Second
 
 // owner is the one page allowed to use the API: two pages driving ODIS at once would interfere on
 // the vehicle. A page holds it while its socket (/api/ws) is open, and for clientLease after its
-// last request or ping; its socket closing (page closed or reloaded) frees it at once.
+// last request or ping; its socket closing (page closed or reloaded) frees it at once. Another
+// page can take it over (take); the owner's socket is then closed at once.
 type owner struct {
 	mu   sync.Mutex
 	id   string
 	seen time.Time
+	kick chan struct{} // closed to end the owner's socket when another page takes over
 }
 
 // claim makes id the owner unless another page holds it, and reports whether id owns it now.
@@ -42,17 +44,55 @@ func (o *owner) claim(id string) bool {
 	return true
 }
 
-func (o *owner) release(id string) {
+// take makes id the owner even while another page holds it, ending that page's socket.
+func (o *owner) take(id string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.id == id {
-		o.id = ""
+	if o.id != id && o.kick != nil {
+		close(o.kick)
+		o.kick = nil
 	}
+	o.id, o.seen = id, time.Now()
+}
+
+// attach registers the owner's socket; the returned channel closes when another page takes over.
+// It reports false when id does not own Laertes (any more).
+func (o *owner) attach(id string) (<-chan struct{}, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.id != id {
+		return nil, false
+	}
+	if o.kick != nil {
+		close(o.kick) // an older socket of the same page
+	}
+	o.kick = make(chan struct{})
+	return o.kick, true
+}
+
+// release frees Laertes when the socket that ends (kick, from attach) is still the owner's.
+func (o *owner) release(id string, kick <-chan struct{}) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.id == id && o.kick == kick {
+		o.id = ""
+		o.kick = nil
+	}
+}
+
+// claimOrTake claims, or takes over when the page asks for it ("Use Laertes here").
+func (o *owner) claimOrTake(id string, take bool) bool {
+	if take {
+		o.take(id)
+		return true
+	}
+	return o.claim(id)
 }
 
 // singleClient lets only the owner use the API. Each page sends its own random id, in
 // X-Laertes-Client (or ?client= on the socket, which cannot carry headers); another page's
-// requests are refused with 409, and its socket is closed with code 4409.
+// requests are refused with 409, and its socket is closed with code 4409. X-Laertes-Take: 1 (or
+// ?take=1) takes over from the page that has it.
 func singleClient(next http.Handler) http.Handler {
 	var o owner
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +109,7 @@ func singleClient(next http.Handler) http.Handler {
 			http.Error(w, "missing X-Laertes-Client header", http.StatusBadRequest)
 			return
 		}
-		if !o.claim(id) {
+		if !o.claimOrTake(id, r.Header.Get("X-Laertes-Take") == "1") {
 			http.Error(w, singleAccessMsg, http.StatusConflict)
 			return
 		}
@@ -91,11 +131,16 @@ func serveSocket(w http.ResponseWriter, r *http.Request, o *owner) {
 		return
 	}
 	defer c.CloseNow()
-	if !o.claim(id) {
+	var kick <-chan struct{}
+	ok := o.claimOrTake(id, r.URL.Query().Get("take") == "1")
+	if ok {
+		kick, ok = o.attach(id)
+	}
+	if !ok {
 		c.Close(4409, "single access limit") // a close reason is limited to 123 bytes
 		return
 	}
-	defer o.release(id)
+	defer o.release(id, kick)
 	log.Printf("page connected (%s)", r.RemoteAddr)
 	defer log.Printf("page disconnected (%s)", r.RemoteAddr)
 	ctx := c.CloseRead(r.Context()) // done when the page closes the socket
@@ -111,6 +156,10 @@ func serveSocket(w http.ResponseWriter, r *http.Request, o *owner) {
 		}
 		select {
 		case <-ctx.Done():
+			return
+		case <-kick:
+			log.Printf("page taken over by another page (%s)", r.RemoteAddr)
+			c.Close(4409, "taken over by another page")
 			return
 		case <-t.C:
 		}
