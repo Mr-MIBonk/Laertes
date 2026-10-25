@@ -222,6 +222,9 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .activity .row.ok .i { color:var(--on); }
 .activity .row.run .i { color:var(--chg); }
 .activity .empty { margin:24px; }
+.expform.gfwait { border:2px solid var(--chg); border-radius:8px; padding:10px 12px; animation:gfwait 1.6s ease-in-out 3; }
+.gfwaithead { font-weight:bold; color:var(--chg); margin-bottom:6px; }
+@keyframes gfwait { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--chg) 35%, transparent); } }
 .retrobar { border:1px solid var(--chg); border-radius:4px; padding:6px 8px; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .retrobar b { color:var(--chg); }
 .units .delta { font:11px system-ui, sans-serif; margin-left:4px; }
@@ -706,6 +709,7 @@ async function translateMany(texts) {
 function trRedraw() {
   if (currentTab() === 'units') renderKeepFocus();
   else if (currentTab() === 'coding' && sel()) render();
+  gfRender();  // a guided function's dialog and messages (CP, Immobilizer)
 }
 // A "🌐 Translate" button for a table, translating the given texts once.
 function trTableBtn(texts) {
@@ -3107,7 +3111,11 @@ const gfName = f => !f.name || /^(displayName|testerDescription|GUID)/.test(f.na
 // The form for a dialog ODIS raised while running a guided function.
 function gfPromptHTML(p) {
   const enter = `onkeydown="if (event.key === 'Enter') gfAnswer()"`, cancel = `<button onclick="gfAnswer(null)">Cancel</button>`;
-  let h = `<div class="expform"><div class="meta">${esc(p.text || 'ODIS asks')} ${trBtn(p.text)}</div>${p.error ? `<div class="status err">${esc(p.error)} ${trBtn(p.error)}</div>` : ''}`;
+  // Every prompt holds ODIS until it is answered; a plain message looks like progress ("Bitte warten…"),
+  // so it says so and its button is unmistakable.
+  const waits = !['login', 'grp_browser', 'input', 'select', 'confirm'].includes(p.kind);
+  let h = `<div class="expform gfwait"><div class="gfwaithead">⏸ ODIS is waiting for you${waits ? ': it continues after you press OK, as in ODIS&#39;s own window' : ''}</div>
+    <div class="meta">${esc(p.text || 'ODIS asks')} ${trBtn(p.text)}</div>${p.error ? `<div class="status err">${esc(p.error)} ${trBtn(p.error)}</div>` : ''}`;
   if (p.kind === 'login') h += `<table class="vals">
       <tr><td>Username</td><td><input id="gfUser" type="text" autocomplete="off" value="${esc(p.user || geko.username || '')}" ${enter}></td></tr>
       <tr><td>Password</td><td><input id="gfPass" type="password" autocomplete="off" value="${esc(!p.error && (!p.user || p.user === geko.username) ? geko.password || '' : '')}" ${enter}></td></tr></table>
@@ -3115,9 +3123,10 @@ function gfPromptHTML(p) {
   else if (p.kind === 'grp_browser') h += grpPromptHTML(p, 'gfAnswer');
   else if (p.kind === 'input') h += `<input id="gfInput" type="text" value="${esc(p.initial || '')}" ${enter}>
     <div class="bar"><button class="op" onclick="gfAnswer()">OK</button>${cancel}</div>`;
-  else if (p.kind === 'select') h += `<div class="bar">${(p.options || []).map((o, i) => `<button onclick="gfAnswer(${i})">${esc(o)}</button>`).join('')}${cancel}</div>`;
+  else if (p.kind === 'select') h += `<div class="bar">${(p.options || []).map((o, i) => `<button onclick="gfAnswer(${i})"${txTitle(o)}>${esc(txt(o))}</button>`).join('')}${cancel}
+      ${trTableBtn([p.text, ...(p.options || [])])}</div>`;
   else if (p.kind === 'confirm') h += `<div class="bar"><button class="op" onclick="gfAnswer(true)">Continue</button><button onclick="gfAnswer(false)">No</button></div>`;
-  else h += `<div class="bar"><button class="op" onclick="gfAnswer(true)">OK</button></div>`;
+  else h += `<div class="bar"><button class="op" onclick="gfAnswer(true)" title="Acknowledge the message so ODIS continues with the next step">OK, continue</button></div>`;
   return h + '</div>';
 }
 // "What is ODIS waiting for?": the stacks of ODIS's guided-function threads (bridge threads), shown
@@ -3141,8 +3150,8 @@ function gfOutHTML(r) {
     ? `<button class="op" onclick="cpIdentify()" title="Let ODIS identify the vehicle now (Vehicle identification above), then start again">Identify vehicle</button>` : ''}</div>`;
   if (r.prompt) h += gfPromptHTML(r.prompt);
   const log = (r.result && r.result.log) || r.log || [];
-  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text).join('\n'), 'Copy all ODIS messages')}</h2><table class="vals">${log.map(m =>
-    `<tr><td>${esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${esc(m.text)} ${trBtn(m.text)}</td></tr>`).join('')}</table>`;
+  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text).join('\n'), 'Copy all ODIS messages')} ${trTableBtn(log.map(m => m.text))}</h2><table class="vals">${log.map(m =>
+    `<tr><td>${esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${tx(m.text)}</td></tr>`).join('')}</table>`;
   if (r.result) h += `<div class="status">ODIS finished ${esc(r.result.function || 'the guided function')}${r.result.outcome ? ' — result: <b>' + esc(r.result.outcome) + '</b> ' + trBtn(r.result.outcome) : ''}</div>`;
   return h;
 }
