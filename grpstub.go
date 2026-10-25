@@ -512,14 +512,59 @@ func stubTrimZero(b []byte) []byte {
 }
 
 // gsb answers VW's GSB web-service calls. Guided functions use it for online operations; component
-// protection posts a PinService ProcessPin (a DMS XMLMSG). The virtual ECU accepts whatever the
-// function writes afterwards, so a minimal success envelope is enough for the function to complete
-// its "Freischaltung" without VW's backend. A real response body can be added if a flow needs one.
+// protection posts a PinService ProcessPin (a DMS XMLMSG). The full request body is logged so the
+// real on-the-wire shape can be read on a bench; nothing here contacts VW.
+//
+// ODIS's DmsTunnelPinService parses the response with the XPath
+//
+//	//*[local-name()='ProcessPinResponse'][@mimeCode]
+//
+// and then decodes that element's content as a Fenix DMS message
+// (<MESSAGE DTD="XMLMSG"><RESULT><RESPONSE DTD="PINService" NAME="GetPin">...). An empty
+// <soap:Body/> makes that XPath match nothing, so ODIS reads back null: fine for a function that
+// only needs the online step not to fault, but a function that reads the PIN then gets nothing.
+//
+// For ProcessPin we therefore return a STRUCTURALLY well-formed ProcessPinResponse carrying an
+// EMPTY Fenix skeleton (no PIN, no secret, no success status). That lets ODIS's parser advance past
+// the null and decode cleanly, so the real behaviour is observable instead of an NPE. It is
+// deliberately not a populated/forged PIN result: this is a protocol skeleton for bench work, not a
+// component-protection unlock. Other GSB calls keep the empty-body success as before.
 func (s *grpStub) gsb(w http.ResponseWriter, r *http.Request) {
-	io.Copy(io.Discard, io.LimitReader(r.Body, 1<<20))
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	log.Printf("GSB /services request (%d bytes): %s", len(body), body)
+
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	if strings.Contains(string(body), "ProcessPin") {
+		io.WriteString(w, stubProcessPinResponse())
+		return
+	}
 	io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
 		`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`)
+}
+
+// stubFenixEmpty is the inner Fenix DMS message ODIS decodes out of ProcessPinResponse: a well-formed
+// but EMPTY GetPin response. It has the HEADER and the RESULT/RESPONSE[NAME=GetPin] the parser walks,
+// and an empty DATA section with no SATZART, no WFS-VIN, no PIN. It is deliberately not a populated
+// component-protection result: it lets the decode succeed so the log reports, field by field, what the
+// guided function then reads — the authorization payload is not supplied here.
+const stubFenixEmpty = `<?xml version="1.0" encoding="UTF-8"?>` +
+	`<MESSAGE DTD="XMLMSG" VERSION="1.0"><HEADER/>` +
+	`<RESULT><RESPONSE DTD="PINService" ID="0" NAME="GetPin" VERSION="1.0">` +
+	`<DATA/>` +
+	`</RESPONSE></RESULT></MESSAGE>`
+
+// stubProcessPinResponse satisfies DmsTunnelPinService's //*[local-name()='ProcessPinResponse']
+// [@mimeCode] selector. ODIS base64-decodes the element content and XML-parses the bytes (an escaped
+// text body made it fail with "Invalid byte 2 of 2-byte UTF-8 sequence"), so the Fenix message is
+// carried base64-encoded with mimeCode naming its media type.
+func stubProcessPinResponse() string {
+	enc := base64.StdEncoding.EncodeToString([]byte(stubFenixEmpty))
+	return `<?xml version="1.0" encoding="UTF-8"?>` +
+		`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"` +
+		` xmlns:tns="http://xmldefs.volkswagenag.com/Retail/ElectronicsRepairService/V1">` +
+		`<soap:Header/><soap:Body>` +
+		`<tns:ProcessPinResponse mimeCode="text/xml">` + enc + `</tns:ProcessPinResponse>` +
+		`</soap:Body></soap:Envelope>`
 }
 
 func stubJSON(w http.ResponseWriter, status int, v any) {
