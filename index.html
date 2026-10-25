@@ -23,6 +23,11 @@ h1 { font-size:18px; margin:0 0 4px; }
 .status.err { color:var(--warn); }
 button { font:inherit; font-size:13px; padding:4px 10px; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:4px; cursor:pointer; }
 button.warn { border-color:var(--warn); color:var(--warn); }
+/* The main answer of a dialog (an ODIS prompt): solid, readable, never dimmed while a run is busy. */
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; padding:5px 14px; }
+button.primary:hover { filter:brightness(1.12); }
+button.choice { border-color:var(--accent); color:var(--text); font-weight:600; }
+button.choice:hover { background:color-mix(in srgb, var(--accent) 18%, transparent); }
 button:disabled { opacity:.45; cursor:not-allowed; }
 table { border-collapse:collapse; background:var(--panel); width:100%; }
 th, td { border:1px solid var(--line); padding:4px; vertical-align:top; }
@@ -30,13 +35,20 @@ th { font-size:12px; color:var(--muted); font-weight:normal; }
 td.b { font-family:Consolas, monospace; white-space:nowrap; text-align:center; }
 td.f { min-width:220px; }
 .canwrap { max-height:72vh; overflow:auto; border:1px solid var(--line); border-radius:6px; }
-/* The CAN trace panel over any tab (toggleCanPanel); the drag strip on its left edge sets the width. */
-.canpanel { position:fixed; right:0; bottom:0; top:44px; max-width:96vw; min-width:320px; display:flex; flex-direction:column; gap:6px; padding:8px 10px 10px 14px;
-  background:var(--panel); border-left:1px solid var(--line); box-shadow:-8px 0 24px rgba(0,0,0,.25); z-index:15; }
+/* The CAN trace panel, docked right of <main> in the body's flex row (toggleCanPanel): the page
+   narrows while it is open. The drag strip on its left edge sets the width. */
+.canpanel { position:relative; flex:0 0 auto; height:100vh; box-sizing:border-box; max-width:70vw; min-width:320px; display:flex; flex-direction:column; gap:6px;
+  padding:8px 10px 10px 14px; background:var(--panel); border-left:1px solid var(--line); }
+body.canopen .toast, body.canopen .activity { right:calc(var(--canw) + 12px); }
 .canpanel .head { display:flex; align-items:center; gap:8px; }
 .canpanel .head b { font-size:15px; }
 .canpanel .head .grow { flex:1; }
 .canpanel .bar { flex-wrap:wrap; }
+.seg { display:inline-flex; }
+.seg button { border-radius:0; margin-left:-1px; padding:3px 9px; }
+.seg button:first-child { border-radius:4px 0 0 4px; margin-left:0; }
+.seg button:last-child { border-radius:0 4px 4px 0; }
+.seg button.on { background:var(--accent); border-color:var(--accent); color:#fff; position:relative; }
 .canpanel .canwrap { flex:1; max-height:none; min-height:0; }
 .canpanel .drag { position:absolute; left:0; top:0; bottom:0; width:6px; cursor:ew-resize; }
 .canpanel .drag:hover { background:color-mix(in srgb, var(--accent) 35%, transparent); }
@@ -55,6 +67,12 @@ table.can tr.neg td.dir, table.can tr.neg td.m { color:var(--warn); }
 table.can tr.pend td.dir, table.can tr.pend td.m { color:var(--chg); }
 table.can tr.ev td { color:var(--muted); font-style:italic; }
 table.can tr.wake td.dir, table.can tr.wake td.m { color:var(--muted); }
+/* Messages sent during an operation of the page: a coloured bar and a chip naming it. */
+table.can tr.op td:first-child { box-shadow:inset 3px 0 0 var(--opc); }
+table.can tr.op td { background:color-mix(in srgb, var(--opc) 9%, transparent); }
+table.can .opchip { display:inline-block; margin-right:6px; padding:0 5px; border-radius:3px; background:var(--opc); color:#fff; font:bold 10px system-ui, sans-serif; vertical-align:1px; }
+table.can tr.op-coding { --opc:#8b5cf6; } table.can tr.op-adapt { --opc:#0ea5e9; } table.can tr.op-cp { --opc:#ef4444; }
+table.can tr.op-basic { --opc:#f59e0b; } table.can tr.op-immo { --opc:#ec4899; } table.can tr.op-flash { --opc:#f97316; } table.can tr.op-other { --opc:#64748b; }
 .bit { display:flex; flex-direction:column; gap:3px; min-width:90px; }
 .bit label { display:flex; align-items:center; gap:4px; font-family:Consolas, monospace; cursor:pointer; }
 .bit.on label { color:var(--on); font-weight:bold; }
@@ -224,6 +242,7 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .activity .empty { margin:24px; }
 .expform.gfwait { border:2px solid var(--chg); border-radius:8px; padding:10px 12px; animation:gfwait 1.6s ease-in-out 3; }
 .gfwaithead { font-weight:bold; color:var(--chg); margin-bottom:6px; }
+tr.gfyou td { color:var(--accent); font-weight:600; }
 @keyframes gfwait { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--chg) 35%, transparent); } }
 .retrobar { border:1px solid var(--chg); border-radius:4px; padding:6px 8px; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .retrobar b { color:var(--chg); }
@@ -311,8 +330,6 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="retrofit" class="db units" hidden></div>
 <div id="cp" class="db units" hidden></div>
 <div id="immo" class="db units" hidden></div>
-<button id="canHandle" class="canhandle" onclick="toggleCanPanel(true)" title="Show the CAN trace of the virtual VCI over this page">◀ CAN</button>
-<aside id="vci" class="canpanel" hidden></aside>
 <div id="settings" class="db help" hidden></div>
 <div id="guide" class="db help" hidden>
   <h1>Getting started with Laertes</h1>
@@ -435,6 +452,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     your own risk.</p>
 </div>
 </main>
+<button id="canHandle" class="canhandle" onclick="toggleCanPanel(true)" title="Show the CAN trace of the virtual VCI over this page">◀ CAN</button>
+<aside id="vci" class="canpanel" hidden></aside>
 <div id="toast" class="toast" hidden></div>
 <div id="resumed" class="toast" style="left:16px; right:auto; max-width:480px; max-height:60vh; overflow:auto" hidden></div>
 <div id="lockout" class="toast err" style="top:56px; bottom:auto; z-index:11" hidden><span class="txt"></span>
@@ -634,11 +653,14 @@ function textOf(root) {
 const trCache = {}, trTexts = [];
 const trLang = () => settings.transLang || 'en';
 const trKey = text => trLang() + '\n' + text;
+// ODIS phrases Google gets wrong, reworded in German before they are sent (any target language).
+const TR_FIX = [[/Ende der Prüfung/g, 'Ende des Tests']];
 async function translate(text) {
   const key = trKey(text);
   if (!(key in trCache)) {
+    const q = TR_FIX.reduce((t, [re, de]) => t.replace(re, de), text);
     const res = await fetch('https://translate.googleapis.com/translate_a/single?' +
-      new URLSearchParams({client: 'gtx', sl: 'auto', tl: trLang(), dt: 't', q: text}));
+      new URLSearchParams({client: 'gtx', sl: 'auto', tl: trLang(), dt: 't', q}));
     if (!res.ok) throw new Error('HTTP ' + res.status);
     trCache[key] = (await res.json())[0].map(p => p[0]).join('');
   }
@@ -663,6 +685,8 @@ async function trShow(btn, i) {
 // view is redrawn; trTableBtn translates one table's texts on request. Only shown text is
 // translated: values written to the unit always stay the original ones.
 try { Object.assign(trCache, JSON.parse(localStorage.getItem('laertesTr') || '{}')); } catch (e) {}
+// Translations kept from before a TR_FIX rewording are made again.
+for (const k of Object.keys(trCache)) if (TR_FIX.some(([re]) => k.search(re) !== -1)) delete trCache[k];
 const trPending = new Set(), trFailed = new Set(), trLists = [];
 let trTimer = null;
 const trWorthy = text => /\p{L}{2}/u.test(text);
@@ -687,10 +711,15 @@ async function trFlush() {
   if (list.length && await translateMany(list)) trRedraw();
 }
 // Translates texts in batches of lines (one request per batch), keeping them in trCache and the
-// browser. A batch whose answer does not split back into its lines is left untranslated.
+// browser. A batch whose answer does not split back into its lines is left untranslated. A text
+// of several lines (an ODIS message) cannot share a batch, so it is translated on its own.
 async function translateMany(texts) {
-  const todo = [...new Set(texts.map(String))].filter(t => trWorthy(t) && !(trKey(t) in trCache) && !trFailed.has(trKey(t)) && !t.includes('\n'));
+  const all = [...new Set(texts.map(String))].filter(t => trWorthy(t) && !(trKey(t) in trCache) && !trFailed.has(trKey(t)));
+  const todo = all.filter(t => !t.includes('\n'));
   let done = 0;
+  for (const t of all.filter(t => t.includes('\n'))) {
+    try { await translate(t); done++; } catch (e) { trFailed.add(trKey(t)); }
+  }
   for (let i = 0; i < todo.length;) {
     const batch = [todo[i++]];
     let len = batch[0].length;
@@ -1260,7 +1289,16 @@ function renderSettings() {
 // Laertes serves it at /api/vci/can. This polls it and shows the traffic between ODIS and the
 // simulated units, so an unanswered request (e.g. a functional TesterPresent) is visible. Each
 // message is decoded (UDS service, identifiers, values) into a short meaning and a tooltip.
-let vciTimer = null, vciPaused = false, vciShown = '';
+let vciTimer = null, vciPaused = false, vciShown = '', vciRaw = '';
+// Which operation's messages to show: '' all, 'any' any operation, or a category of OP_CATS.
+let vciOpFilter = '';
+const VCI_OP_FILTERS = [['', 'All', 'All messages'], ['any', 'Operations', 'Only messages sent while an operation of this page ran'],
+  ['coding', 'Coding', 'Only messages of coding writes'], ['adapt', 'Adaptation', 'Only messages of adaptation writes'],
+  ['cp', 'CP', 'Only messages of component-protection runs'], ['basic', 'Basic setting', 'Only messages of basic settings']];
+function vciOpSegHTML() {
+  return VCI_OP_FILTERS.map(([f, label, title]) =>
+    `<button class="${f === vciOpFilter ? 'on' : ''}" title="${esc(title)}" onclick="vciOpFilter = '${f}'; $('#vciOpSeg').innerHTML = vciOpSegHTML(); pollVci(true)">${label}</button>`).join('');
+}
 const UDS_SERVICE = {0x10: 'DiagnosticSessionControl', 0x11: 'ECUReset', 0x14: 'ClearDiagnosticInformation', 0x19: 'ReadDTCInformation',
   0x22: 'ReadDataByIdentifier', 0x23: 'ReadMemoryByAddress', 0x27: 'SecurityAccess', 0x28: 'CommunicationControl',
   0x2E: 'WriteDataByIdentifier', 0x2F: 'InputOutputControlByIdentifier', 0x31: 'RoutineControl', 0x34: 'RequestDownload',
@@ -1413,10 +1451,10 @@ const VCI_EVENT = {OPEN: 'PassThruOpen: ODIS opened the VCI', CONN: 'PassThruCon
   FILT: 'PassThruStartMsgFilter: channel, filter type (1 pass, 2 block, 3 flow control), mask, pattern, flow-control ID',
   IOCTL: 'PassThruIoctl: channel and ioctl ID (3 = READ_VBATT battery voltage, 800E = VW vendor specific)',
   WAKE: 'The clamp 15 wake-up (Settings › Clamp 15 wake-up)'};
-// The CAN trace panel: slides in from the right over any tab, so the traffic of whatever runs is
-// visible; ◀ CAN on the right edge (or VCI CAN in the tab bar) opens it, ▶ hides it. It polls only
-// while open. Open state, width and opacity are remembered in this browser.
-const canPrefs = {open: false, opacity: 1, width: 640};
+// The CAN trace panel: docked on the right next to any tab (the page narrows), so the traffic of
+// whatever runs is visible; ◀ CAN on the right edge (or VCI CAN in the tab bar) opens it, ▶ Hide
+// closes it. It polls only while open. Open state and width are remembered in this browser.
+const canPrefs = {open: false, width: 560};
 try { Object.assign(canPrefs, JSON.parse(localStorage.getItem('canPanel') || '{}')); } catch (e) {}
 function saveCanPrefs() { try { localStorage.setItem('canPanel', JSON.stringify(canPrefs)); } catch (e) {} }
 function toggleCanPanel(open = $('#vci').hidden) {
@@ -1424,30 +1462,35 @@ function toggleCanPanel(open = $('#vci').hidden) {
   canPrefs.open = open; saveCanPrefs();
   el.hidden = !open; $('#canHandle').hidden = open;
   $('#canTabBtn').classList.toggle('on', open);
+  document.body.classList.toggle('canopen', open);
   if (!open) { stopVci(); return; }
-  el.style.top = $('.tabs').getBoundingClientRect().bottom + 'px';  // below the (possibly wrapped) top bar
-  el.style.width = canPrefs.width + 'px'; el.style.opacity = canPrefs.opacity;
+  setCanWidth(canPrefs.width);
   loadVciTab();
 }
-function setCanOpacity(v) { canPrefs.opacity = Number(v); $('#vci').style.opacity = v; saveCanPrefs(); }
+function setCanWidth(w) {
+  canPrefs.width = Math.round(Math.max(320, Math.min(innerWidth * 0.7, w)));
+  $('#vci').style.width = canPrefs.width + 'px';
+  document.body.style.setProperty('--canw', canPrefs.width + 'px');
+}
 function canResize(e) {
   e.preventDefault();
-  const move = m => { canPrefs.width = Math.max(320, Math.min(innerWidth * 0.96, innerWidth - m.clientX)); $('#vci').style.width = canPrefs.width + 'px'; };
+  const move = m => setCanWidth(innerWidth - m.clientX);
   const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); saveCanPrefs(); };
   addEventListener('mousemove', move); addEventListener('mouseup', up);
 }
 function loadVciTab() {
   stopVci();
-  vciPaused = false; vciShown = '';
+  vciPaused = false; vciShown = vciRaw = '';
   $('#vci').innerHTML = `<div class="drag" onmousedown="canResize(event)" title="Drag to change the width"></div>
     <div class="head"><b>VCI CAN</b><span class="meta grow">▶ ODIS → unit · ◀ unit → ODIS · hover a message for its meaning</span>
-      <label title="Opacity: make the panel see-through to watch the page under it">◐ <input type="range" min="0.3" max="1" step="0.05" value="${canPrefs.opacity}" oninput="setCanOpacity(this.value)" style="width:90px"></label>
-      <button onclick="toggleCanPanel(false)" title="Hide the panel (◀ CAN on the right edge brings it back; recording continues)">▶</button></div>
+      <button onclick="toggleCanPanel(false)" title="Hide the panel; the page takes the full width again (◀ CAN on the right edge brings it back; recording continues)">▶ Hide</button></div>
     <div class="meta">Recorded all the time, also while hidden. Only the virtual VCI is traced; a real VCI is not.</div>
     <div class="bar"><button title="Stop updating the table (recording continues in the background)" id="vciPauseBtn" onclick="toggleVciPause()">⏸ Pause</button><button title="Empty the CAN trace file" onclick="clearVci()">Clear</button>
       <input title="Show only messages containing this text (CAN ID, service, DID, meaning)" id="vciFilter" type="search" placeholder="Filter: CAN ID, service, DID…" oninput="pollVci(true)" style="width:220px">
       <label><input type="checkbox" id="vciEvents" onchange="pollVci(true)"> Setup events (connect, filters, ioctls)</label>
-      <label title="The periodic clamp 15 frame (Settings › Clamp 15 wake-up); only the latest are kept"><input type="checkbox" id="vciWake" onchange="pollVci(true)"> Wake-up frames</label><span class="meta" id="vciInfo"></span></div>
+      <label title="The periodic clamp 15 frame (Settings › Clamp 15 wake-up); only the latest are kept"><input type="checkbox" id="vciWake" onchange="pollVci(true)"> Wake-up frames</label>
+      <button onclick="copyEl($('#vciRows'))" title="Copy the messages shown (tab-separated, for a spreadsheet or a text file)">⧉ Copy</button>
+      <span class="seg" id="vciOpSeg">${vciOpSegHTML()}</span><span class="meta" id="vciInfo"></span></div>
     <div id="vciRows" class="canwrap"></div>`;
   pollVci();
   vciTimer = setInterval(pollVci, 1000);
@@ -1462,13 +1505,18 @@ function toggleVciPause() { vciPaused = !vciPaused; $('#vciPauseBtn').textConten
 async function pollVci(force) {
   if (vciPaused && !force) return;
   let lines;
-  try { lines = await api('GET', '/api/vci/can'); } catch (e) { return; }
+  let tickOffset = 0;
+  try { ({lines, tickOffset} = await api('GET', '/api/vci/can')); } catch (e) { return; }
   const rows = $('#vciRows');
   if (!rows) return;
+  // While text is selected in the table, it is left alone, so the selection survives for copying.
+  const selection = getSelection();
+  if (!force && selection && !selection.isCollapsed && rows.contains(selection.anchorNode)) return;
   const events = $('#vciEvents').checked, wakes = $('#vciWake').checked, filter = $('#vciFilter').value.trim().toLowerCase();
-  const key = lines.length + '\n' + lines[lines.length - 1] + '\n' + events + '\n' + wakes + '\n' + filter;
-  if (key === vciShown) return;
-  vciShown = key;
+  const ops = vciOperations();
+  const raw = lines.length + '\n' + lines[lines.length - 1] + '\n' + events + '\n' + wakes + '\n' + vciOpFilter + '\n' + filter + '\n' + ops.map(o => o.end).join();
+  if (raw === vciRaw && !force) return;
+  vciRaw = raw;
   const atBottom = rows.scrollHeight - rows.scrollTop - rows.clientHeight < 40;
   const t0 = lines.length ? Number(lines[0].split(' ')[0]) : 0;
   const pending = {}; // multi-frame request being reassembled, by channel and CAN ID
@@ -1509,19 +1557,35 @@ async function pollVci(force) {
     if (f.pci) tip.push('ISO-TP: ' + f.pci);
     if (whole && !f.whole) tip.push(`Reassembled ${whole.length}-byte message: ${hexBytes(whole)}`);
     tip.push(...u.details);
-    const text = [t, id, f.type, hexBytes(f.uds), u.short].join(' ').toLowerCase();
+    // The operation of this page that ran when the message went over the bus, if any.
+    const at = Number(p[0]) + tickOffset, o = ops.find(o => at >= o.start - 300 && at <= o.end + 300);
+    if (vciOpFilter && !(o && (vciOpFilter === 'any' || o.cat === vciOpFilter))) return '';
+    if (o) tip.unshift(`During: ${o.label} (started ${new Date(o.start).toLocaleTimeString()})`);
+    const text = [t, id, f.type, hexBytes(f.uds), u.short, o ? o.label : ''].join(' ').toLowerCase();
     if (filter && !text.includes(filter)) return '';
     shown++;
-    return `<tr class="${cls}" title="${esc(tip.join('\n'))}"><td>${t}</td><td class="dir">${dir}</td><td>${esc(id)}</td><td>${esc(f.type)}</td>`
-      + `<td class="d">${hexBytes(f.uds)}</td><td class="m">${esc(u.short)}</td></tr>`;
+    return `<tr class="${cls}${o ? ' op op-' + o.cat : ''}" title="${esc(tip.join('\n'))}"><td>${t}</td><td class="dir">${dir}</td><td>${esc(id)}</td><td>${esc(f.type)}</td>`
+      + `<td class="d">${hexBytes(f.uds)}</td><td class="m">${o ? `<span class="opchip">${esc(o.tag)}</span>` : ''}${esc(u.short)}</td></tr>`;
   }).join('');
-  rows.innerHTML = msgs || events || wakes ? `<table class="can"><thead><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>meaning</th></tr></thead><tbody>${body}</tbody></table>`
+  const html = msgs || events || wakes ? `<table class="can"><thead><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>meaning</th></tr></thead><tbody>${body}</tbody></table>`
     : '<div class="empty">No CAN messages yet. Start the bridge with the virtual VCI (▶ Bridge + virtual VCI) to see ODIS talk to the simulated units.</div>';
+  if (html !== vciShown) { rows.innerHTML = html; vciShown = html; }
   $('#vciInfo').textContent = filter ? `${shown} of ${msgs} messages` : msgs + ' messages';
   if (atBottom) rows.scrollTop = rows.scrollHeight;
 }
+// The operations of this page session (from the activity log) with their time span and a category
+// for the trace's colour: what to mark a message with when it went over the bus during one.
+const OP_CATS = [[/coding/i, 'coding', 'CODING'], [/adapt/i, 'adapt', 'ADAPTATION'], [/component protection|\bCP\b/i, 'cp', 'CP'],
+  [/basic setting/i, 'basic', 'BASIC SETTING'], [/immobil/i, 'immo', 'IMMO'], [/flash|dataset/i, 'flash', 'FLASH']];
+function vciOperations() {
+  return activity.filter(e => ['run', 'ok', 'err', 'stop'].includes(e.kind)).map(e => {
+    const label = e.text.split(': ')[0], c = OP_CATS.find(([re]) => re.test(label));
+    const start = e.at.getTime();
+    return {label, start, end: e.ms == null ? Date.now() : start + e.ms, cat: c ? c[1] : 'other', tag: c ? c[2] : label.toUpperCase().slice(0, 14)};
+  });
+}
 async function clearVci() {
-  try { await api('POST', '/api/vci/can/clear'); vciShown = ''; pollVci(true); }
+  try { await api('POST', '/api/vci/can/clear'); vciShown = vciRaw = ''; pollVci(true); }
   catch (e) { toast('Could not clear the trace: ' + e.message, true); }
 }
 
@@ -3115,18 +3179,18 @@ function gfPromptHTML(p) {
   // so it says so and its button is unmistakable.
   const waits = !['login', 'grp_browser', 'input', 'select', 'confirm'].includes(p.kind);
   let h = `<div class="expform gfwait"><div class="gfwaithead">⏸ ODIS is waiting for you${waits ? ': it continues after you press OK, as in ODIS&#39;s own window' : ''}</div>
-    <div class="meta">${esc(p.text || 'ODIS asks')} ${trBtn(p.text)}</div>${p.error ? `<div class="status err">${esc(p.error)} ${trBtn(p.error)}</div>` : ''}`;
+    <div class="meta" style="white-space:pre-wrap">${tx(p.text || 'ODIS asks')} ${txt(p.text) === String(p.text) ? trBtn(p.text) : ''}</div>${p.error ? `<div class="status err">${esc(p.error)} ${trBtn(p.error)}</div>` : ''}`;
   if (p.kind === 'login') h += `<table class="vals">
       <tr><td>Username</td><td><input id="gfUser" type="text" autocomplete="off" value="${esc(p.user || geko.username || '')}" ${enter}></td></tr>
       <tr><td>Password</td><td><input id="gfPass" type="password" autocomplete="off" value="${esc(!p.error && (!p.user || p.user === geko.username) ? geko.password || '' : '')}" ${enter}></td></tr></table>
-    <div class="bar"><button class="op" onclick="gfAnswer()">Sign in</button>${cancel}</div>`;
+    <div class="bar"><button class="primary" onclick="gfAnswer()">Sign in</button>${cancel}</div>`;
   else if (p.kind === 'grp_browser') h += grpPromptHTML(p, 'gfAnswer');
   else if (p.kind === 'input') h += `<input id="gfInput" type="text" value="${esc(p.initial || '')}" ${enter}>
-    <div class="bar"><button class="op" onclick="gfAnswer()">OK</button>${cancel}</div>`;
-  else if (p.kind === 'select') h += `<div class="bar">${(p.options || []).map((o, i) => `<button onclick="gfAnswer(${i})"${txTitle(o)}>${esc(txt(o))}</button>`).join('')}${cancel}
+    <div class="bar"><button class="primary" onclick="gfAnswer()">OK</button>${cancel}</div>`;
+  else if (p.kind === 'select') h += `<div class="bar">${(p.options || []).map((o, i) => `<button class="choice" onclick="gfAnswer(${i})"${txTitle(o)}>${esc(txt(o))}</button>`).join('')}${cancel}
       ${trTableBtn([p.text, ...(p.options || [])])}</div>`;
-  else if (p.kind === 'confirm') h += `<div class="bar"><button class="op" onclick="gfAnswer(true)">Continue</button><button onclick="gfAnswer(false)">No</button></div>`;
-  else h += `<div class="bar"><button class="op" onclick="gfAnswer(true)" title="Acknowledge the message so ODIS continues with the next step">OK, continue</button></div>`;
+  else if (p.kind === 'confirm') h += `<div class="bar"><button class="primary" onclick="gfAnswer(true)">Continue</button><button onclick="gfAnswer(false)">No</button></div>`;
+  else h += `<div class="bar"><button class="primary" onclick="gfAnswer(true)" title="Acknowledge the message so ODIS continues with the next step">OK, continue</button></div>`;
   return h + '</div>';
 }
 // "What is ODIS waiting for?": the stacks of ODIS's guided-function threads (bridge threads), shown
@@ -3150,8 +3214,10 @@ function gfOutHTML(r) {
     ? `<button class="op" onclick="cpIdentify()" title="Let ODIS identify the vehicle now (Vehicle identification above), then start again">Identify vehicle</button>` : ''}</div>`;
   if (r.prompt) h += gfPromptHTML(r.prompt);
   const log = (r.result && r.result.log) || r.log || [];
-  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text).join('\n'), 'Copy all ODIS messages')} ${trTableBtn(log.map(m => m.text))}</h2><table class="vals">${log.map(m =>
-    `<tr><td>${esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${tx(m.text)}</td></tr>`).join('')}</table>`;
+  // Your answers are our own words (OK, Continue, chose) plus the ODIS text you chose: only that is translated.
+  const logText = m => m.kind === 'you' ? '' : m.text;
+  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text + (m.choice ? ': ' + m.choice : '')).join('\n'), 'Copy all ODIS messages')} ${trTableBtn(log.map(m => m.choice || logText(m)).filter(Boolean))}</h2><table class="vals">${log.map(m =>
+    `<tr class="${m.kind === 'you' ? 'gfyou' : ''}"><td>${m.kind === 'you' ? '➜ you' : esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${m.kind === 'you' ? esc(m.text) + (m.choice ? ': ' + tx(m.choice) : '') : tx(m.text)}</td></tr>`).join('')}</table>`;
   if (r.result) h += `<div class="status">ODIS finished ${esc(r.result.function || 'the guided function')}${r.result.outcome ? ' — result: <b>' + esc(r.result.outcome) + '</b> ' + trBtn(r.result.outcome) : ''}</div>`;
   return h;
 }

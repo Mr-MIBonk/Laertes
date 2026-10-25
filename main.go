@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.7.1"
+const version = "0.8.0"
 
 //go:embed index.html
 var indexHTML []byte
@@ -29,7 +29,7 @@ func main() {
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
 	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver.py) address")
-	grpStub := flag.Bool("grpstub", false, "also serve a development stand-in for VW's online sign-in on 127.0.0.1:7000 (account admin/admin)")
+	grpStub := flag.Bool("grpstub", true, "serve the stand-in for VW's online services (sign-in and GSB web service) on 127.0.0.1:23032, so online guided functions such as component protection run offline; -grpstub=false uses VW's real backend (account admin/admin)")
 	flag.Parse()
 	adoptOldDatabase(*dbPath)
 
@@ -155,7 +155,7 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 	// The offline VCI's CAN trace (offlinevci.c canLog): the "VCI CAN" tab polls it to show the
 	// ISO15765 traffic between ODIS and the simulated units.
 	mux.HandleFunc("GET /api/vci/can", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, readCANLog(), nil)
+		reply(w, map[string]any{"lines": readCANLog(), "tickOffset": canTickOffset()}, nil)
 	})
 	// The Ignition button: switches the VCI's periodic clamp 15 wake-up frame on or off, live.
 	mux.HandleFunc("POST /api/vci/ignition", func(w http.ResponseWriter, r *http.Request) {

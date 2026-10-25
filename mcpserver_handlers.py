@@ -1222,11 +1222,34 @@ GF_LEVELS = [  # (name, list getter, selection setter)
 ]
 
 
+# Readable labels for GFS_UI built-in controls (e.g. the acknowledge button a guided function shows).
+# ODIS does not ship these in its text database, so the control's id is the only source.
+_GFS_UI_LABELS = {
+    "ACKNOWLEDGE_BUTTON": "Acknowledge", "CANCEL_BUTTON": "Cancel", "OK_BUTTON": "OK",
+    "YES_BUTTON": "Yes", "NO_BUTTON": "No", "CONTINUE_BUTTON": "Continue",
+    "REPEAT_BUTTON": "Repeat", "BACK_BUTTON": "Back", "NEXT_BUTTON": "Next", "DONE_BUTTON": "Done",
+}
+
+
+def _gfs_ui_label(key):
+    """A readable label for a GFS_UI built-in control id (ACKNOWLEDGE_BUTTON -> "Acknowledge"), from
+    the table above or, failing that, the id with its "_BUTTON" suffix dropped and words capitalised."""
+    if key in _GFS_UI_LABELS:
+        return _GFS_UI_LABELS[key]
+    words = key.replace("_BUTTON", "").replace("_", " ").strip()
+    return words.capitalize() if words else key
+
+
 def odis_text(context, text_id):
     """The text of an ODIS text id in the ODIS language (guided-function texts in German, the only
     language ODIS ships them in), or the id itself."""
     if text_id is None:
         return None
+    # A GFS selection item (GfsSelectionItemImpl) wraps its label as a TextId; render that label.
+    if not hasattr(text_id, "getSource") and hasattr(text_id, "getTextId"):
+        text_id = text_id.getTextId()
+        if text_id is None:
+            return None
     if text_id.getSource() == "DONT_TRANSLATE_AREA":
         return unicode(text_id.getId())
     from java.util import Locale
@@ -1242,10 +1265,28 @@ def odis_text(context, text_id):
         if ref is not None:
             context.ungetService(ref)
     key = unicode(text_id.getId())
+    source = unicode(text_id.getSource() or "")
     try:
-        return gfs_db_text(key) or key
+        text = gfs_db_text(key, source or None) or (_gfs_ui_label(key) if source == "GFS_UI" else key)
     except (Exception, Throwable):
-        return key
+        return _gfs_ui_label(key) if source == "GFS_UI" else key
+    # Fill in the test program's variables (‹name›, see gfs_db_text) with the values it gave.
+    try:
+        params = text_id.getParameters() if hasattr(text_id, "getParameters") else None
+        for name in (params.getNames() if params is not None else []):
+            text = text.replace(u"‹%s›" % name, _param_text(params.get(name)))
+    except (Exception, Throwable):
+        pass
+    return text
+
+
+def _param_text(value):
+    """The text of a guided-function text parameter (a ValueImpl): its value, or for a text value
+    (<String><String textid=… textsource=…>fallback</String></String>) the German fallback text it
+    carries, which is the only language ODIS ships guided-function texts in."""
+    v = value.getValue() if value is not None and hasattr(value, "getValue") else value
+    v = u"" if v is None else unicode(v)
+    return _xml_text(v) if v.lstrip().startswith("<") else v.strip()
 
 
 def gf_attribute_collection(context):
@@ -1500,6 +1541,77 @@ GRP_LOGIN_HANDLER = "de.volkswagen.odis.vaudas.infoservices.grp.IGRPLoginHandler
 GRP_COMM = "de.volkswagen.odis.vaudas.infoservices.IGRPCommunicationService"
 GRP_TOKEN = "de.volkswagen.odis.vaudas.infoservices.grp.IGrpTokenProvider"
 
+# Laertes's online stub (laertes.exe -grpstub) serves VW's GSB web service here. When it is running,
+# online guided functions (e.g. component protection) are pointed at it so they complete without
+# VW's backend; the virtual VCI accepts whatever the function then writes to the units.
+ONLINE_STUB_HOST, ONLINE_STUB_PORT = "127.0.0.1", 23032
+ONLINE_STUB_BASE = "http://%s:%d" % (ONLINE_STUB_HOST, ONLINE_STUB_PORT)
+ONLINE_STUB_GSB = ONLINE_STUB_BASE + "/services"  # VW GSB web service (component protection, etc.)
+
+
+def _online_stub_running():
+    """Whether Laertes's online stub is reachable (so ODIS's online calls should go to it)."""
+    import socket
+    try:
+        c = socket.create_connection((ONLINE_STUB_HOST, ONLINE_STUB_PORT), 0.3)
+        c.close()
+        return True
+    except (Exception, Throwable):
+        return False
+
+
+def _reconfigure(obj, overrides):
+    """Re-run an ODIS managed service's updated(Dictionary) with a copy of its current config
+    (its private `dict` field) plus `overrides` {key: value}, for keys it already has. Returns True
+    if anything changed. Used to point config URLs at Laertes's online stub at run time."""
+    from java.lang import Class
+    from java.util import Hashtable
+    fdict = Class.getDeclaredField(obj.getClass(), "dict")
+    fdict.setAccessible(True)
+    cur = fdict.get(obj)
+    new = Hashtable()
+    if cur is not None:
+        keys = cur.keys()
+        while keys.hasMoreElements():
+            k = keys.nextElement()
+            new.put(k, cur.get(k))
+    changed = False
+    for k in list(new.keySet()):
+        ks = unicode(k)
+        for suffix, value in overrides:
+            if ks.endswith(suffix) and new.get(k) != value:
+                new.put(k, value)
+                changed = True
+    if changed:
+        obj.updated(new)
+    return changed
+
+
+def _point_online_to_stub(context):
+    """Point ODIS's GSB/secureID/PKI web-service URLs (TeTesterUrlService) at Laertes's online stub,
+    so online guided functions (e.g. component protection) run offline. Done just before an online
+    function runs (ODIS may reload its own config) and only when the stub is reachable, so running
+    against VW's real backend (laertes -grpstub=false) is unaffected.
+
+    The GRP sign-in (grp.discovery) is deliberately left alone: component protection's GSB call
+    carries an empty security token, so no sign-in happens; repointing grp.discovery instead makes
+    ODIS attempt the interactive OAuth token flow, which blocks a headless run. The stub still serves
+    sign-in on the same port for anyone who points grp.discovery at it."""
+    if not _online_stub_running():
+        return False
+    ref_srv, ref = gfs_service(context, "de.volkswagen.odis.vaudas.infoservices.IUrlReferenceService")
+    if ref_srv is None:
+        return False
+    try:
+        from java.lang import Class
+        fsrv = Class.getDeclaredField(ref_srv.getClass(), "srv")
+        fsrv.setAccessible(True)
+        _reconfigure(fsrv.get(ref_srv), [(".gsb", ONLINE_STUB_GSB), (".secureID", ONLINE_STUB_GSB), (".pki", ONLINE_STUB_GSB)])
+        return True
+    finally:
+        if ref is not None:
+            context.ungetService(ref)
+
 
 def _grp_discovery(context):
     """The GRP OpenID discovery URL ODIS is configured with ("grp.discovery" of its logon
@@ -1744,26 +1856,47 @@ def _page_ui_connector(context, gfs, jid, progress, log, done):
     def cancelled():
         return result(action.CANCEL, None)
 
+    def answered(ok, what, choice=None):
+        """Logs the page's answer to a dialog, so the run shows each step that was chosen. The
+        chosen ODIS text is kept apart from our own words, so only it is translated."""
+        entry = {"kind": "you", "text": what if ok else "cancelled"}
+        if ok and choice is not None:
+            entry["choice"] = choice
+        log.append(entry)
+        _job_set(jid, message=entry["text"], data={"log": log})
+
     class Connector(ui_type):
         def getUserInput(self, title, options, *rest):
             ok, value = ask({"kind": "input", "text": text(title),
                              "initial": options.getInitialValue() if options is not None else None})
+            answered(ok and value is not None, "entered: %s" % value)
             return result(unicode(value)) if ok and value is not None else cancelled()
 
         def getUserSelection(self, choices, other, *rest):
-            items = [text(c) if hasattr(c, "getSource") else unicode(c) for c in (choices or other or [])]
+            items = [text(c) if (hasattr(c, "getSource") or hasattr(c, "getTextId")) else unicode(c) for c in (choices or other or [])]
+            if len(items) == 1:  # a single "choice" is ODIS's way of showing a text to acknowledge
+                note("message", items[0])
+                ok, _ = ask({"kind": "message", "text": items[0]})
+                answered(ok, "OK")
+                return result(Integer(0)) if ok else cancelled()
             ok, value = ask({"kind": "select", "text": "ODIS asks you to choose", "options": items})
+            if ok and value is not None and 0 <= int(value) < len(items):
+                answered(True, "chose", items[int(value)])
+            else:
+                answered(False, "")
             return result(Integer(int(value))) if ok and value is not None else cancelled()
 
         def getUserDialogDecisionToContinue(self, title, question):
             ok, value = ask({"kind": "confirm", "text": " ".join(filter(None, [text(title), text(question)]))})
+            answered(ok, "Continue" if value else "No")
             return bool(ok and value)
 
         def showMessage(self, msg, wait):
             body = "\n".join(text(m) for m in (msg if isinstance(msg, List) else [msg]))
             note("message", body)
             if wait:
-                ask({"kind": "message", "text": body})
+                ok, _ = ask({"kind": "message", "text": body})
+                answered(ok, "OK")
 
         def showErrorMessage(self, msg, error):
             note("error", " ".join(filter(None, [text(msg), error_text(error) if error is not None else None])))
@@ -1864,6 +1997,12 @@ def handle_gf_run(cmd):
         context, gfs, kb, vehicle = _gfs_build(cmd)
     except (Exception, Throwable) as e:
         return {"ok": False, "error": error_text(e)}
+    # If Laertes's online stub is running, route ODIS's online calls (e.g. component protection) to
+    # it so the function can complete without VW's backend. No effect otherwise.
+    try:
+        _point_online_to_stub(context)
+    except (Exception, Throwable):
+        pass
     if key:
         obj, handle = _find_function_by_key(kb, key)
         missing = "ODIS has no guided function with key %s for this vehicle" % key
@@ -2103,10 +2242,11 @@ def _didb_connection(adapter, locale):
     return m.invoke(adapter, [locale])
 
 
-def didb_texts(keys, locale=None):
+def didb_texts(keys, locale=None, source=None):
     """{key: text} for the text keys (e.g. "GUID6828D7...", "displayName080044...") found in ODIS's
     databases (Base and the brand's GFS texts, table TRANSLATEDTEXT) in `locale` (default the ODIS
-    language). Read-only; keys found nowhere are left out."""
+    language). Read-only; keys found nowhere are left out. A key such as "TXDEF3" means a different
+    text in each test program, so `source` (its TEXTSOURCE, e.g. "080044de8000cee6") picks one."""
     from java.util import Locale
     keys = [k for k in set(keys or []) if k]
     found = {}
@@ -2118,10 +2258,12 @@ def didb_texts(keys, locale=None):
         for adapter in mgr.getAdapters() or []:
             try:
                 conn = _didb_connection(adapter, locale or Locale.getDefault())
-                st = conn.prepareStatement("SELECT TEXTID, TEXT FROM TRANSLATEDTEXT WHERE TEXTID IN (%s)"
-                                           % ",".join("?" * len(keys)))
+                st = conn.prepareStatement("SELECT TEXTID, TEXT FROM TRANSLATEDTEXT WHERE TEXTID IN (%s)%s"
+                                           % (",".join("?" * len(keys)), " AND TEXTSOURCE = ?" if source else ""))
                 for i, k in enumerate(keys):
                     st.setString(i + 1, k)
+                if source:
+                    st.setString(len(keys) + 1, source)
                 rs = st.executeQuery()
                 while rs.next():
                     found.setdefault(unicode(rs.getString(1)), unicode(rs.getString(2)))
@@ -2138,23 +2280,33 @@ def didb_texts(keys, locale=None):
 _GFS_TEXTS = {}
 
 
-def gfs_db_text(key):
+def _xml_text(text):
+    """Plain text of an ODIS XML text (<String>…</String>): <BR/> becomes a line break, the rest of
+    the markup is removed. A test-program variable (<Var name="str_wfs_zustand"/>) becomes
+    ‹str_wfs_zustand›: odis_text fills in its value, else it shows where the value belongs."""
+    text = re.sub(r"<BR\s*/>", "\n", re.sub(r"<\?xml[^>]*\?>", "", text))
+    text = re.sub(r"<Var\s+name=\"([^\"]*)\"\s*/>", u"‹\\1›", text)
+    text = re.sub(r"<[^>]+>", "", text)
+    for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&")):
+        text = text.replace(entity, char)
+    return text.strip()
+
+
+def gfs_db_text(key, source=None):
     """Plain text of an ODIS database text key (guided-function texts such as "GUID6828D7..." or
     "displayName080044..."), or None. Tried in the ODIS language first, then German: ODIS ships the
-    guided-function (GFS) texts only in German. Their XML markup (<BR/>, <Format>) is removed."""
+    guided-function (GFS) texts only in German. Their XML markup (<BR/>, <Format>) is removed.
+    `source` is the key's text source (see didb_texts), when known."""
     from java.util import Locale
-    if key not in _GFS_TEXTS:  # only found texts are kept, so a failed lookup is retried
-        text = didb_texts([key]).get(key) or didb_texts([key], Locale.GERMANY).get(key)
+    cached = (source, key)
+    if cached not in _GFS_TEXTS:  # only found texts are kept, so a failed lookup is retried
+        text = didb_texts([key], None, source).get(key) or didb_texts([key], Locale.GERMANY, source).get(key)
         if text and text.lstrip().startswith("<"):
-            text = re.sub(r"<BR\s*/>", "\n", re.sub(r"<\?xml[^>]*\?>", "", text))
-            text = re.sub(r"<[^>]+>", "", text)
-            for entity, char in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", '"'), ("&apos;", "'"), ("&amp;", "&")):
-                text = text.replace(entity, char)
-            text = text.strip()
+            text = _xml_text(text)
         if not text:
             return None
-        _GFS_TEXTS[key] = text
-    return _GFS_TEXTS[key]
+        _GFS_TEXTS[cached] = text
+    return _GFS_TEXTS[cached]
 
 
 def handle_text_lookup(cmd):

@@ -13,7 +13,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -99,6 +101,12 @@ func readCANLog() []string {
 		out = []string{}
 	}
 	return out
+}
+
+// canTickOffset converts the trace's times to clock time: the VCI stamps each line with Windows'
+// 32-bit millisecond tick (GetTickCount), so unix milliseconds = tick + this offset.
+func canTickOffset() int64 {
+	return time.Now().UnixMilli() - int64(uint32(windows.DurationSinceBoot().Milliseconds()))
 }
 
 // clearCANLog empties the VCI CAN trace (truncates; the VCI reopens it on its next message).
@@ -193,6 +201,7 @@ func installOfflineVCI() error {
 			if _, inPlace := os.Stat(offlineVCIPath); inPlace != nil {
 				return err
 			}
+			log.Printf("offline VCI not updated, an older one stays in use until ODIS is closed: %v", err)
 		}
 	}
 	if offlineVCIRegistered() {

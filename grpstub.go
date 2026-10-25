@@ -19,7 +19,7 @@
 // RS256-signed JWT whose iss matches the discovery issuer and whose signature verifies against the
 // served JWKS. Stdlib only.
 //
-// Laertes serves it with -grpstub, on 127.0.0.1:7000 (ODIS's "grp.discovery" must point there).
+// Laertes serves it with -grpstub, on 127.0.0.1:23032 (ODIS's "grp.discovery" must point there).
 // Account admin/admin.
 
 package main
@@ -47,7 +47,7 @@ import (
 // discovery document advertises). A conforming client checks id_token.iss == discovery issuer, so
 // the two are single-sourced here and nowhere else.
 const (
-	stubAddr   = "127.0.0.1:7000"
+	stubAddr   = "127.0.0.1:23032"
 	stubBase   = "http://" + stubAddr
 	stubIssuer = "https://grp-prelive.volkswagenag.com"
 
@@ -57,7 +57,7 @@ const (
 
 // stubKid names the signing key. The key is new on every start, so its name is too: ODIS caches the
 // key by name, and under a reused name it keeps the previous run's key and skips its token checks.
-var stubKid = "stub7000-" + time.Now().Format("20060102150405")
+var stubKid = "stub-" + time.Now().Format("20060102150405")
 
 // The accounts that may sign in, username -> password. A dev stub: one account, admin/admin.
 var stubUsers = map[string]string{"admin": "admin"}
@@ -124,6 +124,10 @@ func serveGRPStub() {
 	mux.HandleFunc("/isam/sps/oauth/oauth20/introspect", stubLogged(s.introspect))
 	mux.HandleFunc("/isam/sps/oauth/oauth20/revoke", stubLogged(s.revoke))
 	mux.HandleFunc("/cb", stubLogged(s.callback)) // built-in redirect target so a browser login shows a token
+	// VW's GSB (web-service gateway): guided functions call it for online operations such as
+	// component protection (PinService ProcessPin). Laertes's bridge points ODIS's url.*.gsb here
+	// when this stub runs; the stub answers success so a function can complete without VW's backend.
+	mux.HandleFunc("/services", stubLogged(s.gsb))
 	// Everything else: an empty 200, as before, so unmapped ODIS probes do not fail the flow.
 	mux.HandleFunc("/", stubLogged(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
 
@@ -353,7 +357,7 @@ func (s *grpStub) grant(sub, scope, clientID, nonce string, withID bool) map[str
 
 // callback is a built-in redirect target for browser logins: it receives the authorization code,
 // exchanges it for tokens server-side, and shows them, so a sign-in round-trips to a visible token
-// without a separate client. Point redirect_uri at it: http://127.0.0.1:7000/cb.
+// without a separate client. Point redirect_uri at it: http://127.0.0.1:23032/cb.
 func (s *grpStub) callback(w http.ResponseWriter, r *http.Request) {
 	if e := r.Form.Get("error"); e != "" {
 		stubErr(w, http.StatusBadRequest, e, r.Form.Get("error_description"))
@@ -505,6 +509,17 @@ func stubTrimZero(b []byte) []byte {
 		b = b[1:]
 	}
 	return b
+}
+
+// gsb answers VW's GSB web-service calls. Guided functions use it for online operations; component
+// protection posts a PinService ProcessPin (a DMS XMLMSG). The virtual ECU accepts whatever the
+// function writes afterwards, so a minimal success envelope is enough for the function to complete
+// its "Freischaltung" without VW's backend. A real response body can be added if a flow needs one.
+func (s *grpStub) gsb(w http.ResponseWriter, r *http.Request) {
+	io.Copy(io.Discard, io.LimitReader(r.Body, 1<<20))
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
+		`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`)
 }
 
 func stubJSON(w http.ResponseWriter, status int, v any) {

@@ -8,8 +8,9 @@
 // On every ISO15765 (CAN/ISO-TP) channel it also answers diagnostic requests as a control unit
 // would. For raw CAN (protocol 5), it performs ISO-TP framing/reassembly itself. It serves the
 // identification handshake a VW gateway answers -- DiagnosticSessionControl (0x10), TesterPresent
-// (0x3E) and ReadDataByIdentifier (0x22) -- with canned values. It also supports coding through
-// DID 0x0600 and SecurityAccess (0x27) with a zero seed.
+// (0x3E) and ReadDataByIdentifier (0x22) -- with canned values. WriteDataByIdentifier (0x2E) accepts
+// any DID (coding 0x0600, workshop code 0xF198, programming date 0xF199, ...) and reads it back;
+// SecurityAccess (0x27) uses a zero seed.
 //
 // Pass-through: when offline.conf names a real J2534 driver (passthru=), every call is forwarded to
 // it instead, so ODIS works with the real interface through this DLL.
@@ -82,7 +83,8 @@ static unsigned long newId(unsigned long *id) {
 #define MAXQ      64
 #define MAXRESP   512
 #define MAXREQ    256
-#define MAXCODING 64
+#define MAXWRITE  64 // bytes per written DID value
+#define MAXWRITTEN 32 // DIDs that can hold a written value
 
 typedef struct {
     int rxActive;
@@ -198,7 +200,7 @@ static const Did dids[] = {
     {0xF19F, "0001"},                    // ODX file version / entity
 
     // VW-specific gateway identification (illustrative; refine from vci-can.log later)
-    {0x0600, ""},                        // coding: handled live in didValue()
+    {0x0600, ""},                        // coding: in written[]
     {0x0602, "\x00\x00\x00\x00"},        // vehicle equipment code
     {0x0603, "\x00\x00\x00\x00"},        // parameter set data
     {0x0610, "GW"},                      // system abbreviation
@@ -228,24 +230,117 @@ static const Did *findDid(unsigned short did) {
     return 0;
 }
 
-#define CODING_DID 0x0600
-static unsigned char coding[MAXCODING] = {0x03, 0x3F, 0x01, 0x00};
-static unsigned long codingLen = 4;
+// Values written with WriteDataByIdentifier (coding 0x0600, workshop code 0xF198, programming
+// date 0xF199, ...). A written value overrides the table and is read back until the DLL unloads.
+typedef struct {
+    unsigned short did;
+    unsigned long len;
+    unsigned char data[MAXWRITE];
+} Written;
+
+static Written written[MAXWRITTEN] = {
+    {0x0600, 4, {0x03, 0x3F, 0x01, 0x00}}, // coding
+    // State of Immobilizer (cluster DID 0x02ED, Param_State): a 10-byte raw field. Component
+    // protection (J285 KS) goes on only with byte 0 = 0x02, found by trying 00-1F: 00 and 01 stop
+    // it with "Der Wegfahrsperren-Master hat den Zustand 01 … Passen Sie zuerst die Wegfahrsperre an".
+    {0x02ED, 10, {0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    // State of Immobilizer Slaves (cluster DID 0x02EE, Param_KeyState, Param_ImmobState): key state
+    // 0x84, found by trying. Without bit 0x04 ODIS asks for a valid key and the ignition on; with it
+    // but without 0x80, "Der Schlüssel ist nicht authentifizierbar".
+    {0x02EE, 10, {0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
+    // Transponder ID of the current key (cluster DID 0x02E4, Param_KeyTransID): a non-zero value so
+    // component protection sees a key at the reading coil and does not wait for one to be presented.
+    {0x02E4, 4, {0x12, 0x34, 0x56, 0x78}},
+};
+static unsigned writtenCount = 4;
+
+static Written *findWritten(unsigned short did) {
+    for (unsigned i = 0; i < writtenCount; i++)
+        if (written[i].did == did) return &written[i];
+    return 0;
+}
+
+// Stores a written value; returns 0 or a negative response code.
+static unsigned char writeDid(unsigned short did, const unsigned char *data, unsigned long len) {
+    if (len == 0 || len > MAXWRITE) return 0x13; // incorrectMessageLengthOrInvalidFormat
+
+    Written *w = findWritten(did);
+    if (!w) {
+        if (writtenCount >= MAXWRITTEN) return 0x22; // conditionsNotCorrect
+        w = &written[writtenCount++];
+        w->did = did;
+    }
+
+    memcpy(w->data, data, len);
+    w->len = len;
+    return 0;
+}
 
 // Generic fallback for DIDs that are not in the table. Returning a short neutral value prevents
 // ODIS from aborting the whole identification with NRC 0x31; ODIS may show such a field as
 // "Chybný výsledek" until its exact ODX format/value is provided.
 static unsigned char genericDidValue[8] = {0};
 
+static void laertesFile(char *out, unsigned long cap, const char *name);
+static void logStr(const char *s);
+
+// dids.txt next to the configuration: lines "02ED 01 00 00 ..." (DID, then the value bytes in hex)
+// that the simulated units answer instead of their own values. Read on every request, so a value
+// can be changed while ODIS runs (e.g. to try which immobilizer state a guided function accepts).
+static unsigned char overrideValue[MAXWRITE];
+
+static int didOverride(unsigned short did, unsigned long *len) {
+    char path[MAX_PATH];
+    laertesFile(path, sizeof path, "dids.txt");
+    if (!path[0]) return 0;
+    HANDLE f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (f == INVALID_HANDLE_VALUE) return 0;
+    char buf[4096];
+    DWORD got = 0;
+    BOOL ok = ReadFile(f, buf, sizeof buf - 1, &got, 0);
+    CloseHandle(f);
+    if (!ok) return 0;
+    buf[got] = 0;
+
+    for (char *p = buf; *p;) {
+        char *end;
+        unsigned long id = strtoul(p, &end, 16);
+        if (end != p && id == did) {
+            unsigned long n = 0;
+            for (p = end; n < MAXWRITE;) {
+                while (*p == ' ' || *p == '\t') p++;
+                if (!*p || *p == '\r' || *p == '\n') break; // strtoul would go on to the next line
+                unsigned long b = strtoul(p, &end, 16);
+                if (end == p || b > 0xFF) break;
+                overrideValue[n++] = (unsigned char)b;
+                p = end;
+            }
+            if (n == 0) return 0;
+            *len = n;
+            return 1;
+        }
+        while (*p && *p != '\n') p++;
+        if (*p) p++;
+    }
+    return 0;
+}
+
 static const unsigned char *didValue(unsigned short did, unsigned long *len) {
+    if (didOverride(did, len)) {
+        logStr("DID value from dids.txt");
+        return overrideValue;
+    }
+
     if (did == 0xF190) {
         *len = (unsigned long)strlen(vin);
         return (const unsigned char *)vin;
     }
 
-    if (did == CODING_DID) {
-        *len = codingLen;
-        return coding;
+    const Written *w = findWritten(did);
+    if (w) {
+        *len = w->len;
+        return w->data;
     }
 
     const Did *d = findDid(did);
@@ -556,6 +651,14 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
         out[1] = n > 1 ? (unsigned char)(req[1] & 0x7F) : 0x00;
         return 2;
 
+    case 0x28: // CommunicationControl (e.g. the gateway's 28 C0 01 during component protection)
+        if (n < 3)
+            return negative(sid, 0x13, out);
+        if (suppress) return 0;
+        out[0] = 0x68;
+        out[1] = (unsigned char)(req[1] & 0x7F);
+        return 2;
+
     case 0x22: { // ReadDataByIdentifier
         if (n < 3 || ((n - 1) % 2) != 0)
             return negative(sid, 0x13, out);
@@ -588,13 +691,9 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
             return negative(sid, 0x13, out);
 
         unsigned short did = (unsigned short)((req[1] << 8) | req[2]);
-        unsigned long len = n - 3;
-
-        if (did != CODING_DID || len == 0 || len > MAXCODING)
-            return negative(sid, 0x31, out);
-
-        memcpy(coding, req + 3, len);
-        codingLen = len;
+        unsigned char nrc = writeDid(did, req + 3, n - 3);
+        if (nrc)
+            return negative(sid, nrc, out);
 
         out[0] = 0x6E;
         out[1] = req[1];

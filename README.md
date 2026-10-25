@@ -20,6 +20,7 @@ editable options. (The data shown is illustrative.)*
 | `mcpserver_handlers.py` | Bridge actions, reloaded by the macro whenever the file changes |
 | `index.html` | The web page, embedded into `laertes.exe` |
 | `scripts/licenses.sh` | Generates `THIRD_PARTY_LICENSES.txt` for a release |
+| `scripts/devbridge.py` | Development connection to the bridge (blocks Laertes while open) |
 
 ## Build
 
@@ -31,8 +32,22 @@ is not open with its window, starts ODIS in the background as its automation web
 hardware-less J2534 device built from `offlinevci/offlinevci.c` (the DLL is committed; rebuild it with
 `offlinevci\build.cmd`, which needs [zig](https://ziglang.org)).
 
-For development, `laertes.exe -grpstub` also serves a stand-in for VW's online (GRP) sign-in on
-`127.0.0.1:7000` (account `admin`/`admin`); ODIS uses it when its `grp.discovery` points there.
+By default Laertes serves a stand-in for VW's online services on `127.0.0.1:23032` (account
+`admin`/`admin`): VW's online (GRP) sign-in, and VW's GSB web service at `/services` (the online
+call behind component protection, PinService `ProcessPin`). While it runs, the bridge points ODIS's
+GSB URLs (`url.*.gsb`) at it before each online guided function, so a function such as component
+protection completes its online step offline; the virtual VCI then accepts whatever it writes to the
+units. (Component protection's GSB call carries no token, so no sign-in happens; a flow that needs
+sign-in is served on the same port once ODIS's `grp.discovery` points there.) Run `laertes.exe
+-grpstub=false` to use VW's real backend instead.
+
+To send bridge actions by hand while Laertes is running, use the development connection on
+`127.0.0.1:8766`: `python scripts/devbridge.py '{"action": "ping"}'` (several commands as further
+arguments, or one per line on stdin). While it is connected the bridge refuses Laertes's commands with
+"development connection active", so the two never drive ODIS at once; Laertes works again as soon as
+the script exits. `"token": "@"` in a command stands for the debug token (for `_debug`). A command
+that hangs inside ODIS keeps the connection busy even after the script exits; `{"action": "shutdown"}`
+still gets through then and stops the bridge, and Laertes starts it again.
 
 ## Release
 

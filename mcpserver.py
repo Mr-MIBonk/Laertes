@@ -19,6 +19,9 @@ from java.lang import Throwable
 
 HOST = "127.0.0.1"
 PORT = 8765
+# The development connection (devbridge.py): one client at a time, on its own port. While it is
+# connected, commands on PORT (Laertes) are refused, so the two never drive ODIS at once.
+DEV_PORT = 8766
 MACRO_DIR = r"C:\ProgramData\OE\macros"
 HANDLERS_FILE = os.path.join(MACRO_DIR, "mcpserver_handlers.py")
 
@@ -90,7 +93,7 @@ def handle_request(cmd):
     return response
 
 
-def client_loop(conn):
+def client_loop(conn, dev=False):
     try:
         buffer = ""
 
@@ -115,7 +118,10 @@ def client_loop(conn):
 
                 try:
                     cmd = json.loads(line)
-                    response = handle_request(cmd)
+                    if not dev and _dev_slot.locked():
+                        response = {"ok": False, "error": DEV_ACTIVE}
+                    else:
+                        response = handle_request(cmd)
                 except (Exception, Throwable) as e:
                     traceback.print_exc()
                     # unicode, not str: ODIS messages may contain non-ASCII text.
@@ -162,18 +168,27 @@ SINGLE_ACCESS = ("single access limit: another client is already connected to th
                  "close it (e.g. the other Laertes) and try again")
 
 
-def serve_client(conn):
+_dev_slot = threading.Lock()
+DEV_ACTIVE = ("development connection active: the ODIS bridge serves only it until it disconnects "
+              "(close devbridge.py)")
+DEV_BUSY = ("single access limit: another development connection is already open (if its command "
+            "hangs in ODIS, a shutdown command still stops the bridge; Laertes starts it again)")
+
+
+def serve_client(conn, slot=_client_slot, dev=False):
     try:
-        client_loop(conn)
+        client_loop(conn, dev)
     finally:
-        _client_slot.release()
-        print("Client disconnected")
+        slot.release()
+        print("Development client disconnected; Laertes can use the bridge again" if dev else "Client disconnected")
 
 
-def reject_client(conn):
+def reject_client(conn, error=SINGLE_ACCESS, allow_shutdown=False):
     """Tells a client that arrives while another is connected about the limit, as the reply to
     its first command (read first: closing on unread data resets the connection and can lose the
-    reply), and closes its connection. In its own thread, so the accept loop is not held up."""
+    reply), and closes its connection. In its own thread, so the accept loop is not held up.
+    allow_shutdown: a "shutdown" command is still obeyed (devbridge.py '{"action": "shutdown"}'), the way out
+    when a development command hangs inside ODIS and so keeps its slot, and Laertes, blocked."""
     print("Client rejected: another client is connected")
 
     def reply():
@@ -185,7 +200,12 @@ def reject_client(conn):
                 if not chunk:
                     break
                 data += chunk
-            conn.sendall((json.dumps({"ok": False, "error": SINGLE_ACCESS}) + "\n").encode("utf-8"))
+            if allow_shutdown and data.strip() and json.loads(data.split("\n")[0]).get("action") == "shutdown":
+                _stop.set()
+                conn.sendall((json.dumps({"ok": True, "stopping": True}) + "\n").encode("utf-8"))
+                socket.create_connection((HOST, PORT)).close()  # wake the accept loop so main() returns
+                return
+            conn.sendall((json.dumps({"ok": False, "error": error}) + "\n").encode("utf-8"))
         except Exception:
             pass
         finally:
@@ -199,13 +219,38 @@ def reject_client(conn):
     t.start()
 
 
-def main():
+def listen(port):
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((HOST, PORT))
+    server.bind((HOST, port))
     server.listen(5)
+    return server
 
+
+def dev_accept_loop(server):
+    """Accepts the development connection: one at a time; others are told so and closed."""
+    while not _stop.isSet():
+        try:
+            conn, addr = server.accept()
+        except Exception:
+            return  # the server socket was closed: the bridge stops
+        if not _dev_slot.acquire(False):
+            reject_client(conn, DEV_BUSY, allow_shutdown=True)
+            continue
+        print("Development client connected (Laertes is blocked until it disconnects):", addr)
+        t = threading.Thread(target=serve_client, args=(conn, _dev_slot, True))
+        t.setDaemon(True)
+        t.start()
+
+
+def main():
+    server = listen(PORT)
     print("ODIS Jython bridge listening on %s:%d" % (HOST, PORT))
+    dev_server = listen(DEV_PORT)
+    print("Development connection on %s:%d" % (HOST, DEV_PORT))
+    t = threading.Thread(target=dev_accept_loop, args=(dev_server,))
+    t.setDaemon(True)
+    t.start()
 
     try:
         while not _stop.isSet():
@@ -223,6 +268,7 @@ def main():
             t.start()
     finally:
         server.close()
+        dev_server.close()
     print("ODIS bridge stopped; ODIS can be used again.")
 
 
