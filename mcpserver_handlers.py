@@ -1844,7 +1844,9 @@ def _page_ui_connector(context, gfs, jid, progress, log, done):
             return unicode(t)
 
     def note(kind, msg):
-        log.append({"kind": kind, "text": msg})
+        # "t" (Unix seconds) times each entry, so the page can show when it happened and match the
+        # CAN traffic of that moment to the step that caused it.
+        log.append({"kind": kind, "text": msg, "t": time.time()})
         _job_set(jid, message=msg, data={"log": log})
 
     def ask(prompt):
@@ -1859,7 +1861,7 @@ def _page_ui_connector(context, gfs, jid, progress, log, done):
     def answered(ok, what, choice=None):
         """Logs the page's answer to a dialog, so the run shows each step that was chosen. The
         chosen ODIS text is kept apart from our own words, so only it is translated."""
-        entry = {"kind": "you", "text": what if ok else "cancelled"}
+        entry = {"kind": "you", "text": what if ok else "cancelled", "t": time.time()}
         if ok and choice is not None:
             entry["choice"] = choice
         log.append(entry)

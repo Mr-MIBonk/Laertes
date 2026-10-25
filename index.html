@@ -243,6 +243,13 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .expform.gfwait { border:2px solid var(--chg); border-radius:8px; padding:10px 12px; animation:gfwait 1.6s ease-in-out 3; }
 .gfwaithead { font-weight:bold; color:var(--chg); margin-bottom:6px; }
 tr.gfyou td { color:var(--accent); font-weight:600; }
+/* ODIS messages log: clickable rows (mark a step's CAN frames), with a monospace time column. */
+.vals.gflog tr { cursor:pointer; }
+.vals.gflog tr:hover td { background:color-mix(in srgb, var(--accent) 8%, transparent); }
+.vals.gflog tr.sel td { background:color-mix(in srgb, var(--accent) 16%, transparent); }
+.vals.gflog td.t { font-family:Consolas, monospace; font-size:12px; color:var(--muted); white-space:nowrap; }
+/* CAN frames of the ODIS step picked in the messages log. */
+table.can tr.canhl td { background:color-mix(in srgb, var(--accent) 22%, transparent) !important; box-shadow:inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent); }
 @keyframes gfwait { 50% { box-shadow:0 0 0 4px color-mix(in srgb, var(--chg) 35%, transparent); } }
 .retrobar { border:1px solid var(--chg); border-radius:4px; padding:6px 8px; margin:0 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .retrobar b { color:var(--chg); }
@@ -1521,6 +1528,7 @@ async function pollVci(force) {
   const t0 = lines.length ? Number(lines[0].split(' ')[0]) : 0;
   const pending = {}; // multi-frame request being reassembled, by channel and CAN ID
   let msgs = 0, shown = 0;
+  const gsteps = gfSteps(); // the running guided function's ODIS messages, to mark each frame's step
   const body = lines.map(l => {
     const p = l.split(' '), kind = p[1];
     const t = ((Number(p[0]) - t0) / 1000).toFixed(3);
@@ -1561,10 +1569,15 @@ async function pollVci(force) {
     const at = Number(p[0]) + tickOffset, o = ops.find(o => at >= o.start - 300 && at <= o.end + 300);
     if (vciOpFilter && !(o && (vciOpFilter === 'any' || o.cat === vciOpFilter))) return '';
     if (o) tip.unshift(`During: ${o.label} (started ${new Date(o.start).toLocaleTimeString()})`);
-    const text = [t, id, f.type, hexBytes(f.uds), u.short, o ? o.label : ''].join(' ').toLowerCase();
+    // The ODIS guided-function message (step) current when this frame went over the bus.
+    let step = null;
+    for (const s of gsteps) { if (s.t0 <= at) step = s; else break; }
+    if (step) tip.unshift(`Step: ${step.label.replace(/\n/g, ' ').slice(0, 160)}`);
+    const hl = gfStepHL && at >= gfStepHL.t0 && at < gfStepHL.t1;
+    const text = [t, id, f.type, hexBytes(f.uds), u.short, o ? o.label : '', step ? step.label : ''].join(' ').toLowerCase();
     if (filter && !text.includes(filter)) return '';
     shown++;
-    return `<tr class="${cls}${o ? ' op op-' + o.cat : ''}" title="${esc(tip.join('\n'))}"><td>${t}</td><td class="dir">${dir}</td><td>${esc(id)}</td><td>${esc(f.type)}</td>`
+    return `<tr class="${cls}${o ? ' op op-' + o.cat : ''}${hl ? ' canhl' : ''}" title="${esc(tip.join('\n'))}"><td>${t}</td><td class="dir">${dir}</td><td>${esc(id)}</td><td>${esc(f.type)}</td>`
       + `<td class="d">${hexBytes(f.uds)}</td><td class="m">${o ? `<span class="opchip">${esc(o.tag)}</span>` : ''}${esc(u.short)}</td></tr>`;
   }).join('');
   const html = msgs || events || wakes ? `<table class="can"><thead><tr><th>time (s)</th><th></th><th>CAN ID</th><th>ISO-TP</th><th>data</th><th>meaning</th></tr></thead><tbody>${body}</tbody></table>`
@@ -3168,6 +3181,26 @@ function renderRetrofitTab() {
 // sign-in among them. Component protection is per unit; the immobilizer is vehicle-wide, so
 // its tab lists the functions ODIS offers for this vehicle and runs the one chosen.
 let gfRun = null, gfPromptShownId = 0;
+// A guided function's ODIS messages are timed (each log entry's "t", Unix seconds), so the CAN trace
+// can show which message (step) caused each frame. gfStepHL is the step whose frames are highlighted.
+let gfStepHL = null;
+function gfLog() { return (gfRun && ((gfRun.result && gfRun.result.log) || gfRun.log)) || []; }
+// The ODIS messages as time-ordered steps; each spans from its own time until the next message's.
+function gfSteps() {
+  return gfLog().map((m, i, a) => ({
+    i, t0: (m.t || 0) * 1000, t1: a[i + 1] && a[i + 1].t ? a[i + 1].t * 1000 : Infinity,
+    label: (m.kind === 'you' ? '➜ ' + (m.choice || m.text) : m.text),
+  })).filter(s => s.t0);
+}
+// Click an ODIS message to mark its CAN frames (open the trace and highlight them); click again to clear.
+function gfHighlightStep(i) {
+  const s = gfSteps().find(s => s.i === i);
+  if (!s) return;
+  gfStepHL = (gfStepHL && gfStepHL.i === i) ? null : s;
+  gfRender();
+  if (gfStepHL) toggleCanPanel(true);
+  pollVci(true);
+}
 const gfLabel = g => (g || '').replace(/@\d+$/, '').replace(/_/g, ' ').trim();
 // ODIS's name of a guided function, or its id made readable when the name did not resolve.
 const gfName = f => !f.name || /^(displayName|testerDescription|GUID)/.test(f.name) ? gfLabel(f.gfsid) : f.name;
@@ -3216,8 +3249,9 @@ function gfOutHTML(r) {
   const log = (r.result && r.result.log) || r.log || [];
   // Your answers are our own words (OK, Continue, chose) plus the ODIS text you chose: only that is translated.
   const logText = m => m.kind === 'you' ? '' : m.text;
-  if (log.length) h += `<h2 class="sub">ODIS messages ${copyBtn(log.map(m => m.kind + ': ' + m.text + (m.choice ? ': ' + m.choice : '')).join('\n'), 'Copy all ODIS messages')} ${trTableBtn(log.map(m => m.choice || logText(m)).filter(Boolean))}</h2><table class="vals">${log.map(m =>
-    `<tr class="${m.kind === 'you' ? 'gfyou' : ''}"><td>${m.kind === 'you' ? '➜ you' : esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${m.kind === 'you' ? esc(m.text) + (m.choice ? ': ' + tx(m.choice) : '') : tx(m.text)}</td></tr>`).join('')}</table>`;
+  const fmtT = t => t ? new Date(t * 1000).toLocaleTimeString('en-GB', {hour12: false}) + '.' + String(Math.round(t % 1 * 1000)).padStart(3, '0') : '';
+  if (log.length) h += `<h2 class="sub">ODIS messages <span class="meta" style="font-weight:normal">— click a row to mark its CAN messages</span> ${copyBtn(log.map(m => (m.t ? fmtT(m.t) + '  ' : '') + m.kind + ': ' + m.text + (m.choice ? ': ' + m.choice : '')).join('\n'), 'Copy all ODIS messages')} ${trTableBtn(log.map(m => m.choice || logText(m)).filter(Boolean))}</h2><table class="vals gflog">${log.map((m, i) =>
+    `<tr class="${m.kind === 'you' ? 'gfyou' : ''}${gfStepHL && gfStepHL.i === i ? ' sel' : ''}" onclick="gfHighlightStep(${i})" title="Click to highlight this step's CAN messages in the trace"><td class="t">${fmtT(m.t)}</td><td>${m.kind === 'you' ? '➜ you' : esc(m.kind)}</td><td class="${m.kind === 'error' ? 'status err' : ''}" style="white-space:pre-wrap">${m.kind === 'you' ? esc(m.text) + (m.choice ? ': ' + tx(m.choice) : '') : tx(m.text)}</td></tr>`).join('')}</table>`;
   if (r.result) h += `<div class="status">ODIS finished ${esc(r.result.function || 'the guided function')}${r.result.outcome ? ' — result: <b>' + esc(r.result.outcome) + '</b> ' + trBtn(r.result.outcome) : ''}</div>`;
   return h;
 }
