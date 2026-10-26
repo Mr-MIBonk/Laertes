@@ -260,6 +260,9 @@ static Written *findWritten(unsigned short did) {
     return 0;
 }
 
+// persistDid (defined below) records a written value in dids.txt so it survives a DLL reload.
+static void persistDid(unsigned short did, const unsigned char *data, unsigned long len);
+
 // Stores a written value; returns 0 or a negative response code.
 static unsigned char writeDid(unsigned short did, const unsigned char *data, unsigned long len) {
     if (len == 0 || len > MAXWRITE) return 0x13; // incorrectMessageLengthOrInvalidFormat
@@ -273,6 +276,7 @@ static unsigned char writeDid(unsigned short did, const unsigned char *data, uns
 
     memcpy(w->data, data, len);
     w->len = len;
+    persistDid(did, data, len); // keep the value across a DLL reload (read back by didOverride)
     return 0;
 }
 
@@ -324,6 +328,84 @@ static int didOverride(unsigned short did, unsigned long *len) {
         if (*p) p++;
     }
     return 0;
+}
+
+// persistDid records a written DID value in dids.txt so it survives a DLL reload: written[] is only
+// in-memory, but didOverride reads dids.txt back at the highest precedence, so the next read -- this
+// session or after a restart -- returns the written value. Every other line (comments, other DIDs) is
+// preserved; only this DID's line is rewritten, appended at the end. The file is swapped in atomically
+// via a temp file so a concurrent didOverride read never sees it half-written. A file larger than the
+// buffer is left untouched rather than risk truncating it.
+static SRWLOCK didFileLock = SRWLOCK_INIT;
+
+static void persistDid(unsigned short did, const unsigned char *data, unsigned long len) {
+    char path[MAX_PATH], tmp[MAX_PATH];
+    laertesFile(path, sizeof path, "dids.txt");
+    laertesFile(tmp, sizeof tmp, "dids.txt.new");
+    if (!path[0] || !tmp[0]) return;
+
+    AcquireSRWLockExclusive(&didFileLock);
+
+    static char in[16384];
+    DWORD got = 0;
+    HANDLE f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, 0,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (f != INVALID_HANDLE_VALUE) {
+        ReadFile(f, in, sizeof in - 1, &got, 0);
+        CloseHandle(f);
+    }
+    if (got >= sizeof in - 1) { // file too large to rewrite safely
+        ReleaseSRWLockExclusive(&didFileLock);
+        return;
+    }
+    in[got] = 0;
+
+    static char out[sizeof in + 256];
+    unsigned long o = 0;
+
+    // Copy every existing line except the one that defines this DID.
+    for (char *p = in; *p;) {
+        char *line = p;
+        while (*p && *p != '\n') p++;
+        if (*p) p++; // step past '\n'
+        unsigned long full = (unsigned long)(p - line); // line incl. its newline, if any
+
+        char *end;
+        unsigned long id = strtoul(line, &end, 16);
+        if (end != line && id == did) continue; // drop the old value for this DID
+
+        if (o + full < sizeof out) {
+            memcpy(out + o, line, full);
+            o += full;
+        }
+    }
+
+    if (o > 0 && out[o - 1] != '\n' && o < sizeof out) out[o++] = '\n';
+
+    // Append "<DID> <byte> <byte> ..." for the new value, in the format didOverride parses.
+    static const char hex[] = "0123456789ABCDEF";
+    if (o + 5 + len * 3 + 1 < sizeof out) {
+        out[o++] = hex[(did >> 12) & 0xF];
+        out[o++] = hex[(did >> 8) & 0xF];
+        out[o++] = hex[(did >> 4) & 0xF];
+        out[o++] = hex[did & 0xF];
+        for (unsigned long i = 0; i < len; i++) {
+            out[o++] = ' ';
+            out[o++] = hex[(data[i] >> 4) & 0xF];
+            out[o++] = hex[data[i] & 0xF];
+        }
+        out[o++] = '\n';
+    }
+
+    HANDLE wf = CreateFileA(tmp, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (wf != INVALID_HANDLE_VALUE) {
+        DWORD w = 0;
+        WriteFile(wf, out, o, &w, 0);
+        CloseHandle(wf);
+        MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING);
+    }
+
+    ReleaseSRWLockExclusive(&didFileLock);
 }
 
 static const unsigned char *didValue(unsigned short did, unsigned long *len) {

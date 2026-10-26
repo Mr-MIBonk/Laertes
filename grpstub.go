@@ -534,24 +534,60 @@ func (s *grpStub) gsb(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GSB /services request (%d bytes): %s", len(body), body)
 
 	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
-	if strings.Contains(string(body), "ProcessPin") {
+	bs := string(body)
+	switch {
+	case strings.Contains(bs, "ProcessPin"):
+		// Component-protection PIN tunnel (FERS/ElectronicsRepairService), SOAP-wrapped.
 		io.WriteString(w, stubProcessPinResponse())
-		return
+	case strings.Contains(bs, "LOGONService") && strings.Contains(bs, "Logout"):
+		// LogonService Logout posted raw (not SOAP-tunnelled) by the GRPDSS teardown step.
+		io.WriteString(w, stubLogoutResponse)
+	default:
+		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
+			`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`)
 	}
-	io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
-		`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`)
 }
 
+// stubLogoutResponse answers the LogonService Logout the component-protection function's teardown step
+// (sys_x_x_1_0815_x_p_logout_grpdss) posts to /services. Unlike GetPin, that request is a bare DMS
+// message — <MESSAGE DTD="XMLMSG"><COMMAND><REQUEST NAME="Logout" DTD="LOGONService"/> — posted
+// directly, not through the ProcessPin SOAP tunnel (see the jar's LogoutRequest.xml template). The reply
+// is therefore the matching raw DMS RESULT: a RESPONSE[NAME=Logout] with no EXCEPTION, i.e. a plain
+// success. The previous empty <soap:Body/> left DmsWrapper2Impl.logout with no parseable result, which
+// it scored -2147483648 and which dragged the whole run into an invalid final state.
+const stubLogoutResponse = `<?xml version="1.0" encoding="UTF-8"?>` +
+	`<MESSAGE DTD="XMLMSG" VERSION="1.4.0.0"><HEADER/>` +
+	`<RESULT><RESPONSE NAME="Logout" DTD="LOGONService" VERSION="1.0.1.0" ID="0"/></RESULT></MESSAGE>`
+
 // stubFenixEmpty is the inner Fenix DMS message ODIS decodes out of ProcessPinResponse: a well-formed
-// but EMPTY GetPin response. It has the HEADER and the RESULT/RESPONSE[NAME=GetPin] the parser walks,
-// and an empty DATA section with no SATZART, no WFS-VIN, no PIN. It is deliberately not a populated
-// component-protection result: it lets the decode succeed so the log reports, field by field, what the
-// guided function then reads — the authorization payload is not supplied here.
+// GetPin response in the exact shape ODIS's DmsWrapper2 reads. It carries the HEADER and the
+// RESULT/RESPONSE[NAME=GetPin] the parser walks, and a DATA section whose values ODIS binds by the
+// XPaths it actually uses: SATZART as /DATA/SATZART/@SA, and every other field as
+// /DATA/PARAM[@NAME="..."]/@VALUE. Those paths were read straight off engine.log, which logged
+// "INFOSERVICES cannot access XML-Tag" for each one when the response used named child elements
+// (<WFS-VIN>...) instead — that shape is NOT read, only this PARAM/@SA shape is.
+//
+// The authorization-bearing fields (PIN, FSC, the KS-MASTER/KOMP-V values) are bench placeholders,
+// left empty where unknown: this is a protocol skeleton that lets ODIS parse the response and read it
+// field by field, not a populated/forged component-protection unlock.
 const stubFenixEmpty = `<?xml version="1.0" encoding="UTF-8"?>` +
 	`<MESSAGE DTD="XMLMSG" VERSION="1.0"><HEADER/>` +
-	`<RESULT><RESPONSE DTD="PINService" ID="0" NAME="GetPin" VERSION="1.0">` +
-	`<DATA/>` +
-	`</RESPONSE></RESULT></MESSAGE>`
+	`<RESULT><RESPONSE DTD="PINService" ID="0" NAME="GetPin" VERSION="1.0"><DATA>` +
+	`<SATZART SA="TESTER-KOMP-V2"/>` +
+	`<PARAM NAME="WFS-VIN" VALUE="WVWZZZ10183822233"/>` +
+	`<PARAM NAME="KOMP" VALUE="K17"/>` +
+	`<PARAM NAME="KOMP-SERIE" VALUE=""/>` +
+	`<PARAM NAME="KOMP-SHE-KZ" VALUE=""/>` +
+	`<PARAM NAME="KOMP-S-TYP" VALUE=""/>` +
+	`<PARAM NAME="KS-MASTER-SHE-KZ" VALUE=""/>` +
+	`<PARAM NAME="IKA-KS-MASTER-V" VALUE=""/>` +
+	`<PARAM NAME="GFA-KOMP-V" VALUE=""/>` +
+	`<PARAM NAME="IKA-KOMP-V" VALUE=""/>` +
+	`<PARAM NAME="MEK-KOMP-V" VALUE=""/>` +
+	`<PARAM NAME="FSC" VALUE=""/>` +
+	`<PARAM NAME="TEXT-INHALT" VALUE=""/>` +
+	`<PARAM NAME="PIN" VALUE="1234"/>` +
+	`</DATA></RESPONSE></RESULT></MESSAGE>`
 
 // stubProcessPinResponse satisfies DmsTunnelPinService's //*[local-name()='ProcessPinResponse']
 // [@mimeCode] selector. ODIS base64-decodes the element content and XML-parses the bytes (an escaped
