@@ -313,7 +313,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <button id="startVirtual" class="vcibtn" hidden onclick="startBridge(true)" title="Start the bridge with Laertes's virtual VCI: ODIS in the background, no interface, simulated units, the vehicle project from Settings">▶ Virtual VCI</button>
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <button id="actBtn" class="vcibtn" onclick="toggleActivity()" title="Activity: what Laertes did in this session (operations, results, messages, bridge)">📋<span class="badge" hidden></span></button>
-  <select id="odisProduct" class="vcibtn" onchange="setOdisProduct(this.value)" title="Which ODIS installation Laertes drives: ODIS-E (Engineering, C:\Program Files\OE) or ODIS-S (Service, C:\Program Files\OS). ODIS-S runs guided functions such as component protection. Stop the bridge before switching; it applies on the next start."><option value="OE">E</option><option value="OS">S</option></select>
+  <select id="odisProduct" class="vcibtn" onchange="setOdisProduct(this.value)" title="Which ODIS installation Laertes drives: ODIS-E (Engineering, C:\Program Files\OE) or ODIS-S (Service, C:\Program Files\OS). ODIS-S runs guided functions such as component protection. Stop the bridge before switching; it applies on the next start. Note: ODIS-S shows a disclaimer dialog at startup that you must accept for the bridge to connect."><option value="OE">E</option><option value="OS">S</option></select>
   <span id="ver" class="ver" title="Laertes version"></span>
   </div></nav>
 <div id="activity" class="activity" hidden></div>
@@ -901,7 +901,7 @@ async function pingBridge() {
     veh.hidden = true;
     // Laertes may be starting the bridge itself (ODIS in the background, see odis.go).
     $('#startBridge').hidden = $('#startVirtual').hidden = o.state === 'starting';
-    if (o.state === 'starting') { el.className = 'conn wait'; el.title = 'Laertes is starting ODIS and the bridge macro.'; startTimer(o); }
+    if (o.state === 'starting') { el.className = 'conn wait'; el.title = 'Laertes is starting ODIS and the bridge macro.' + (o.product === 'OS' ? '\n\nODIS-S: accept the disclaimer dialog in the ODIS-S window — the bridge connects only after you do.' : ''); startTimer(o); }
     else if (o.state === 'error') { txt.textContent = 'ODIS bridge offline ⚠'; el.title = o.message + '\n\n' + e.message; }
     if (o.state === 'error' && o.message !== odisShown) toast(o.message, true);
     odisShown = o.message;
@@ -955,6 +955,7 @@ async function startBridge(virtual) {
   if (direct && !settings.odisProject) { showTab('settings'); toast(`${virtual ? 'Virtual VCI' : 'Load the project directly'}: choose the vehicle project first (Settings › ODIS bridge).`, true); return; }
   try { await api('POST', '/api/odis/start', {project: direct ? settings.odisProject : '', offline: virtual}); }
   catch (e) { toast(e.message, true); }
+  if (settings.odisProduct === 'OS') toast('ODIS-S shows a disclaimer dialog at startup. Click “Accept” in the ODIS-S window — until you do, the bridge cannot connect.');
   pingBridge();
 }
 async function connPoll() { await pingBridge(); setTimeout(connPoll, 5000); }
