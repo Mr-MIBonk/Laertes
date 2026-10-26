@@ -440,16 +440,34 @@ static const unsigned char *didValue(unsigned short did, unsigned long *len) {
 
 static HMODULE selfModule;
 
+// laertesFile builds the path of a companion file (offline.conf, dids.txt, wake.on, vci-can.log) next
+// to this DLL. The DLL is deployed at <ProgramData>\<product>\laertes\laertes_vci32.dll, so its own
+// directory is the product's laertes folder -- this follows whichever ODIS (OE or OS) loaded it,
+// instead of hardcoding one product. Falls back to %ProgramData%\OE\laertes\ if the module path is
+// unavailable.
 static void laertesFile(char *out, unsigned long cap, const char *name) {
-    char pd[MAX_PATH];
-    unsigned long n = GetEnvironmentVariableA("ProgramData", pd, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) lstrcpynA(pd, "C:\\ProgramData", MAX_PATH);
+    char dir[MAX_PATH];
+    unsigned long n = GetModuleFileNameA(selfModule, dir, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        char *slash = 0;
+        for (char *p = dir; *p; p++)
+            if (*p == '\\' || *p == '/') slash = p;
+        if (slash) {
+            slash[1] = 0; // keep the trailing separator, drop the file name
+            if (lstrlenA(dir) + lstrlenA(name) + 1 > (int)cap) { out[0] = 0; return; }
+            lstrcpynA(out, dir, cap);
+            lstrcatA(out, name);
+            return;
+        }
+    }
 
+    char pd[MAX_PATH];
+    n = GetEnvironmentVariableA("ProgramData", pd, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) lstrcpynA(pd, "C:\\ProgramData", MAX_PATH);
     if (lstrlenA(pd) + (int)sizeof("\\OE\\laertes\\") + lstrlenA(name) + 1 > (int)cap) {
         out[0] = 0;
         return;
     }
-
     lstrcpynA(out, pd, cap);
     lstrcatA(out, "\\OE\\laertes\\");
     lstrcatA(out, name);
