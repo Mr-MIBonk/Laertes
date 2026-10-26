@@ -1,5 +1,6 @@
 # Builds a release when a version tag is pushed:  git tag v0.1.0 && git push origin v0.1.0
-# The release gets laertes.exe, the two bridge scripts, LICENSE and THIRD_PARTY_LICENSES.txt.
+# The release gets laertes.exe (self-contained -- it embeds the bridge scripts and the offline VCI),
+# plus LICENSE and THIRD_PARTY_LICENSES.txt.
 #
 # Needs Gitea Actions enabled for the repository and a runner with the "ubuntu-latest" label that
 # can run containers. The job uses only shell steps (no node-based actions), so it runs in the
@@ -58,13 +59,13 @@ jobs:
           # Reuse the release if this tag was published before (re-run), else create it.
           id=$(curl -sf -H "$auth" "$api/releases/tags/$TAG" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2 || true)
           if [ -z "$id" ]; then
-            body="Laertes $TAG for Windows. Copy the two mcpserver_*.py files to C:\\\\ProgramData\\\\OE\\\\macros\\\\, run mcpserver.py from the ODIS macro function, then start laertes.exe. See the Guide tab for details. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
+            body="Laertes $TAG for Windows: a single self-contained laertes.exe (it embeds the ODIS bridge macro and the offline VCI, and installs the macro into ODIS itself). See the Guide tab to get started. MIT licensed; third-party notices in THIRD_PARTY_LICENSES.txt."
             id=$(curl -sf -H "$auth" -H "Content-Type: application/json" -X POST "$api/releases" \
               -d "{\"tag_name\":\"$TAG\",\"name\":\"Laertes $TAG\",\"body\":\"$body\"}" |
               grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
           fi
           [ -n "$id" ] || { echo "could not create the release"; exit 1; }
-          for f in laertes.exe mcpserver.py mcpserver_handlers.py LICENSE THIRD_PARTY_LICENSES.txt; do
+          for f in laertes.exe LICENSE THIRD_PARTY_LICENSES.txt; do
             curl -sf -H "$auth" -F "attachment=@$f" "$api/releases/$id/assets?name=$f" > /dev/null
             echo "uploaded $f"
           done
