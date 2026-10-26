@@ -224,6 +224,8 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .tabs #odisProduct { width:40px; box-sizing:border-box; border:1px solid var(--line); border-radius:4px; padding:2px 2px; margin-left:6px; align-self:center; background:transparent; color:var(--text); font-size:12px; }
 #odisLogsBtn { position:fixed; left:12px; bottom:12px; z-index:60; border:1px solid var(--line); border-radius:6px; padding:6px 10px; background:var(--panel); color:var(--text); font-size:12px; cursor:pointer; opacity:.82; box-shadow:0 1px 4px rgba(0,0,0,.2); }
 #odisLogsBtn:hover { opacity:1; }
+#startProgress { position:fixed; top:0; left:0; right:0; height:3px; z-index:70; background:transparent; pointer-events:none; }
+#startProgress .fill { height:100%; width:0; background:linear-gradient(90deg, #2563eb, #60a5fa); box-shadow:0 0 6px rgba(59,130,246,.6); transition:width .4s ease; }
 .tabs button.vcibtn.ign-on { color:var(--on); border-color:var(--on); }
 /* The hourglass runs for a while, then turns over, like a real one. */
 .tabs .busy .hourglass { display:inline-block; animation:hourglass 2s ease-in-out infinite; }
@@ -316,6 +318,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <select id="odisProduct" class="vcibtn" onchange="setOdisProduct(this.value)" title="Which ODIS installation Laertes drives: ODIS-E (Engineering, C:\Program Files\OE) or ODIS-S (Service, C:\Program Files\OS). ODIS-S runs guided functions such as component protection. Stop the bridge before switching; it applies on the next start. Note: ODIS-S shows a disclaimer dialog at startup that you must accept for the bridge to connect."><option value="OE">E</option><option value="OS">S</option></select>
   <span id="ver" class="ver" title="Laertes version"></span>
   </div></nav>
+<div id="startProgress" hidden aria-hidden="true"><div class="fill"></div></div>
 <div id="activity" class="activity" hidden></div>
 <button id="odisLogsBtn" onclick="openOdisLogs()" title="Open the engine.log of the selected ODIS (OE or OS) in its default viewer, to watch what ODIS is doing">📄 ODIS logs</button>
 <div id="main"></div>
@@ -936,16 +939,28 @@ function bridgeEvent(state, kind, text) {
 }
 // The bridge start timer in the top bar: the step and the time since the start began (from
 // Laertes, so it also counts a start that began before the page opened), every second.
-let startTick = null, startAt = 0, startMsg = '';
+let startTick = null, startAt = 0, startMsg = '', startEta = 60;
 function startTimer(o) {
   startAt = Date.now() - (o.elapsed || 0) * 1000; startMsg = o.message;
+  // How far along: elapsed against the last successful start's duration (took), or ~60 s the first
+  // time. The bar caps at 92 % while starting and fills to 100 % only once the bridge connects, so a
+  // slower-than-usual start (e.g. waiting on the ODIS-S disclaimer) sits near the end instead of lying.
+  startEta = o.took && o.took > 5 ? o.took : 60;
+  const bar = $('#startProgress'), fill = bar && bar.querySelector('.fill');
+  if (bar) bar.hidden = false;
   const show = () => {
-    const el = $('#conn'), s = Math.floor((Date.now() - startAt) / 1000);
-    if (!el.classList.contains('wait')) { clearInterval(startTick); startTick = null; return; }
-    el.querySelector('.txt').textContent = `${startMsg} ⏱ ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    const el = $('#conn'), s = (Date.now() - startAt) / 1000;
+    if (!el.classList.contains('wait')) {
+      clearInterval(startTick); startTick = null;
+      if (fill) fill.style.width = '100%';
+      if (bar) setTimeout(() => { bar.hidden = true; if (fill) fill.style.width = '0'; }, 500);
+      return;
+    }
+    el.querySelector('.txt').textContent = `${startMsg} ⏱ ${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}`;
+    if (fill) fill.style.width = Math.min(92, s / startEta * 100).toFixed(1) + '%';
   };
   show();
-  if (!startTick) startTick = setInterval(show, 1000);
+  if (!startTick) startTick = setInterval(show, 500);
 }
 // Starts ODIS in the background and the bridge macro in it; the top bar shows the progress.
 // With the virtual VCI (offline), or when identifying by VIN is turned off for a bench, the chosen

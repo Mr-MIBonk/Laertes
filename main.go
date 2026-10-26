@@ -19,12 +19,13 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.0"
+const version = "0.9.1"
 
 //go:embed index.html
 var indexHTML []byte
 
 func main() {
+	setupConsoleColor()
 	exe, _ := os.Executable()
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
