@@ -221,6 +221,7 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .tabs .busy button, .tabs .conn button { font-size:11px; padding:1px 6px; }
 .tabs button.vcibtn { border:1px solid var(--line); border-radius:4px; padding:2px 8px; margin-left:6px; align-self:center; color:var(--text); font-size:12px; white-space:nowrap; }
 .tabs button.vcibtn.warn { color:var(--warn); }
+.tabs #odisProduct { width:40px; box-sizing:border-box; border:1px solid var(--line); border-radius:4px; padding:2px 2px; margin-left:6px; align-self:center; background:transparent; color:var(--text); font-size:12px; }
 .tabs button.vcibtn.ign-on { color:var(--on); border-color:var(--on); }
 /* The hourglass runs for a while, then turns over, like a real one. */
 .tabs .busy .hourglass { display:inline-block; animation:hourglass 2s ease-in-out infinite; }
@@ -310,6 +311,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <button id="startVirtual" class="vcibtn" hidden onclick="startBridge(true)" title="Start the bridge with Laertes's virtual VCI: ODIS in the background, no interface, simulated units, the vehicle project from Settings">▶ Virtual VCI</button>
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <button id="actBtn" class="vcibtn" onclick="toggleActivity()" title="Activity: what Laertes did in this session (operations, results, messages, bridge)">📋<span class="badge" hidden></span></button>
+  <select id="odisProduct" class="vcibtn" onchange="setOdisProduct(this.value)" title="Which ODIS installation Laertes drives: ODIS-E (Engineering, C:\Program Files\OE) or ODIS-S (Service, C:\Program Files\OS). ODIS-S runs guided functions such as component protection. Stop the bridge before switching; it applies on the next start."><option value="OE">E</option><option value="OS">S</option></select>
   <span id="ver" class="ver" title="Laertes version"></span>
   </div></nav>
 <div id="activity" class="activity" hidden></div>
@@ -545,12 +547,24 @@ function laertesLink() {
 // Settings, stored in the database (so they survive restarts and are shared by every browser that
 // opens Laertes). dtcCheck: read the fault memory before and after each coding/adaptation write and
 // show what changed. Loaded once at startup; defaults apply until then.
-const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en', autoTranslate: false, autoStartBridge: true, odisProject: '', odisOffline: false, odisVin: '', odisDirectProject: false,
+const settings = {dtcCheck: true, hideDangerous: true, transLang: 'en', autoTranslate: false, autoStartBridge: true, odisProject: '', odisOffline: false, odisVin: '', odisDirectProject: false, odisProduct: 'OE',
   wakeOn: false, wakeId: '3C0', wakeData: '00 00 03 00', wakeE2E: 'C3', wakeMs: 100};
 async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
   try { geko = await api('GET', '/api/geko'); } catch (e) {}
+  renderOdisProduct();
   if (currentTab() === 'settings') renderSettings();
+}
+// The ODIS target selector in the top bar: OE (Engineering) or OS (Service). Saved as a setting and
+// applied by the backend on the next bridge start, so switching needs the bridge stopped first.
+function renderOdisProduct() {
+  const sel = $('#odisProduct');
+  if (sel) sel.value = settings.odisProduct === 'OS' ? 'OS' : 'OE';
+}
+function setOdisProduct(p) {
+  settings.odisProduct = p === 'OS' ? 'OS' : 'OE';
+  saveSettings();
+  toast(`ODIS target set to ${settings.odisProduct === 'OS' ? 'ODIS-S (Service)' : 'ODIS-E (Engineering)'}. Stop the bridge and start it again to apply.`);
 }
 // The GeKo username and password: saved in laertes.db (password encrypted for this Windows user)
 // and filled into ODIS's username/password dialog when a guided function asks for it.

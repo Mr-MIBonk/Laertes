@@ -30,11 +30,42 @@ var bridgeMacro []byte
 //go:embed mcpserver_handlers.py
 var bridgeHandlers []byte
 
-// odisDir is ODIS's data folder (macros, configuration); odisInstallDir holds its launcher.
+// odisProduct selects which ODIS installation Laertes drives: "OE" (Offboard Engineering) or "OS"
+// (Offboard Service). Both install an OffboardDiagLauncher.exe under C:\Program Files\<product> with
+// data under C:\ProgramData\<product>. It is chosen in the top bar (saved as the odisProduct setting)
+// and applied by applyODISProduct, which recomputes every product-dependent path.
+//
+// Use "OS" for guided functions such as component protection: ODIS-E does not execute the guided-
+// function step classes (engine.log fills with "no access to class ...$Step_N", so the steps -- the
+// reads, routines and the writes -- are skipped), whereas ODIS-S is the service product that runs them.
+var odisProduct = "OE"
+
+// odisDir is ODIS's data folder (macros, configuration); odisInstallDir holds its launcher. These and
+// the offline-VCI/stub paths under odisDir are all set by applyODISProduct from odisProduct.
 var (
-	odisDir        = filepath.Join(envOr("ProgramData", `C:\ProgramData`), "OE")
-	odisInstallDir = filepath.Join(envOr("ProgramFiles", `C:\Program Files`), "OE")
+	odisDir        string
+	odisInstallDir string
 )
+
+func init() { applyODISProduct(odisProduct) }
+
+// applyODISProduct points odisDir, odisInstallDir and every path derived from them at ODIS product p
+// ("OE" or "OS"; anything else falls back to "OE"). Those paths are read when a start, a CAN-log poll
+// or a GSB request actually runs, so a change takes effect on the next bridge start: switch while the
+// bridge is stopped, since a running ODIS keeps using the paths it was started with.
+func applyODISProduct(p string) {
+	if p != "OS" {
+		p = "OE"
+	}
+	odisProduct = p
+	odisDir = filepath.Join(envOr("ProgramData", `C:\ProgramData`), p)
+	odisInstallDir = filepath.Join(envOr("ProgramFiles", `C:\Program Files`), p)
+	offlineVCIPath = filepath.Join(odisDir, "laertes", "laertes_vci32.dll")
+	offlineConfPath = filepath.Join(odisDir, "laertes", "offline.conf")
+	wakeFlagPath = filepath.Join(odisDir, "laertes", "wake.on")
+	offlineCANLogPath = filepath.Join(odisDir, "laertes", "vci-can.log")
+	gsbLogPath = filepath.Join(odisDir, "laertes", "gsb.log")
+}
 
 // odisService is ODIS's automation web service, served when ODIS is started without its window
 // (see odisWebServiceINI). Its executeMacro runs the bridge macro.
@@ -96,6 +127,7 @@ type odisStarter struct {
 	project    func() string // the last vehicle project used, for when the car cannot be identified
 	vin        func() string // the simulation VIN for offline mode (nil or "" keeps the VCI default)
 	wake       func() wakeConfig // the clamp 15 wake-up frame (nil: none)
+	product    func() string     // the chosen ODIS product ("OE"/"OS"); applied before each start
 
 	mu       sync.Mutex
 	state    string // "": not tried, "starting", "running", "error"
@@ -114,6 +146,7 @@ type odisStatus struct {
 	Took     float64 `json:"took"`    // seconds the last start took
 	Wake     bool    `json:"wake"`     // the wake-up frame can be switched (ignitionState)
 	Ignition bool    `json:"ignition"` // the wake-up frame is switched on
+	Product  string  `json:"product"`  // the ODIS installation in use: "OE" or "OS"
 }
 
 func (o *odisStarter) wakeFrame() wakeConfig {
@@ -126,7 +159,7 @@ func (o *odisStarter) wakeFrame() wakeConfig {
 func (o *odisStarter) status() odisStatus {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	st := odisStatus{State: o.state, Message: o.message, Launched: o.launched, VCI: selectedVCI(), Took: o.took.Seconds()}
+	st := odisStatus{State: o.state, Message: o.message, Launched: o.launched, VCI: selectedVCI(), Took: o.took.Seconds(), Product: odisProduct}
 	st.Wake, st.Ignition = ignitionState()
 	if !o.since.IsZero() {
 		st.Elapsed = time.Since(o.since).Seconds()
@@ -161,6 +194,9 @@ func (o *odisStarter) set(state, format string, args ...any) {
 // identify the car by its VIN). Offline, ODIS uses the offline VCI (offlinevci.go) and loads
 // project without a car or interface. It does nothing while a start is already running.
 func (o *odisStarter) start(project string, offline bool) {
+	if o.product != nil {
+		applyODISProduct(o.product()) // honour a top-bar product change made since the last start
+	}
 	o.mu.Lock()
 	if o.state == "starting" {
 		o.mu.Unlock()
@@ -292,7 +328,7 @@ func (o *odisStarter) launch() error {
 			o.mu.Lock()
 			o.launched = false
 			o.mu.Unlock()
-			return fmt.Errorf("ODIS ended while starting (%v); see C:\\ProgramData\\OE\\log\\engine.log", err)
+			return fmt.Errorf("ODIS ended while starting (%v); see %s", err, filepath.Join(odisDir, "log", "engine.log"))
 		default:
 		}
 		if odisServing() {

@@ -30,14 +30,14 @@ const (
 	offlineVCIKey  = `SOFTWARE\WOW6432Node\PassThruSupport.04.04\Laertes - Offline VCI`
 )
 
-var offlineVCIPath = filepath.Join(odisDir, "laertes", "laertes_vci32.dll")
+var offlineVCIPath string // set by applyODISProduct: <odisDir>\laertes\laertes_vci32.dll
 
 // offlineConfPath is the simulation configuration the offline VCI reads (offlinevci.c loadConfig),
 // written next to the DLL so the DLL finds it in its own folder.
-var offlineConfPath = filepath.Join(odisDir, "laertes", "offline.conf")
+var offlineConfPath string // set by applyODISProduct: <odisDir>\laertes\offline.conf
 
 // wakeFlagPath switches the wake-up frame (offlinevci.c wakeLoop): sent while this file exists.
-var wakeFlagPath = filepath.Join(odisDir, "laertes", "wake.on")
+var wakeFlagPath string // set by applyODISProduct: <odisDir>\laertes\wake.on
 
 // setIgnition switches the periodic wake-up frame on or off, live (the Ignition button).
 func setIgnition(on bool) error {
@@ -65,7 +65,7 @@ func ignitionState() (available, on bool) {
 
 // offlineCANLogPath is the CAN trace the offline VCI appends to (offlinevci.c canLog), read by the
 // "VCI CAN" monitor. It is next to the DLL, in the DLL's own folder.
-var offlineCANLogPath = filepath.Join(odisDir, "laertes", "vci-can.log")
+var offlineCANLogPath string // set by applyODISProduct: <odisDir>\laertes\vci-can.log
 
 // readCANLog returns the recent lines of the VCI CAN trace (the VCI caps the file, so it is small),
 // newest last, empty when there is no trace yet. Of the wake-up frames (kind W, several a second)

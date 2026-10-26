@@ -32,12 +32,14 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -533,19 +535,38 @@ func (s *grpStub) gsb(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	log.Printf("GSB /services request (%d bytes): %s", len(body), body)
 
-	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
 	bs := string(body)
+	var resp string
 	switch {
 	case strings.Contains(bs, "ProcessPin"):
 		// Component-protection PIN tunnel (FERS/ElectronicsRepairService), SOAP-wrapped.
-		io.WriteString(w, stubProcessPinResponse())
+		resp = stubProcessPinResponse()
 	case strings.Contains(bs, "LOGONService") && strings.Contains(bs, "Logout"):
-		// LogonService Logout posted raw (not SOAP-tunnelled) by the GRPDSS teardown step.
-		io.WriteString(w, stubLogoutResponse)
+		// LogonService Logout posted by the GRPDSS teardown step.
+		resp = stubLogoutResponse
 	default:
-		io.WriteString(w, `<?xml version="1.0" encoding="UTF-8"?>`+
-			`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`)
+		resp = `<?xml version="1.0" encoding="UTF-8"?>` +
+			`<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Header/><soap:Body/></soap:Envelope>`
 	}
+
+	logGSB(body, resp)
+	w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+	io.WriteString(w, resp)
+}
+
+// gsbLogPath collects the raw GSB request/response pairs for bench inspection; the console log line can
+// scroll away or go uncaptured when laertes is launched without a captured stderr, this file does not.
+// Set by applyODISProduct: <odisDir>\laertes\gsb.log.
+var gsbLogPath string
+
+func logGSB(req []byte, resp string) {
+	f, err := os.OpenFile(gsbLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "==== %s ====\n--- REQUEST (%d bytes) ---\n%s\n--- RESPONSE (%d bytes) ---\n%s\n\n",
+		time.Now().Format(time.RFC3339Nano), len(req), req, len(resp), resp)
 }
 
 // stubLogoutResponse answers the LogonService Logout the component-protection function's teardown step

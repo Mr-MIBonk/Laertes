@@ -38,6 +38,15 @@ func main() {
 		log.Fatalf("database: %v", err)
 	}
 
+	// Point every ODIS path at the installation chosen in the top bar (OE or OS) before anything
+	// uses one; odisStarter.start re-applies it so a later switch takes effect on the next start.
+	if raw, err := store.Settings(); err == nil {
+		if p, ok := settingValue(raw, "odisProduct").(string); ok {
+			applyODISProduct(p)
+		}
+	}
+	log.Printf("ODIS target: %s (%s)", odisProduct, odisInstallDir)
+
 	ln, err := net.Listen("tcp", "127.0.0.1:23031")
 	if err != nil {
 		ln, err = net.Listen("tcp", "127.0.0.1:0")
@@ -73,6 +82,10 @@ func main() {
 	}, wake: func() wakeConfig {
 		raw, _ := store.Settings()
 		return wakeFromSettings(raw)
+	}, product: func() string {
+		raw, _ := store.Settings()
+		p, _ := settingValue(raw, "odisProduct").(string)
+		return p
 	}}
 	if raw, err := store.Settings(); err == nil {
 		if on, set := settingValue(raw, "autoStartBridge").(bool); on || !set {
