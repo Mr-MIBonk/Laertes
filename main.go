@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.2"
+const version = "0.9.3"
 
 //go:embed index.html
 var indexHTML []byte
@@ -273,6 +273,15 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(indexHTML)
+	})
+	// The Vehicles tab's tables, read from the ODIS installation chosen in the top bar (?product=OE|OS).
+	mux.HandleFunc("GET /api/vehicles", func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Query().Get("product")
+		if p != "OS" {
+			p = "OE"
+		}
+		db, err := loadVehicles(filepath.Join(envOr("ProgramData", `C:\ProgramData`), p))
+		reply(w, db, err)
 	})
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, version, nil)

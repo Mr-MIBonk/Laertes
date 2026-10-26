@@ -2482,7 +2482,7 @@ def run_background(fn, cmd=None, vehicle=True):
 
 
 def handle_job_status(cmd):
-    """Progress of a background job (flash_run, basic_setting_run): percent, the latest text from
+    """Progress of a background job (flash_run, basic_setting_run, output_test_run): percent, the latest text from
     ODIS, phase, state and the job's latest data (a basic setting's status and values)."""
     jid = cmd.get("job_id")
     with _JOBS_LOCK:
@@ -2716,81 +2716,127 @@ def _flash_log_lines(offset):
 
 
 
-# --- Basic settings (Grundeinstellung) ----------------------------------------------------
-# A basic setting runs a routine in the unit (throttle adaptation, sensor calibration...): it is
-# initialized on one connection, started, checked repeatedly for its status and the chosen
-# measurement values, and stopped. It runs as a background job so the page can show the status
-# live and stop it; it also stops if the page stops polling (closed), so the unit is not left in
-# basic setting holding the vehicle lock.
+# --- Basic settings (Grundeinstellung) and output tests (Stellglieddiagnose) ----------------
+# A basic setting runs a routine in the unit (throttle adaptation, sensor calibration...); an output
+# test drives one of its actuators (a relay, a motor, a lamp). ODIS's automation interface treats both
+# alike: the routine is initialized on one connection, started, checked repeatedly for its status
+# and the chosen measurement values, and stopped. It runs as a background job so the page can show
+# the status live and stop it; it also stops if the page stops polling (closed), so the unit is not
+# left running it while holding the vehicle lock. A sequential output test (older units drive their
+# actuators one after another) moves on with job_next.
 
-def handle_list_basic_settings(cmd):
-    """The ODX short names of the unit's basic settings (UDS units; KWP units have none)."""
-    return with_connection(cmd, lambda diag, h: names_result(diag.getShortNamesOfBasicSettings(h)))
+# IDiagnosticInterface methods per kind: names, start parameters, measurements, create, init,
+# start, check, stop, abort, next.
+ROUTINES = {
+    "basic": ("getShortNamesOfBasicSettings", "getShortNamesOfStartParametersForBasicSettings",
+              "getShortNamesOfMeasurementsForBasicSettings", "createBasicSetting", "basicSettingInit",
+              "basicSettingStart", "basicSettingCheck", "basicSettingStop", "basicSettingAbort", None),
+    "output": ("getShortNamesOfActuators", "getShortNamesOfStartParametersForActuator",
+               "getShortNamesOfMeasurementsForActuatorDiagnostics", "createDiagActuator",
+               "actuatorDiagnosticsInit", "actuatorDiagnosticsStart", "actuatorDiagnosticsCheck",
+               "actuatorDiagnosticsStop", "actuatorDiagnosticsAbort", "actuatorDiagnosticsNext"),
+}
 
 
-def handle_basic_setting_info(cmd):
-    """The start parameters of basic setting "name" and the measurements a check can read."""
-    name = cmd.get("name")
-    if not name:
-        return {"ok": False, "error": "missing name"}
-    return with_connection(cmd, lambda diag, h: {
-        "ok": True, "name": name,
-        "params": [unicode(n) for n in diag.getShortNamesOfStartParametersForBasicSettings(h, name) or []],
-        "measurements": [unicode(n) for n in diag.getShortNamesOfMeasurementsForBasicSettings(h) or []]})
+def _routine_list(kind):
+    """The ODX short names of the unit's basic settings or output tests."""
+    return lambda cmd: with_connection(cmd, lambda diag, h: names_result(getattr(diag, ROUTINES[kind][0])(h)))
 
 
-def handle_basic_setting_run(cmd):
-    """Starts basic setting "name" with optional "params" (name -> value) and "measurements" (short
-    names read with every check), then checks it every "interval" seconds until job_cancel, or until
-    the page has not polled job_status for 20 s. The job's data is the latest status list; the result
-    holds the start, last check and stop statuses. An optional login/session unlocks the unit first."""
-    from java.util import ArrayList, HashMap
-    name = cmd.get("name")
-    if not name:
-        return {"ok": False, "error": "missing name"}
-    address = parse_address(cmd)
-    params, measurements = cmd.get("params") or {}, cmd.get("measurements") or []
-    interval = max(0.2, float(cmd.get("interval", 1)))
+def _routine_info(kind):
+    """The start parameters of routine "name" and the measurements a check can read."""
+    def handler(cmd):
+        name = cmd.get("name")
+        if not name:
+            return {"ok": False, "error": "missing name"}
+        m = ROUTINES[kind]
+        return with_connection(cmd, lambda diag, h: {
+            "ok": True, "name": name,
+            "params": [unicode(n) for n in getattr(diag, m[1])(h, name) or []],
+            "measurements": [unicode(n) for n in getattr(diag, m[2])(h) or []]})
+    return handler
 
-    def job(progress, jid):
-        diag = Factory.getInstance()
-        handle = diag.connectToEcu(address).getConnectionHandle()
-        opened = cmd.get("login") is not None or bool(cmd.get("session"))
-        if opened:
-            diag.openConnection(handle)
-        names, out = ArrayList([name]), {}
-        try:
-            maybe_login(diag, handle, cmd)
-            m = HashMap()
-            for k, v in params.items():
-                m.put(k, unicode(v))
-            setting = diag.createBasicSetting(name, m, ArrayList(measurements))
-            diag.basicSettingInit(handle, ArrayList([setting]), ArrayList(measurements))
-            progress(None, "running", "running")
-            try:
-                status = out["start"] = to_data(diag.basicSettingStart(handle, names))
-                _job_set(jid, data=status)
-                while not _job_cancelled(jid):
-                    if _job_unpolled_for(jid) > 20:
-                        out["stopped_because"] = "the page stopped polling"
-                        break
-                    time.sleep(interval)
-                    status = out["last"] = to_data(diag.basicSettingCheck(handle, names))
-                    _job_set(jid, data=status)
-            finally:
-                progress(None, "stopping", "stopping")
-                try:
-                    out["stop"] = to_data(diag.basicSettingStop(handle, names))
-                finally:
-                    diag.basicSettingAbort(handle)
-            return out
-        finally:
+
+def _routine_run(kind):
+    """Starts routine "name" with optional "params" (name -> value) and "measurements" (short names
+    read with every check), then checks it every "interval" seconds until job_cancel, or until the
+    page has not polled job_status for 20 s; job_next steps a sequential output test. The job's data
+    is the latest status list; the result holds the start, last check and stop statuses. An optional
+    login/session unlocks the unit first."""
+    def handler(cmd):
+        from java.util import ArrayList, HashMap
+        name = cmd.get("name")
+        if not name:
+            return {"ok": False, "error": "missing name"}
+        address = parse_address(cmd)
+        params, measurements = cmd.get("params") or {}, cmd.get("measurements") or []
+        interval = max(0.2, float(cmd.get("interval", 1)))
+        create, init, start, check, stop, abort, step = ROUTINES[kind][3:]
+
+        def job(progress, jid):
+            diag = Factory.getInstance()
+            handle = diag.connectToEcu(address).getConnectionHandle()
+            opened = cmd.get("login") is not None or bool(cmd.get("session"))
             if opened:
+                diag.openConnection(handle)
+            names, out = ArrayList([name]), {}
+            try:
+                maybe_login(diag, handle, cmd)
+                m = HashMap()
+                for k, v in params.items():
+                    m.put(k, unicode(v))
+                routine = getattr(diag, create)(name, m, ArrayList(measurements))
+                getattr(diag, init)(handle, ArrayList([routine]), ArrayList(measurements))
+                progress(None, "running", "running")
                 try:
-                    diag.closeConnection(handle)
-                except (Exception, Throwable):
-                    pass
-    return {"ok": True, "job_id": run_background(job, cmd)}
+                    status = out["start"] = to_data(getattr(diag, start)(handle, names))
+                    _job_set(jid, data=status)
+                    while not _job_cancelled(jid):
+                        if _job_unpolled_for(jid) > 20:
+                            out["stopped_because"] = "the page stopped polling"
+                            break
+                        time.sleep(interval)
+                        if step and _job_take_next(jid):
+                            status = out["last"] = to_data(getattr(diag, step)(handle))
+                        else:
+                            status = out["last"] = to_data(getattr(diag, check)(handle, names))
+                        _job_set(jid, data=status)
+                finally:
+                    progress(None, "stopping", "stopping")
+                    try:
+                        out["stop"] = to_data(getattr(diag, stop)(handle, names))
+                    finally:
+                        getattr(diag, abort)(handle)
+                return out
+            finally:
+                if opened:
+                    try:
+                        diag.closeConnection(handle)
+                    except (Exception, Throwable):
+                        pass
+        return {"ok": True, "job_id": run_background(job, cmd)}
+    return handler
+
+
+def _job_take_next(jid):
+    """Whether job_next was requested since the last call."""
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if not j or not j.get("next"):
+            return False
+        j["next"] = False
+        return True
+
+
+def handle_job_next(cmd):
+    """Moves a running sequential output test on to its next actuator."""
+    jid = cmd.get("job_id")
+    with _JOBS_LOCK:
+        j = _JOBS.get(jid)
+        if j is None or j["status"] != "running":
+            return {"ok": False, "error": "no such running job: %s" % jid}
+        j["next"] = True
+        return {"ok": True, "job_id": jid}
 
 
 HANDLERS = {
@@ -2850,9 +2896,13 @@ HANDLERS = {
     "read_measurement_group": handle_read_measurement_group,
     "read_gateway_component_list": handle_read_gateway_component_list,
     "read_event_memory": handle_read_event_memory,
-    "list_basic_settings": handle_list_basic_settings,
-    "basic_setting_info": handle_basic_setting_info,
-    "basic_setting_run": handle_basic_setting_run,
+    "list_basic_settings": _routine_list("basic"),
+    "basic_setting_info": _routine_info("basic"),
+    "basic_setting_run": _routine_run("basic"),
+    "list_output_tests": _routine_list("output"),
+    "output_test_info": _routine_info("output"),
+    "output_test_run": _routine_run("output"),
+    "job_next": handle_job_next,
     "clear_event_memory": handle_clear_event_memory,
     "odx_variants": handle_odx_variants,
     "odx_unit": handle_odx_unit,

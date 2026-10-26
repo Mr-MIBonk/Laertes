@@ -72,7 +72,7 @@ table.can tr.op td:first-child { box-shadow:inset 3px 0 0 var(--opc); }
 table.can tr.op td { background:color-mix(in srgb, var(--opc) 9%, transparent); }
 table.can .opchip { display:inline-block; margin-right:6px; padding:0 5px; border-radius:3px; background:var(--opc); color:#fff; font:bold 10px system-ui, sans-serif; vertical-align:1px; }
 table.can tr.op-coding { --opc:#8b5cf6; } table.can tr.op-adapt { --opc:#0ea5e9; } table.can tr.op-cp { --opc:#ef4444; }
-table.can tr.op-basic { --opc:#f59e0b; } table.can tr.op-immo { --opc:#ec4899; } table.can tr.op-flash { --opc:#f97316; } table.can tr.op-other { --opc:#64748b; }
+table.can tr.op-basic { --opc:#f59e0b; } table.can tr.op-output { --opc:#14b8a6; } table.can tr.op-immo { --opc:#ec4899; } table.can tr.op-flash { --opc:#f97316; } table.can tr.op-other { --opc:#64748b; }
 .bit { display:flex; flex-direction:column; gap:3px; min-width:90px; }
 .bit label { display:flex; align-items:center; gap:4px; font-family:Consolas, monospace; cursor:pointer; }
 .bit.on label { color:var(--on); font-weight:bold; }
@@ -302,7 +302,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <svg class="logo" aria-hidden="true" viewBox="0 0 48 48"><defs><linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient><linearGradient id="logoGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#logoBg)"/><rect x="1" y="1" width="46" height="46" rx="10" fill="none" stroke="#fff" stroke-opacity=".14"/><g fill="url(#logoGold)"><path d="M20.20 43.20C11.00 42.20 5.60 34.00 8.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(16.09 42.16) rotate(-194.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-173.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-97.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-152.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-76.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-137.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-61.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-125.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-49.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(8.00 16.50) rotate(-82.2)"/><path d="M27.80 43.20C37.00 42.20 42.40 34.00 40.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(31.91 42.16) rotate(-61.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-6.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-82.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-27.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-103.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-43.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-119.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-54.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-130.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.00 16.50) rotate(-97.8)"/></g><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#0b1f4d" fill-opacity=".35" transform="translate(0 1)"/><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#fff"/></svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
   <div class="navtabs">
-  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes: every tab, button and option" data-tab="help" onclick="showTab('help')">Help</button>
+  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, output tests, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="Which ODIS project a car needs: decode a VIN, or pick the model and year (from ODIS&#39;s own vehicle tables; ODIS need not run)" data-tab="vehicles" onclick="showTab('vehicles')">Vehicles</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes: every tab, button and option" data-tab="help" onclick="showTab('help')">Help</button>
   </div>
   <div class="navstatus">
   <span class="navleft"><span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
@@ -343,6 +343,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 </div>
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
+<div id="vehicles" class="db units" hidden></div>
 <div id="history" class="db units" hidden></div>
 <div id="retrofit" class="db units" hidden></div>
 <div id="cp" class="db units" hidden></div>
@@ -360,6 +361,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <a href="#" onclick="helpGo('hUnits'); return false">Project units</a> ·
     <a href="#" onclick="helpGo('hUnit'); return false">Unit functions</a> ·
     <a href="#" onclick="helpGo('hDb'); return false">Unit database &amp; Trouble codes</a> ·
+    <a href="#" onclick="helpGo('hVeh'); return false">Vehicles</a> ·
     <a href="#" onclick="helpGo('hCoding'); return false">Coding</a> ·
     <a href="#" onclick="helpGo('hHistory'); return false">History</a> ·
     <a href="#" onclick="helpGo('hRetrofit'); return false">Retrofit</a> ·
@@ -424,14 +426,14 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <dd>The macro listens on <code>127.0.0.1:8765</code>. <b>■ Stop bridge</b> ends it (asks first); if Laertes started ODIS in
       the background, that ODIS closes too, so you can open ODIS normally.</dd>
     <dt>Jobs that outlive the page</dt>
-    <dd>Long jobs (basic settings, flashing, guided functions) run inside ODIS. If you reload or reopen the page while one runs,
+    <dd>Long jobs (basic settings, output tests, flashing, guided functions) run inside ODIS. If you reload or reopen the page while one runs,
       Laertes picks it up again and shows its progress (in its tab, or in a box at the bottom left with <b>Stop</b>).</dd>
   </dl>
 
   <h2 class="sub" id="hTop">Top bar</h2>
   <dl>
     <dt>Tabs</dt>
-    <dd>Project units, Unit database, Trouble codes, Coding, History, Retrofit, CP, Immobilizer, Settings and Help. <b>VCI CAN</b>
+    <dd>Project units, Unit database, Trouble codes, Vehicles, Coding, History, Retrofit, CP, Immobilizer, Settings and Help. <b>VCI CAN</b>
       is not a tab: it opens the CAN panel on the right, next to any tab. Laertes remembers the last tab.</dd>
     <dt>⏳ Running operation</dt>
     <dd>The operation in progress and how long it has run. Only one operation runs at a time; others are refused until it ends.
@@ -529,6 +531,12 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <dd>Lists the unit's routines. Open one, fill in its start parameters, tick the measurements to read with each status check and
       press <b>Start basic setting…</b> (asks first). Its status and values update while it runs; <b>Stop</b> ends it. A basic
       setting can move actuators and relearn values: meet the conditions from the repair information first.</dd>
+    <dt>Output tests</dt>
+    <dd>Lists the unit's actuators that ODIS can drive (fans, pumps, valves, relays, lamps, motors). Open one, fill in its start
+      parameters if it has any, tick measurements to read along and press <b>Start output test…</b> (asks first): the unit drives
+      the actuator, and its status and values update while it runs; <b>Stop</b> ends it. <b>Next</b> moves a sequential output
+      test (older units step through their actuators one after another) on to the next actuator. Output tests move and switch
+      parts of the car: keep clear and meet the conditions from the repair information first.</dd>
     <dt>Event memory</dt>
     <dd>The stored faults: code, text, active or passive, status bits and environment data. Open a fault for <b>general
       guidance</b> (repair steps derived from the code) and <b>ODIS guided guidance</b>, which fetches ODIS's guided fault finding
@@ -568,6 +576,29 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       <i>throttle</i>); open a code for its level, number and repair guidance. Base data usually has no codes: pick a variant.</dd>
   </dl>
 
+  <h2 class="sub" id="hVeh">Vehicles</h2>
+  <p>Which ODIS project a car needs. Laertes reads ODIS's own vehicle tables from the installation chosen with <b>E / S</b> in
+    the top bar — the VIN tables in the vrtvpt plugins (<code>configuration\plugins\…vrtvpt-*.jar</code>, and for ODIS-E also
+    <code>VRT_VPT-Engineering</code>) and the model lists (<code>PRNR-INFO.xml</code>) of the installed projects — so it works
+    without a car and without ODIS running, and is always as current as your ODIS.</p>
+  <dl>
+    <dt>By VIN</dt>
+    <dd>Type the 17-character VIN and press <b>Find</b> or Enter, or take it from the car connected through the bridge (<b>VIN of the
+      connected car</b>) or from Settings (<b>Simulation VIN</b>). Laertes decodes each part — manufacturer (WMI), model type
+      (positions 7–8), check digit, model year (position 10), plant and serial number — and lists the matching ODIS projects
+      with the model names ODIS shows, the protocol and communication types (the default in bold), and the PR number a project
+      needs, if any (that equipment must be fitted; see the car's data sticker). Below are the models of those projects from
+      their PRNR-INFO lists, with product IDs — only for projects installed in ODIS.</dd>
+    <dt>By model and year</dt>
+    <dd>Choose the brand and model: a table shows the project for every model year. Choose a year for the project's details and
+      models.</dd>
+    <dt>Use</dt>
+    <dd><b>Use</b> (or a project button in the year table) makes that project the vehicle project in <b>Settings › ODIS bridge</b>,
+      which the virtual VCI and a bench start load.</dd>
+    <dt>Search all models</dt>
+    <dd>Finds any model by name, project or model ID.</dd>
+  </dl>
+
   <h2 class="sub" id="hCoding">Coding</h2>
   <p>The large coding editor: every byte as a row of bits.</p>
   <ul>
@@ -584,7 +615,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   </ul>
 
   <h2 class="sub" id="hHistory">History</h2>
-  <p>Every coding and adaptation write, flash, dataset and basic-setting run with time, unit, variant, old → new value and result;
+  <p>Every coding and adaptation write, flash, dataset, basic-setting and output-test run with time, unit, variant, old → new value and result;
     for coding also each changed byte and bit and, where a coding definition or .lbl labels are known, each setting before →
     after. Stored in <code>laertes.db</code>, so it survives restarts.</p>
   <ul>
@@ -851,6 +882,7 @@ async function openOdisLogs() {
 function setOdisProduct(p) {
   settings.odisProduct = p === 'OS' ? 'OS' : 'OE';
   saveSettings();
+  if (currentTab() === 'vehicles') loadVehiclesTab();
   toast(`ODIS target set to ${settings.odisProduct === 'OS' ? 'ODIS-S (Service)' : 'ODIS-E (Engineering)'}. Stop the bridge and start it again to apply.`);
 }
 // The GeKo username and password: saved in laertes.db (password encrypted for this Windows user)
@@ -1462,6 +1494,7 @@ const UNIT_ACTIONS = [
   [{action: 'list_adaptation_channels'}, 'Adaptation channels'],
   [{action: 'list_measurement_groups'}, 'Measurement groups'],
   [{action: 'list_basic_settings'}, 'Basic settings'],
+  [{action: 'list_output_tests'}, 'Output tests'],
   [{action: 'read_event_memory'}, 'Event memory'],
 ];
 // For list results: the command and label opened by clicking one of the names.
@@ -1469,6 +1502,7 @@ const UNIT_NEXT = {
   list_adaptation_channels: (name) => [{action: 'read_adaptation', channel: name}, name],
   list_measurement_groups: (name) => [{action: 'read_measurement_group', group: name}, name],
   list_basic_settings: (name) => [{action: 'basic_setting_info', name}, name, {params: {}, meas: []}],
+  list_output_tests: (name) => [{action: 'output_test_info', name}, name, {params: {}, meas: []}],
 };
 
 // Table rows for the values in a bridge result: every ODIS value (translatedName/translatedValue),
@@ -1496,7 +1530,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', help: 'help'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', vehicles: 'vehicles', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', help: 'help'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -1509,6 +1543,7 @@ function showTab(tab) {
   stopLive();  // a live measurement view only updates while the units tab shows it
   if (tab === 'units' && !(units && units.length)) loadUnits();
   else if (tab === 'units' && synced) renderUnitDetail();
+  if (tab === 'vehicles') loadVehiclesTab();
   if (tab === 'history') loadHistory();
   if (tab === 'retrofit') loadRetrofitTab();
   if (tab === 'cp') loadCpTab();
@@ -1618,7 +1653,8 @@ let vciTimer = null, vciPaused = false, vciShown = '', vciRaw = '';
 let vciOpFilter = '';
 const VCI_OP_FILTERS = [['', 'All', 'All messages'], ['any', 'Operations', 'Only messages sent while an operation of this page ran'],
   ['coding', 'Coding', 'Only messages of coding writes'], ['adapt', 'Adaptation', 'Only messages of adaptation writes'],
-  ['cp', 'CP', 'Only messages of component-protection runs'], ['basic', 'Basic setting', 'Only messages of basic settings']];
+  ['cp', 'CP', 'Only messages of component-protection runs'], ['basic', 'Basic setting', 'Only messages of basic settings'],
+  ['output', 'Output test', 'Only messages of output tests']];
 function vciOpSegHTML() {
   return VCI_OP_FILTERS.map(([f, label, title]) =>
     `<button class="${f === vciOpFilter ? 'on' : ''}" title="${esc(title)}" onclick="vciOpFilter = '${f}'; $('#vciOpSeg').innerHTML = vciOpSegHTML(); pollVci(true)">${label}</button>`).join('');
@@ -1906,7 +1942,7 @@ async function pollVci(force) {
 // The operations of this page session (from the activity log) with their time span and a category
 // for the trace's colour: what to mark a message with when it went over the bus during one.
 const OP_CATS = [[/coding/i, 'coding', 'CODING'], [/adapt/i, 'adapt', 'ADAPTATION'], [/component protection|\bCP\b/i, 'cp', 'CP'],
-  [/basic setting/i, 'basic', 'BASIC SETTING'], [/immobil/i, 'immo', 'IMMO'], [/flash|dataset/i, 'flash', 'FLASH']];
+  [/basic setting/i, 'basic', 'BASIC SETTING'], [/output test/i, 'output', 'OUTPUT TEST'], [/immobil/i, 'immo', 'IMMO'], [/flash|dataset/i, 'flash', 'FLASH']];
 function vciOperations() {
   return activity.filter(e => ['run', 'ok', 'err', 'stop'].includes(e.kind)).map(e => {
     const label = e.text.split(': ')[0], c = OP_CATS.find(([re]) => re.test(label));
@@ -2115,7 +2151,7 @@ function renderUnitDetail() {
     body = flashPanelHTML(step, u);
   } else if (step && step.cmd && step.cmd.action === 'cp_find') {
     body = cpFindHTML(step, u);
-  } else if (step && step.res && step.cmd.action === 'basic_setting_info') {
+  } else if (step && step.res && ROUTINES[step.cmd.action]) {
     body = basicSettingHTML(step, u);
   } else if (step && step.live) {
     body = liveHTML(step);
@@ -3052,24 +3088,34 @@ async function flashCancel(fromStop) {
   catch (e) { toast(e.message, true); }
 }
 
-// --- Basic settings ------------------------------------------------------------------------
-// Like ODIS: pick a basic setting, fill its start parameters, tick the measurements to watch,
-// Start, follow the status and values, Stop. The bridge runs it as a job (basic_setting_run) and
-// checks it until job_cancel; this page polls job_status, and if it stops polling the bridge
-// stops the basic setting itself.
+// --- Basic settings and output tests -------------------------------------------------------
+// Like ODIS: pick a basic setting or output test, fill its start parameters, tick the measurements
+// to watch, Start, follow the status and values, Stop. The bridge runs it as a job (basic_setting_run,
+// output_test_run) and checks it until job_cancel; this page polls job_status, and if it stops polling
+// the bridge stops it itself. Next (job_next) moves a sequential output test to its next actuator.
+const ROUTINES = {
+  basic_setting_info: {run: 'basic_setting_run', type: 'basic', label: 'Basic setting', kind: 'basic setting',
+    warn: u => `A basic setting runs a routine in ${esc(u.sname || 'the unit')}: it can move actuators and relearn values.
+      Meet the conditions in the repair information (ignition, engine running or off, temperatures) before starting.`},
+  output_test_info: {run: 'output_test_run', type: 'output', label: 'Output test', kind: 'output test',
+    warn: u => `An output test drives an actuator of ${esc(u.sname || 'the unit')} (a motor, valve, relay, lamp or fan): it moves
+      and switches parts of the car. Keep hands and tools clear, and meet the conditions in the repair information
+      (ignition on, engine off, vehicle stationary) before starting.`},
+};
+const ROUTINE_TYPES = Object.values(ROUTINES).map(r => r.type);
 function basicSettingHTML(step, u) {
-  const r = step.res, run = step.run, running = run && run.status === 'running';
+  const r = step.res, run = step.run, running = run && run.status === 'running', rt = ROUTINES[step.cmd.action];
   const dis = running ? 'disabled' : '';
-  let h = `<div class="warnbox">A basic setting runs a routine in ${esc(u.sname || 'the unit')}: it can move actuators and relearn values.
-    Meet the conditions in the repair information (ignition, engine running or off, temperatures) before starting.</div>`;
+  let h = `<div class="warnbox">${rt.warn(u)}</div>`;
   if (r.params.length) h += `<h2 class="sub">Start parameters</h2><table class="vals">${r.params.map((p, i) =>
     `<tr><td>${esc(p)}</td><td><input type="text" value="${esc(step.params[p] || '')}" ${dis} oninput="bsParam(${i}, this.value)"></td></tr>`).join('')}</table>`;
   if (r.measurements.length) h += `<h2 class="sub">Measurements read with each check</h2>
     <input type="text" placeholder="Filter" oninput="filterNames(this)">
     <div class="names check">${r.measurements.map((m, i) =>
       `<label><input type="checkbox" ${step.meas.includes(m) ? 'checked' : ''} ${dis} onchange="bsMeasure(${i}, this.checked)"> ${esc(m)}</label>`).join('')}</div>`;
-  h += `<div class="bar">${running ? '<button title="Stop the running basic setting routine" class="warn" onclick="bsStop()">Stop</button>'
-    : '<button title="Start the basic setting routine with the parameters above (asks first)" class="warn op" onclick="bsStart()">Start basic setting…</button>'}</div>`;
+  h += `<div class="bar">${running ? `<button title="Stop the running ${rt.kind}" class="warn" onclick="bsStop()">Stop</button>` +
+      (rt.type === 'output' ? '<button title="Sequential output test: move on to the next actuator" onclick="bsNext()">Next</button>' : '')
+    : `<button title="Start the ${rt.kind} with the parameters above (asks first)" class="warn op" onclick="bsStart()">Start ${rt.kind}…</button>`}</div>`;
   return h + `<div id="bsOut">${run ? bsRunHTML(run) : ''}</div>`;
 }
 const bsStatuses = data => (data || []).map(s => s.status).filter(Boolean).join(', ');
@@ -3086,18 +3132,18 @@ function bsMeasure(i, on) {
   if (on) s.meas.push(m);
 }
 function bsStart() {
-  const step = curStep(), u = units.find(u => u.index === unitSel), name = step.cmd.name;
+  const step = curStep(), u = units.find(u => u.index === unitSel), name = step.cmd.name, rt = ROUTINES[step.cmd.action];
   if (busy) { toast(`Busy: ${busy.label}.`, true); return; }
-  if (!confirm(`Start basic setting ${name} on ${u.sname} ${u.id}?\n\nThe unit runs the routine until you press Stop.`)) return;
+  if (!confirm(`Start ${rt.kind} ${name} on ${u.sname} ${u.id}?\n\nThe unit runs it until you press Stop.`)) return;
   const params = Object.fromEntries(Object.entries(step.params).filter(([, v]) => v !== ''));
-  op(`Basic setting ${name}`, async o => {
+  op(`${rt.label} ${name}`, async o => {
     step.run = {status: 'running', phase: 'starting'}; renderUnitDetail();
     let jid;
-    try { jid = (await bridge({action: 'basic_setting_run', address: u.id, name, params, measurements: step.meas, login: loginCodes[u.id], resume: {type: 'basic', label: `Basic setting ${name}`,
-      record: {kind: 'basic setting', address: u.id, unit: u.sname || '', variant: u.variant || '', target: name, oldValue: ''}}})).job_id; }
+    try { jid = (await bridge({action: rt.run, address: u.id, name, params, measurements: step.meas, login: loginCodes[u.id], resume: {type: rt.type, label: `${rt.label} ${name}`,
+      record: {kind: rt.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: name, oldValue: ''}}})).job_id; }
     catch (e) { step.run = {status: 'error', error: e.message}; renderUnitDetail(); throw e; }
     step.jobId = jid;
-    o.onCancel = bsStop;  // the top-bar Stop stops the basic setting too
+    o.onCancel = bsStop;  // the top-bar Stop stops it too
     while (true) {
       let s;
       try { s = await bridge({action: 'job_status', job_id: jid}); }
@@ -3108,17 +3154,20 @@ function bsStart() {
       if (el) el.innerHTML = bsRunHTML(step.run);
       await sleep(700);
     }
-    recordChange({kind: 'basic setting', address: u.id, unit: u.sname || '', variant: u.variant || '', target: name,
+    recordChange({kind: rt.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: name,
       oldValue: '', newValue: bsStatuses(step.run.data), status: step.run.error ? 'error' : 'done', note: step.run.error || ''});
     if (curStep() === step) renderUnitDetail();
   });
 }
-async function bsStop() {
+// Stop and Next act on the basic setting or output test running in the open unit.
+async function bsJob(action) {
   const step = unitPath.find(s => s.run && s.run.status === 'running');
   if (!step || !step.jobId) return;
-  try { await bridge({action: 'job_cancel', job_id: step.jobId}); step.run.phase = 'stopping'; }
+  try { await bridge({action, job_id: step.jobId}); if (action === 'job_cancel') step.run.phase = 'stopping'; }
   catch (e) { toast(e.message, true); }
 }
+const bsStop = () => bsJob('job_cancel');
+const bsNext = () => bsJob('job_next');
 
 // --- Scans ---------------------------------------------------------------------------------
 // Scan all, Scan all unit DTCs and Full scan work on the units the list shows: tick
@@ -3639,12 +3688,12 @@ async function gfCancel() {
 // the history entry to record) for this; the bridge keeps it with the job.
 let resumed = null;
 function resumedHTML(r) {
-  const err = r.error, statuses = r.type === 'basic' ? bsStatuses(r.data) : '';
+  const err = r.error, statuses = ROUTINE_TYPES.includes(r.type) ? bsStatuses(r.data) : '';
   return `<div class="bar"><b>${esc(r.label)}</b>${r.status === 'running' ? '<button title="Stop the job that was still running in ODIS" class="warn" onclick="resumedStop()">Stop</button>'
       : '<button onclick="resumed = null; $(\'#resumed\').hidden = true">Close</button>'}</div>
     <div class="status ${err ? 'err' : ''}">${esc(r.phase || r.status)}${typeof r.percent === 'number' ? ' · ' + r.percent + '%' : ''}${r.message ? ' — ' + esc(r.message) : ''}${statuses ? ' — ' + esc(statuses) : ''}</div>
     ${err ? `<div class="errbox">${copyBtn(err, 'Copy the error')}<b>Error</b><pre>${esc(err)}</pre></div>` : ''}
-    ${r.type === 'basic' && r.data ? valsTable(resultRows(r.data)) : ''}`;
+    ${ROUTINE_TYPES.includes(r.type) && r.data ? valsTable(resultRows(r.data)) : ''}`;
 }
 function resumedRender() { const el = $('#resumed'); el.hidden = !resumed; if (resumed) el.innerHTML = resumedHTML(resumed); }
 // Stop follows the rules of the page that started the job: a flash that is programming must be confirmed.
@@ -3667,7 +3716,7 @@ function resumeJob(job) {
       catch (e) { resumed = {...resumed, status: 'error', error: e.message}; break; }
       resumed = {...resumed, status: s.status, phase: s.status === 'running' ? s.phase : s.status, percent: s.percent,
         message: s.message, data: s.data, error: s.job_error};
-      if (s.status !== 'running') { if (res.type === 'basic' && s.result) resumed.data = s.result.stop || s.result.last || s.result.start; break; }
+      if (s.status !== 'running') { if (ROUTINE_TYPES.includes(res.type) && s.result) resumed.data = s.result.stop || s.result.last || s.result.start; break; }
       opLabel(`${res.label} ${s.percent || 0}%`);
       resumedRender();
       await sleep(700);
@@ -3675,8 +3724,8 @@ function resumeJob(job) {
     resumedRender();
     if (res.record) {
       const r = resumed, status = r.status === 'done' ? 'done' : r.error ? 'error' : 'stopped';
-      recordChange({...res.record, ...(res.type === 'basic' ? {newValue: bsStatuses(r.data)} : {}), status,
-        note: r.error || (res.type === 'basic' ? '' : r.message || '')});
+      recordChange({...res.record, ...(ROUTINE_TYPES.includes(res.type) ? {newValue: bsStatuses(r.data)} : {}), status,
+        note: r.error || (ROUTINE_TYPES.includes(res.type) ? '' : r.message || '')});
     }
   });
 }
@@ -4182,6 +4231,187 @@ async function importLBL(input) {
     await loadLabels(true); render();
     alert(`Imported ${n} labels from ${file.name} for ${r.variant}`);
   } catch (e) { alert('Import failed: ' + e.message); }
+}
+
+// --- Vehicles tab: VIN → ODIS project, and model / year → project ----------------------------
+// Laertes reads ODIS's own vehicle tables (vrtvpt plugins and PRNR-INFO.xml, see vehicles.go) from
+// the installation chosen in the top bar; ODIS need not run. A rule matches VIN positions 7-8 (model
+// type) and 10 (model year) within the tables of the VIN's WMI; a rule with a PR number applies only
+// when that equipment is fitted.
+let vdb = null, vdbProduct = '', vdbErr = '', vehVin = '', vehRes = null, vehBrand = '', vehType = '', vehYear = '', vehQ = '';
+const VEH_BRANDS = {VW: 'Volkswagen', VWN: 'Volkswagen Commercial Vehicles', AUDI: 'Audi', SKODA: 'Škoda',
+  SKODA_SVW: 'Škoda (SAIC VW, China)', SEAT: 'SEAT / CUPRA', BENTLEY: 'Bentley', BENTLEY_Non_VW_Platform: 'Bentley (non-VW platform)',
+  LAMBORGHINI: 'Lamborghini', BUGATTI: 'Bugatti', MAN: 'MAN', Scout: 'Scout', FORD: 'Ford (VW based)'};
+
+// Model year of VIN position 10 (ISO 3779): the latest 30-year cycle not more than a year ahead.
+function modelYear(code) {
+  let y = /^[1-9]$/.test(code) ? 2000 + +code : 'ABCDEFGHJKLMNPRSTVWXY'.indexOf(code) >= 0 ? 2010 + 'ABCDEFGHJKLMNPRSTVWXY'.indexOf(code) : null;
+  if (y == null) return null;
+  while (y > new Date().getFullYear() + 1) y -= 30;
+  return y;
+}
+function vinCheckDigit(vin) {
+  const map = {A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9, S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9};
+  const w = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 17; i++) sum += (/\d/.test(vin[i]) ? +vin[i] : map[vin[i]]) * w[i];
+  return sum % 11 === 10 ? 'X' : String(sum % 11);
+}
+const vehBrandOf = table => table.replace(/_(KWP|UDS)$/, '');
+// The model names of a VIN type code in the given VPT tables, from the names ODIS shows for the
+// projects its rules lead to: "5G - Golf" style names of this type where there are some, else the
+// projects' plain names without their years, else all their names ("1J - Golf 1" for type 17).
+function vehTypeNames(type, tables) {
+  const names = new Set(), plain = new Set(), all = new Set();
+  for (const t of tables) for (const [ty, , , ps] of vdb.tables[t] || []) if (ty === type)
+    for (const p of ps) for (const d of (vdb.projects[p] || {d: []}).d) {
+      const m = d.match(/^([A-Z0-9]{2}(?:\/[A-Z0-9]{2})*)\s*[-–]\s*(.+)$/i);
+      all.add(d);
+      if (!m) plain.add(d.replace(/\s*(\d{4}\b.*|->.*)$/, '').trim());
+      else if (m[1].toUpperCase().split('/').includes(type)) names.add(m[2].trim());
+    }
+  return [...(names.size ? names : plain.size ? plain : all)].filter(Boolean);
+}
+// The projects whose rules match a model type and year in the given tables: [{project, table, pr}],
+// those without a PR number first.
+function vehMatch(tables, type, year) {
+  const hits = [], seen = new Set();
+  for (const t of tables) for (const [ty, years, pr, ps] of vdb.tables[t] || []) {
+    if (ty !== type || !years.includes(year)) continue;
+    for (const p of ps) { const k = p + '|' + pr; if (!seen.has(k)) { seen.add(k); hits.push({project: p, table: t, pr}); } }
+  }
+  return hits.sort((a, b) => (a.pr ? 1 : 0) - (b.pr ? 1 : 0));
+}
+// PRNR models of a project: the same base project, or its market variants (VW37X → VW37X-CN, -CS…).
+const vehModels = projects => vdb.models.filter(m => projects.includes(m[0]));
+
+// Loaded when the tab opens, and again after the ODIS installation is switched.
+async function loadVehiclesTab() {
+  const p = settings.odisProduct === 'OS' ? 'OS' : 'OE';
+  if (vdbProduct !== p) {
+    vdb = null; vdbErr = ''; vdbProduct = p; renderVehicles();
+    try { vdb = await api('GET', '/api/vehicles?product=' + p); } catch (e) { vdbErr = e.message; }
+    if (vehVin && vdb) { vehResolve(vehVin); return; }
+  }
+  renderVehicles();
+}
+function vehResolve(vin) {
+  vin = (vin || '').replace(/\s+/g, '').toUpperCase();
+  vehVin = vin;
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) { vehRes = {error: 'A VIN has exactly 17 characters: digits and letters without I, O and Q.'}; renderVehicles(); return; }
+  const wmi = vin.slice(0, 3), type = vin.slice(6, 8), year = vin[9];
+  let tables = vdb.wmi[wmi] || [];
+  let hits = vehMatch(tables, type, year);
+  // A type listed only in the other protocol's table (KWP ↔ UDS) of the same brand.
+  if (!hits.length) hits = vehMatch(tables.map(t => t.replace(/_(KWP|UDS)$/, (m, p) => p === 'KWP' ? '_UDS' : '_KWP')).filter(t => vdb.tables[t] && !tables.includes(t)), type, year);
+  vehRes = {vin, wmi, type, year, tables, hits, hitTables: [...new Set(hits.map(h => h.table))]};
+  renderVehicles();
+}
+async function vehFromCar() {
+  vehicleVin = undefined;
+  const vin = await getVin();
+  if (!vin) { toast('ODIS does not know the VIN of a connected car (bridge not running, or no car).', true); return; }
+  vehResolve(vin);
+}
+function vehUseProject(p) {
+  settings.odisProject = p; saveSettings();
+  toast(`${p} is now the vehicle project in Settings › ODIS bridge (used offline, and when a car cannot be identified by its VIN).`);
+}
+function vehProjectsHTML(hits) {
+  if (!hits.length) return '<div class="empty">No ODIS project matches.</div>';
+  return `<table class="vals"><tr><th>Project</th><th>Models in ODIS</th><th>Communication</th><th>Condition</th><th></th></tr>${hits.map(h => {
+    const p = vdb.projects[h.project] || {d: []};
+    const comm = (p.c || []).map(c => c === p.dc ? `<b title="default communication type">${esc(c)}</b>` : esc(c)).join(', ');
+    return `<tr><td class="mono"><b>${esc(h.project)}</b> ${copyBtn(h.project, 'Copy the project name')}</td><td>${esc(p.d.join(' · '))}</td>
+      <td>${[p.p ? esc(p.p) : '', comm].filter(Boolean).join(' · ')}</td>
+      <td>${h.pr ? `only with PR number <b class="mono">${esc(h.pr)}</b>` : '<span class="meta">—</span>'}</td>
+      <td><button title="Make this the vehicle project in Settings › ODIS bridge" onclick="vehUseProject('${esc(jsStr(h.project))}')"${settings.odisProject === h.project ? ' class="on"' : ''}>Use</button></td></tr>`;
+  }).join('')}</table>`;
+}
+function vehVinHTML() {
+  const r = vehRes;
+  if (!r) return '';
+  if (r.error) return `<div class="status err">${esc(r.error)}</div>`;
+  const y = modelYear(r.year), check = r.vin[8], calc = vinCheckDigit(r.vin);
+  const brands = [...new Set(r.tables.map(vehBrandOf))].map(b => VEH_BRANDS[b] || b);
+  const checkText = check === calc ? '<span style="color:var(--on)">✔ matches the ISO 3779 check digit</span>'
+    : `does not match the ISO 3779 check digit (${calc}) <span class="meta">— often unused in Europe (Z)</span>`;
+  const rows = [
+    ['1–3 Manufacturer (WMI)', r.wmi, brands.length ? esc(brands.join(', ')) : '<span class="status err">not in ODIS’s tables</span>'],
+    ['4–6 Descriptor', r.vin.slice(3, 6), ''],
+    ['7–8 Model type', r.type, esc(vehTypeNames(r.type, r.hitTables).join(' · ') || 'unknown')],
+    ['9 Check digit', check, checkText],
+    ['10 Model year', r.year, y ? String(y) : 'unknown'],
+    ['11 Plant', r.vin[10], ''],
+    ['12–17 Serial number', r.vin.slice(11), ''],
+  ];
+  const models = vehModels(r.hits.map(h => h.project));
+  return `<table class="vals" style="max-width:820px">${rows.map(([pos, v, t]) => `<tr><td class="meta">${pos}</td><td class="mono"><b>${esc(v)}</b></td><td>${t}</td></tr>`).join('')}</table>
+    <h2 class="sub">ODIS project</h2>${vehProjectsHTML(r.hits)}
+    ${r.hits.some(h => h.pr) ? '<div class="meta">A project with a PR number applies only when that equipment is fitted (see the PR numbers on the car’s data sticker).</div>' : ''}
+    ${models.length ? `<h2 class="sub">Models of ${esc([...new Set(r.hits.map(h => h.project))].join(', '))} <small class="meta">(PRNR-INFO)</small></h2>${vehModelsTable(models)}` : ''}`;
+}
+function vehModelsTable(models) {
+  return copyNext(`<table class="vals"><tr><th>Project</th><th>Model project</th><th>Model</th><th>Product ID</th><th>Revision</th></tr>${models.map(m =>
+    `<tr><td class="mono">${esc(m[0])}</td><td class="mono">${esc(m[1])}</td><td>${esc(m[2])}</td><td class="mono">${esc(m[3])}</td><td class="meta">${esc(m[4].replace('T', ' ').slice(0, 16))}</td></tr>`).join('')}</table>`, 'Copy the models');
+}
+// Pick a car: brand → model type → model year.
+function vehPickHTML() {
+  const brands = [...new Set(Object.keys(vdb.tables).map(vehBrandOf))].sort((a, b) => (VEH_BRANDS[a] || a).localeCompare(VEH_BRANDS[b] || b));
+  let h = `<div class="bar"><select onchange="vehBrand = this.value; vehType = vehYear = ''; renderVehicles()"><option value="">Brand…</option>
+    ${brands.map(b => `<option value="${esc(b)}"${b === vehBrand ? ' selected' : ''}>${esc(VEH_BRANDS[b] || b)}</option>`).join('')}</select>`;
+  if (vehBrand) {
+    const tables = Object.keys(vdb.tables).filter(t => vehBrandOf(t) === vehBrand);
+    const types = [...new Set(tables.flatMap(t => vdb.tables[t].map(r => r[0])))]
+      .map(t => ({t, name: vehTypeNames(t, tables).join(' · ')})).sort((a, b) => (a.name || '~').localeCompare(b.name || '~') || a.t.localeCompare(b.t));
+    h += `<select onchange="vehType = this.value; vehYear = ''; renderVehicles()"><option value="">Model…</option>
+      ${types.map(x => `<option value="${esc(x.t)}"${x.t === vehType ? ' selected' : ''}>${esc(x.name || '?')} (${esc(x.t)})</option>`).join('')}</select>`;
+    if (vehType) {
+      const years = [...new Set(tables.flatMap(t => vdb.tables[t].filter(r => r[0] === vehType).flatMap(r => [...r[1]])))]
+        .sort((a, b) => (modelYear(a) || 0) - (modelYear(b) || 0));
+      h += `<select onchange="vehYear = this.value; renderVehicles()"><option value="">All model years</option>
+        ${years.map(y => `<option value="${esc(y)}"${y === vehYear ? ' selected' : ''}>${modelYear(y) || '?'} (${esc(y)})</option>`).join('')}</select></div>`;
+      const shown = vehYear ? [vehYear] : years;
+      const rows = shown.map(y => ({y, hits: vehMatch(tables, vehType, y)}));
+      h += `<table class="vals" style="max-width:1100px"><tr><th>Model year</th><th>ODIS project</th></tr>${rows.map(({y, hits}) => `<tr><td class="mono">${modelYear(y) || '?'} <span class="meta">(${esc(y)})</span></td>
+        <td>${hits.map(x => `<button title="${esc(((vdb.projects[x.project] || {}).d || []).join(' · '))}${x.pr ? ' — only with PR number ' + esc(x.pr) : ''}" onclick="vehUseProject('${esc(jsStr(x.project))}')">${esc(x.project)}${x.pr ? ' <span class="meta">+' + esc(x.pr) + '</span>' : ''}</button>`).join(' ')}</td></tr>`).join('')}</table>
+        <div class="meta">Click a project to make it the vehicle project in Settings › ODIS bridge. +PR: only when that equipment is fitted. The VIN's 10th character is the model year code in brackets.</div>`;
+      if (vehYear) {
+        const hits = rows[0].hits;
+        h += `<h2 class="sub">${esc(vehTypeNames(vehType, tables).join(' · '))} ${modelYear(vehYear) || ''}</h2>${vehProjectsHTML(hits)}`;
+        const models = vehModels(hits.map(x => x.project));
+        if (models.length) h += `<h2 class="sub">Models <small class="meta">(PRNR-INFO)</small></h2>${vehModelsTable(models)}`;
+      }
+    } else h += '</div>';
+  } else h += '</div>';
+  return h;
+}
+function renderVehicles() {
+  const el = $('#vehicles'); if (!el) return;
+  if (vdbErr) { el.innerHTML = `<div class="status err">The vehicle database could not be loaded: ${esc(vdbErr)}</div>`; return; }
+  if (!vdb) { el.innerHTML = '<div class="meta">Reading ODIS’s vehicle tables…</div>'; return; }
+  el.innerHTML = `<h1>Vehicles</h1>
+    <p class="meta">Which ODIS project a car needs, from its VIN or its model and year — read from the vehicle tables of ODIS-${vdbProduct === 'OS' ? 'S' : 'E'}
+      (<code>${esc(vdb.dir)}</code>, switch with E / S in the top bar); ODIS need not run.
+      ${Object.keys(vdb.wmi).length} manufacturer codes, ${Object.keys(vdb.projects).length} projects; models of the ${new Set(vdb.models.map(m => m[0])).size} installed project(s) with a PRNR-INFO list.</p>
+    <h2 class="sub">By VIN</h2>
+    <div class="bar"><input id="vehVin" type="text" maxlength="17" placeholder="VIN, e.g. WVWZZZ1KZAW000001" value="${esc(vehVin)}" style="width:20em;font-family:Consolas, monospace"
+        oninput="this.value = this.value.toUpperCase().replace(/\\s+/g, '')" onkeydown="if (event.key === 'Enter') vehResolve(this.value)">
+      <button class="op" title="Decode the VIN and find its ODIS project" onclick="vehResolve($('#vehVin').value)">Find</button>
+      <button title="Use the VIN of the car connected through the ODIS bridge" onclick="vehFromCar()">VIN of the connected car</button>
+      ${settings.odisVin ? `<button title="Use the simulation VIN from Settings" onclick="vehResolve(settings.odisVin)">Simulation VIN</button>` : ''}</div>
+    ${vehVinHTML()}
+    <h2 class="sub">By model and year</h2>
+    ${vehPickHTML()}
+    <h2 class="sub">Search all models</h2>
+    <div class="bar"><input type="text" placeholder="Model, project or ID, e.g. Golf, VW38X, 5H0" value="${esc(vehQ)}" style="max-width:320px"
+      oninput="vehQ = this.value; vehSearch()"></div>
+    <div id="vehModels"></div>`;
+  vehSearch();
+}
+function vehSearch() {
+  const q = vehQ.trim().toLowerCase(), models = q ? vdb.models.filter(m => m.join(' ').toLowerCase().includes(q)) : [];
+  $('#vehModels').innerHTML = !q ? '' : models.length ? vehModelsTable(models) : '<div class="empty">No model matches.</div>';
 }
 
 initDatabaseTabs();
