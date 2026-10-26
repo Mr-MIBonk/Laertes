@@ -176,12 +176,14 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .db .names { max-height:30vh; }
 .db h2.sub, .units h2.sub { font-size:15px; margin:16px 0 6px; }
 .help { max-width:860px; line-height:1.55; }
-/* Guide: on wide screens the sections flow into columns of readable width. */
+.help .toc { margin:6px 0 4px; line-height:1.8; }
+.help .toc a { color:var(--accent); text-decoration:none; }
+/* Help: on wide screens the sections flow into columns of readable width. */
 @media (min-width:1300px) {
-  #guide { max-width:none; columns:2 600px; column-gap:48px; }
-  #guide h1, #guide > .meta { column-span:all; }
-  #guide h2 { break-after:avoid; }
-  #guide li, #guide dd, #guide p { break-inside:avoid; }
+  #help { max-width:none; columns:2 600px; column-gap:48px; }
+  #help h1, #help > .meta, #help > .toc { column-span:all; }
+  #help h2 { break-after:avoid; }
+  #help li, #help dd, #help p { break-inside:avoid; }
 }
 /* Settings: one card per group, side by side on wide screens. */
 #settings { max-width:none; }
@@ -300,7 +302,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <svg class="logo" aria-hidden="true" viewBox="0 0 48 48"><defs><linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient><linearGradient id="logoGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#logoBg)"/><rect x="1" y="1" width="46" height="46" rx="10" fill="none" stroke="#fff" stroke-opacity=".14"/><g fill="url(#logoGold)"><path d="M20.20 43.20C11.00 42.20 5.60 34.00 8.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(16.09 42.16) rotate(-194.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-173.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-97.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-152.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-76.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-137.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-61.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-125.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-49.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(8.00 16.50) rotate(-82.2)"/><path d="M27.80 43.20C37.00 42.20 42.40 34.00 40.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(31.91 42.16) rotate(-61.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-6.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-82.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-27.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-103.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-43.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-119.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-54.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-130.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.00 16.50) rotate(-97.8)"/></g><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#0b1f4d" fill-opacity=".35" transform="translate(0 1)"/><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#fff"/></svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
   <div class="navtabs">
-  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes" data-tab="guide" onclick="showTab('guide')">Guide</button>
+  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes: every tab, button and option" data-tab="help" onclick="showTab('help')">Help</button>
   </div>
   <div class="navstatus">
   <span class="navleft"><span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
@@ -346,118 +348,389 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="cp" class="db units" hidden></div>
 <div id="immo" class="db units" hidden></div>
 <div id="settings" class="db help" hidden></div>
-<div id="guide" class="db help" hidden>
-  <h1>Getting started with Laertes</h1>
+<div id="help" class="db help" hidden>
+  <h1>Laertes help</h1>
   <p class="meta">Laertes runs next to ODIS. A small macro inside ODIS (the <b>bridge</b>) lets this web page read and change
-    control units, so you do everything from one place while ODIS stays open in the background.</p>
+    control units, so you do everything from one place while ODIS runs in the background. This page describes every tab,
+    button and option; hover any button in Laertes for a short description too.</p>
+  <nav class="toc">Contents:
+    <a href="#" onclick="helpGo('hStart'); return false">Getting started</a> ·
+    <a href="#" onclick="helpGo('hBridge'); return false">The ODIS bridge</a> ·
+    <a href="#" onclick="helpGo('hTop'); return false">Top bar</a> ·
+    <a href="#" onclick="helpGo('hUnits'); return false">Project units</a> ·
+    <a href="#" onclick="helpGo('hUnit'); return false">Unit functions</a> ·
+    <a href="#" onclick="helpGo('hDb'); return false">Unit database &amp; Trouble codes</a> ·
+    <a href="#" onclick="helpGo('hCoding'); return false">Coding</a> ·
+    <a href="#" onclick="helpGo('hHistory'); return false">History</a> ·
+    <a href="#" onclick="helpGo('hRetrofit'); return false">Retrofit</a> ·
+    <a href="#" onclick="helpGo('hGf'); return false">CP &amp; Immobilizer</a> ·
+    <a href="#" onclick="helpGo('hCan'); return false">VCI CAN</a> ·
+    <a href="#" onclick="helpGo('hSettings'); return false">Settings</a> ·
+    <a href="#" onclick="helpGo('hTips'); return false">Tips</a> ·
+    <a href="#" onclick="helpGo('hTrouble'); return false">Troubleshooting</a> ·
+    <a href="#" onclick="helpGo('hFiles'); return false">Files &amp; options</a></nav>
 
-  <h2 class="sub">1. The bridge macros (installed automatically)</h2>
+  <h2 class="sub" id="hStart">Getting started</h2>
   <ol>
-    <li><code>laertes.exe</code> contains <code>mcpserver.py</code> and <code>mcpserver_handlers.py</code> and copies them to
-      <code>C:\ProgramData\OE\macros\</code> every time it starts, when they are missing or differ, so the bridge always
-      matches this Laertes. A running bridge picks up the new <code>mcpserver_handlers.py</code> at once; a new
-      <code>mcpserver.py</code> takes effect the next time the macro starts.</li>
-    <li>Coming from an older version: the macro used to be called <code>mcpserver_test.py</code>. Delete that file.</li>
-  </ol>
-
-  <h2 class="sub">2. The bridge in ODIS (started automatically)</h2>
-  <ol>
+    <li>You need your own licensed ODIS installation — <b>ODIS-E</b> (Engineering, <code>C:\Program Files\OE</code>) or
+      <b>ODIS-S</b> (Service, <code>C:\Program Files\OS</code>) — and, for a car or bench unit, a VCI that ODIS can use.</li>
     <li>Connect the VCI to the car or bench unit and switch the ignition on. You do not need to open ODIS.</li>
-    <li>When Laertes starts and the bridge is not running, it starts ODIS <b>in the background, without its window</b>,
-      as ODIS's automation web service (<code>OffboardDiagLauncher.exe -configuration …\laertes-webservice.ini</code>),
-      loads the vehicle project by reading the car's VIN, and runs <code>mcpserver.py</code> in it. The top bar shows
-      each step. If the car cannot be identified (e.g. a unit on a bench), the project from <b>Settings › ODIS bridge</b> is
-      used; it is filled in from the project ODIS had loaded last time. Press <b>▶ Start bridge</b> to try again.</li>
-    <li><b>Offline, without a VCI</b> (offline coding, the ODIS database): choose the project (e.g. <code>VW37X</code>) in
-      Settings › ODIS bridge and press <b>▶ Bridge + virtual VCI</b> (tick <b>Start automatically with the virtual VCI</b> to
-      have Laertes start that way). Laertes registers its own <b>offline VCI</b> — a J2534 device without hardware,
-      <code>Laertes-Offline</code> (Windows asks for administrator rights once) — and lets the background ODIS use it, so ODIS opens
-      the project and runs the bridge with nothing connected. Loading the project takes about a minute and a half, because ODIS waits
-      for a VIN that never comes. Control units do not answer. Your own VCI choice in ODIS is put back when that ODIS ends.</li>
-    <li><b>A unit on a bench</b> that sleeps without ignition: turn on <b>Settings › Clamp 15 wake-up</b>. ODIS then uses your J2534 VCI
-      through Laertes's VCI DLL, which sends VW's clamp status frame (<code>0x3C0</code>, clamp 15 on) every 100 ms while the bridge runs.
-      The units wake up and act as if the ignition were on. The top bar shows it as <i>… via Laertes (clamp 15 wake-up)</i>;
-      <b>🔑 Ignition ON/OFF</b> there switches the frame on and off while the bridge runs, like turning the key.</li>
-    <li>This needs ODIS not to be open with its window: ODIS cannot run a macro started from outside then. If ODIS is
-      already open, open its <b>Macros</b> function and run <code>mcpserver.py</code> as before, or close ODIS and press
-      <b>▶ Start bridge</b>. Starting automatically can be turned off in Settings.</li>
-    <li>The macro listens on <code>127.0.0.1:8765</code>. <b>Stop bridge</b> in the top bar ends it; if Laertes started
-      ODIS in the background, that ODIS closes too, so you can open ODIS normally.</li>
+    <li>Run <code>laertes.exe</code>. It opens this page in your browser (<code>http://127.0.0.1:23031/</code>, or another free
+      port if that one is taken; the console window shows the address and a colored log of what Laertes does).</li>
+    <li>Laertes installs the bridge macros and starts ODIS in the background with the bridge in it (see the next section). The top
+      bar shows each step with a progress bar; a start takes about a minute.</li>
+    <li>When <b>● ODIS bridge</b> turns green and the vehicle project (🚗) and VCI (🔌) appear, open <b>Project units</b> and press
+      <b>Quick scan</b> (car) or <b>Scan all</b> (bench).</li>
   </ol>
 
-  <h2 class="sub">3. Start Laertes</h2>
-  <ol>
-    <li>Run <code>laertes.exe</code>. It opens this page in your browser (<code>http://127.0.0.1:23031/</code>,
-      or another free port if that one is taken; the console window shows the address).</li>
-    <li>Check the top bar: <b>● ODIS bridge</b> green, the loaded vehicle project (🚗) and the VCI ODIS uses (🔌) as <b>connected</b>.
-      Red “ODIS bridge offline” means the macro is not running: hover it for the reason, then press
-      <b>▶ Start bridge</b> or see step 2.</li>
-    <li>Optional switches: <code>-db</code> (database file),
-      <code>-bridge</code> (bridge address), <code>-nobrowser</code>.</li>
-    <li>Building from source: double-click <code>build.cmd</code> (needs <a href="https://go.dev/dl/">Go</a>); it runs the
-      tests and produces <code>laertes.exe</code>.</li>
-  </ol>
-
-  <h2 class="sub">4. Using the tabs</h2>
+  <h2 class="sub" id="hBridge">The ODIS bridge</h2>
   <dl>
-    <dt>Project units</dt>
-    <dd>The units of the vehicle (or the ODIS project offline). Select a unit, then:
-      <b>Identification</b>, <b>Coding</b> (edit bytes or use the decoded tables' dropdowns, then <i>Write to unit…</i> —
-      the coding is read back and verified, and the fault memory is read before and after so you see which faults
-      are new or gone, active or passive; units that also code slave units, such as the gateway 19, offer each
-      coding to pick), <b>Adaptation channels</b> (pick a channel, change values, write, verified, with the same before/after fault check as coding),
-      <b>Measurement groups</b> (tick several, <i>Show live</i> for values and graphs), <b>Basic settings</b> (start a
-      routine with its parameters, watch its status and chosen measurements, Stop), <b>Event memory</b> (faults with
-      repair guidance), <b>Full scan</b> of the unit and <b>Clear DTCs</b>. Use <b>Login…</b> first when a write needs
-      elevated access. <b>Component protection (test)</b> finds the component-protection control on the unit and writes it,
-      for bench testing of how a unit behaves while locked — it warns that this <b>locks the unit</b> (recovery needs an
-      online ODIS/VW SVM session with valid GeKo credentials) and asks you to type the unit name to confirm. Only on a
-      unit you own and can reactivate.
-      <b>Flash firmware</b> and <b>Load dataset</b> are <span class="chg">orange, experimental and untested</span>: they show a
-      live progress bar but in this build do not write anything. These three can be hidden with <b>Hide dangerous functions</b>
-      in Settings.
-      <br>For many units at once, the buttons above the list work on the units the list shows (tick
-      <i>responded only</i> for those that answered, untick it for everything in the ODIS project).
-      On a real car start with <b>Quick scan</b>: it asks the gateway once which units are installed and
-      communicating, identifies only those and ticks <i>responded only</i>, so later scans skip the missing units
-      instead of waiting for their timeouts (without a gateway, e.g. on a bench, use <b>Scan all</b>):
-      <b>Scan all</b> reads their identification; <b>Scan all unit DTCs</b> reads their faults and shows, on every press,
-      how many are new (+) or gone (−) since the press before; <b>Full scan</b> writes identification, coding and faults
-      as a log in the layout of a VCDS Auto-Scan, to copy or download for tools that read those logs.</dd>
-    <dt>Retrofit mode</dt>
-    <dd><b>Start retrofit…</b> opens the <b>Retrofit</b> tab: tick the units the retrofit covers (all by default), and
-      they are scanned and that scan is kept. While the retrofit is active (🔧 in the top bar), every coding, adaptation,
-      firmware and dataset change to those units is stored under its name (by default from the VIN) and the faults they
-      had before are ignored in counts, scans and the coding fault check. The Retrofit tab lists its changes as they are
-      written, by unit (e.g. only the ACC); History shows them too. <b>Stop retrofit</b> when the work is done.</dd>
-    <dt>Unit database / Trouble codes</dt>
-    <dd>The ODIS database without a car: search a part number or variant, see its tables and every trouble code with
-      repair guidance. Each unit also links to its <i>DTC catalog (offline)</i>.</dd>
-    <dt>Coding</dt>
-    <dd>The large coding editor: bit grid, your <code>.lbl</code> labels and any variant's ODX definition (remembered).
-      Opens from a unit's coding (<i>Open in Coding tab</i>, with <i>Back to unit coding</i>), or with
-      <i>New coding</i> for bytes you type in or part of a VCDS scan you paste (each <i>Coding:</i> line, with its unit and ASAM dataset, so the variant's labels apply).</dd>
-    <dt>History</dt>
-    <dd>Every coding and adaptation write with old → new value, unit, variant and result; for coding also each changed
-      byte and bit and, where a coding definition or .lbl labels are known, each setting before → after. Search any
-      text (unit, VIN, value, retrofit name) or pick a retrofit. Stored in the database, so it survives restarts.</dd>
+    <dt>Bridge macros (installed automatically)</dt>
+    <dd><code>laertes.exe</code> contains <code>mcpserver.py</code> and <code>mcpserver_handlers.py</code> and copies them to
+      <code>C:\ProgramData\OE\macros\</code> (ODIS-S: <code>C:\ProgramData\OS\macros\</code>) every time it starts, when they are
+      missing or differ, so the bridge always matches this Laertes. A running bridge picks up a new
+      <code>mcpserver_handlers.py</code> at once; a new <code>mcpserver.py</code> takes effect the next time the macro starts.
+      Coming from an older version: the macro used to be called <code>mcpserver_test.py</code>; delete that file.</dd>
+    <dt>Starting with your own VCI</dt>
+    <dd>When Laertes starts and the bridge is not running, it starts ODIS <b>in the background, without its window</b>, as ODIS's
+      automation web service (<code>OffboardDiagLauncher.exe -configuration …\laertes-webservice.ini</code>), loads the vehicle
+      project by reading the car's VIN and runs <code>mcpserver.py</code> in it. If the car cannot be identified (e.g. a unit on a
+      bench), the project from <b>Settings › ODIS bridge</b> is used; it is filled in from the project ODIS had loaded last time.
+      <b>▶ Start bridge</b> in the top bar or in Settings starts it by hand; untick <i>Start the bridge when Laertes starts</i> in
+      Settings to start it only by hand.</dd>
+    <dt>Offline, with the virtual VCI</dt>
+    <dd>For offline coding and the ODIS database without a car: choose the project (e.g. <code>VW37X</code>) in
+      Settings › ODIS bridge and press <b>▶ Virtual VCI</b> (top bar) or <b>▶ Bridge + virtual VCI</b> (Settings); tick
+      <i>Start automatically with the virtual VCI</i> to have Laertes always start that way. Laertes registers its own
+      <b>offline VCI</b> — a J2534 device without hardware, <code>Laertes-Offline</code> (Windows asks for administrator rights
+      once) — and lets the background ODIS use it, so ODIS opens the project and runs the bridge with nothing connected. The
+      simulated units report the <i>Simulation VIN</i> from Settings, and every message ODIS sends shows in the <b>VCI CAN</b>
+      panel. Your own VCI choice in ODIS is put back when that ODIS ends.</dd>
+    <dt>A unit on a bench (clamp 15 wake-up)</dt>
+    <dd>A unit that sleeps without ignition: turn on <b>Settings › Clamp 15 wake-up</b>. ODIS then uses your J2534 VCI through
+      Laertes's VCI DLL, which sends VW's clamp status frame (<code>0x3C0</code>, clamp 15 on) every 100 ms while the bridge runs,
+      so the units wake up and act as if the ignition were on. The top bar shows the VCI as <i>… via Laertes (clamp 15
+      wake-up)</i>; <b>🔑 Ignition ON/OFF</b> switches the frame on and off while the bridge runs, like turning the key. Tick
+      <i>Load this project directly</i> in Settings to skip the VIN identification that cannot succeed on a bench (about 15 s
+      faster).</dd>
+    <dt>ODIS-E or ODIS-S</dt>
+    <dd>The <b>E / S</b> selector in the top bar chooses which ODIS installation Laertes drives. ODIS-S runs the guided functions
+      (component protection, immobilizer). Stop the bridge before switching; the choice applies on the next start. <b>ODIS-S
+      shows a disclaimer dialog at startup</b>: click <i>Accept</i> in the ODIS-S window, otherwise the bridge cannot connect.</dd>
+    <dt>When ODIS is already open</dt>
+    <dd>ODIS cannot run a macro started from outside while it is open with its window. Either open its <b>Macros</b> function and
+      run <code>mcpserver.py</code> there, or close ODIS and press <b>▶ Start bridge</b>.</dd>
+    <dt>Stopping</dt>
+    <dd>The macro listens on <code>127.0.0.1:8765</code>. <b>■ Stop bridge</b> ends it (asks first); if Laertes started ODIS in
+      the background, that ODIS closes too, so you can open ODIS normally.</dd>
+    <dt>Jobs that outlive the page</dt>
+    <dd>Long jobs (basic settings, flashing, guided functions) run inside ODIS. If you reload or reopen the page while one runs,
+      Laertes picks it up again and shows its progress (in its tab, or in a box at the bottom left with <b>Stop</b>).</dd>
   </dl>
 
-  <h2 class="sub">Tips</h2>
+  <h2 class="sub" id="hTop">Top bar</h2>
+  <dl>
+    <dt>Tabs</dt>
+    <dd>Project units, Unit database, Trouble codes, Coding, History, Retrofit, CP, Immobilizer, Settings and Help. <b>VCI CAN</b>
+      is not a tab: it opens the CAN panel on the right, next to any tab. Laertes remembers the last tab.</dd>
+    <dt>⏳ Running operation</dt>
+    <dd>The operation in progress and how long it has run. Only one operation runs at a time; others are refused until it ends.
+      <b>Stop</b> ends long scans, live views and jobs after the current step.</dd>
+    <dt>🔧 Retrofit</dt>
+    <dd>Shown while retrofit mode is active, with the retrofit's name.</dd>
+    <dt>● Laertes</dt>
+    <dd>Green while <code>laertes.exe</code> runs; red “Laertes offline” when it is closed. The page reconnects by itself when it
+      comes back.</dd>
+    <dt>● ODIS bridge</dt>
+    <dd>Green: connected (hover for how long the start took). Yellow with a timer and progress bar: Laertes is starting ODIS and
+      the bridge, with the current step. Red “ODIS bridge offline”: hover for the reason; ⚠ means the start failed (the message
+      also appears as a notice).</dd>
+    <dt>🚗 Project · 🔌 VCI</dt>
+    <dd>The vehicle project loaded in ODIS, and the VCI ODIS is set to use with its state. Hover the VCI for clamp 15 / clamp 30
+      and DoIP details.</dd>
+    <dt>🔑 Ignition ON/OFF</dt>
+    <dd>Only with the clamp 15 wake-up: switches the wake-up frame on (units awake) and off (units sleep) without a restart. Each
+      start begins with it on.</dd>
+    <dt>↻ Restart VCI</dt>
+    <dd>Restarts the VCI through ODIS when it stops answering (asks first; the connection drops for a moment).</dd>
+    <dt>▶ Start bridge · ▶ Virtual VCI · ■ Stop bridge</dt>
+    <dd>Start ODIS in the background with your own VCI, or with the virtual VCI and the project from Settings; stop the bridge.
+      Which ones show depends on whether the bridge runs.</dd>
+    <dt>📋 Activity</dt>
+    <dd>What Laertes did in this session, newest first: operations with their duration, results, messages and bridge connects and
+      disconnects. The red badge counts errors you have not seen yet; <b>Clear</b> empties the list.</dd>
+    <dt>E / S</dt>
+    <dd>ODIS-E or ODIS-S, see above.</dd>
+    <dt>📄 ODIS logs</dt>
+    <dd>The button at the top right opens the <code>engine.log</code> of the selected ODIS in its default viewer, to see what ODIS
+      itself is doing (startup, errors).</dd>
+  </dl>
+
+  <h2 class="sub" id="hUnits">Project units</h2>
+  <p>The left side lists the control units of the vehicle project (address, name, state, fault count). The buttons above it work
+    on the units the list currently shows.</p>
+  <dl>
+    <dt>Filter · responded only</dt>
+    <dd>Show only units whose address or name contains the text. <i>responded only</i> shows only units that answered (identified
+      by ODIS or a Laertes scan, and not failed since); untick it for every unit in the ODIS project.</dd>
+    <dt>Reload from ODIS</dt>
+    <dd>Asks ODIS again for the units of the loaded project.</dd>
+    <dt>Quick scan</dt>
+    <dd>Start here on a real car: asks the gateway once which units are installed and communicating, identifies only those and
+      ticks <i>responded only</i>, so later scans skip missing units instead of waiting for their timeouts.</dd>
+    <dt>Scan all</dt>
+    <dd>Reads the identification of every listed unit (use it without a gateway, e.g. on a bench).</dd>
+    <dt>Scan all unit DTCs</dt>
+    <dd>Reads the fault memory of every listed unit and shows, on every press, how many faults are new (+) or gone (−) since the
+      press before.</dd>
+    <dt>Full scan</dt>
+    <dd>Identification, coding and faults of every listed unit, as a log in the layout of a VCDS Auto-Scan for tools that read
+      those logs: ⧉ copy it, <b>Download .txt</b> or <b>Close</b>.</dd>
+    <dt>Start retrofit…</dt>
+    <dd>Opens the Retrofit tab to start retrofit mode (see Retrofit).</dd>
+    <dt>⧉ Copy list</dt>
+    <dd>Copies the unit list as text.</dd>
+  </dl>
+
+  <h2 class="sub" id="hUnit">Unit functions</h2>
+  <p>Select a unit in the list. Its heading shows address, name and identification, with <b>open in unit database</b> (its ODX
+    data) and <b>DTC catalog (offline)</b> (every trouble code it can store). Above each result is the path of what you opened;
+    click an earlier part to go back.</p>
+  <dl>
+    <dt>Identification</dt>
+    <dd>Part numbers, software and hardware versions, serial number and the rest of what the unit reports. The raw ODIS result is
+      under <i>JSON</i>.</dd>
+    <dt>Coding</dt>
+    <dd>The unit's coding in an editor: type a byte (two hex digits) or change a setting in the decoded tables below — both edit the
+      same coding, and changed bytes are marked. Units that also code slave units (e.g. the gateway 19) offer each coding to pick.
+      <ul>
+        <li><b>Coding definition (ODIS database)</b>: the coding decoded with the unit's own ODX data into named settings with
+          dropdowns. When the unit's variant defines none, <b>Decode with a related variant…</b> lists variants of the same family
+          that do; the one you pick is remembered for this variant (with a warning that its layout may not fit) until you press
+          <b>Forget which variant I selected</b>.</li>
+        <li><b>Decode with your .lbl labels</b>: <b>Import .lbl…</b> loads a VCDS-style label file for this variant and subsystem
+          and shows each byte/bit with its label.</li>
+        <li><b>Reset</b> undoes your edits; <b>Open in Coding tab</b> opens the coding in the large bit-grid editor.</li>
+        <li><b>Write to unit…</b> shows exactly what changes and asks for confirmation, writes the coding and reads it back to
+          verify. With the fault check on (Settings), the fault memory is read before and after, and you see which faults are new
+          or gone, active or passive. Every write is stored in History.</li>
+      </ul></dd>
+    <dt>Adaptation channels</dt>
+    <dd>Lists the unit's channels (filter by name). Open one for its parameters with current values: pick a new value from the
+      dropdown (when ODX defines the choices) or type it; changed rows are marked, and hovering a name shows its ODX name and
+      current value. <b>Write to unit…</b> confirms, writes, reads back and does the same before/after fault check as coding;
+      <b>Reset</b> undoes changes.</dd>
+    <dt>Measurement groups</dt>
+    <dd>Tick one or more groups (<b>All</b> / <b>None</b>, filter), then <b>Show live</b>: the values update continuously, with a
+      small graph per numeric value (hover it for min / max / now) and changed values marked. <b>Stop</b> / <b>Start</b> pause and
+      continue, <i>Interval</i> sets the milliseconds between readings, ⧉ copies the current values. The live view pauses when you
+      leave the tab.</dd>
+    <dt>Basic settings</dt>
+    <dd>Lists the unit's routines. Open one, fill in its start parameters, tick the measurements to read with each status check and
+      press <b>Start basic setting…</b> (asks first). Its status and values update while it runs; <b>Stop</b> ends it. A basic
+      setting can move actuators and relearn values: meet the conditions from the repair information first.</dd>
+    <dt>Event memory</dt>
+    <dd>The stored faults: code, text, active or passive, status bits and environment data. Open a fault for <b>general
+      guidance</b> (repair steps derived from the code) and <b>ODIS guided guidance</b>, which fetches ODIS's guided fault finding
+      document — available only after the vehicle is identified and guided fault finding is started in ODIS. During a retrofit,
+      faults from before it are listed separately and ignored.</dd>
+    <dt>Login…</dt>
+    <dd>The security access (login) code for writes that need elevated access. It is remembered for the unit and sent with each
+      coding/adaptation write, because ODIS opens a new connection per operation. Leave it empty to clear it.</dd>
+    <dt>Full scan</dt>
+    <dd>Identification, coding and faults of this unit as a VCDS-style log.</dd>
+    <dt>Clear DTCs</dt>
+    <dd>Erases the unit's fault memory (asks first).</dd>
+    <dt>Dangerous functions</dt>
+    <dd>Shown only when you untick <b>Hide dangerous functions</b> in Settings:
+      <ul>
+        <li><b>Component protection (test)…</b> finds the component-protection adaptation channels and coding settings on the
+          unit and opens them in the adaptation editor, for bench testing how a unit behaves while locked. Writing <b>locks the
+          unit</b>; recovery needs an online ODIS/VW SVM session with valid GeKo credentials. Only on a unit you own and can
+          reactivate.</li>
+        <li><b>⚠ Flash firmware (experimental)…</b> and <b>⚠ Load dataset (experimental)…</b> are <span class="chg">orange,
+          experimental and untested</span>. Choose a flash container (<code>.frf</code>/<code>.odx</code>) or programming
+          configuration on the ODIS PC (<b>Browse…</b>) or from your browser (<b>Upload…</b>), then <b>Read / validate
+          config</b> (reads only), then <b>Execute</b> (typed confirmation). A progress bar, ODIS's messages, <b>Cancel</b> and
+          <b>Show the log of the last flash</b> (from ODIS's engine.log) follow the job.</li>
+      </ul></dd>
+  </dl>
+
+  <h2 class="sub" id="hDb">Unit database &amp; Trouble codes</h2>
+  <dl>
+    <dt>Unit database</dt>
+    <dd>The ODIS database without a car (the bridge must run, with any project). Type a unit address (<code>0x0001</code>) or a
+      part number / variant (<code>04C906026</code>, <code>GV_ECM10…</code>) and press <b>Find</b> or Enter. Pick a result for its
+      protocol, location, number of trouble codes and its tables; open a table for its rows with identifiers, parameters, units
+      and possible values. Filter the rows and ⧉ copy them.</dd>
+    <dt>Trouble codes</dt>
+    <dd>Every trouble code a unit or variant can store, from the same search. Search by code or text (e.g. <code>P0122</code> or
+      <i>throttle</i>); open a code for its level, number and repair guidance. Base data usually has no codes: pick a variant.</dd>
+  </dl>
+
+  <h2 class="sub" id="hCoding">Coding</h2>
+  <p>The large coding editor: every byte as a row of bits.</p>
+  <ul>
+    <li>Open it from a unit's coding (<b>Open in Coding tab</b>; <b>← Back to unit coding</b> takes the edited bytes back to write
+      them), or type hex bytes into the empty editor and press <b>Load for editing</b>.</li>
+    <li>Paste part of a VCDS scan (its <i>Address</i>, <i>ASAM Dataset</i> and <i>Coding:</i> lines): each coding found is offered
+      with its unit, and the variant's labels and definition apply.</li>
+    <li>Tick bits, choose bit-field values from dropdowns, and type your own label for any byte or bit — labels are stored for
+      that variant and subsystem. <b>Import .lbl labels</b> loads a VCDS-style label file.</li>
+    <li><b>Decode with a variant's definition…</b> searches the ODIS database for a variant whose coding definition decodes the
+      bytes; the choice is remembered.</li>
+    <li>Original and new coding each have <b>Copy</b>; <b>Reset</b> undoes edits; <b>New coding</b> starts over. To write to a
+      unit, go back to it under Project units.</li>
+  </ul>
+
+  <h2 class="sub" id="hHistory">History</h2>
+  <p>Every coding and adaptation write, flash, dataset and basic-setting run with time, unit, variant, old → new value and result;
+    for coding also each changed byte and bit and, where a coding definition or .lbl labels are known, each setting before →
+    after. Stored in <code>laertes.db</code>, so it survives restarts.</p>
+  <ul>
+    <li>Search any text (unit, VIN, value, retrofit name), and choose <i>All changes</i>, <i>Outside a retrofit</i> or one
+      retrofit. With a retrofit chosen: <b>Rename…</b>, <b>Scan before the retrofit</b> and <b>Stop retrofit</b>.</li>
+    <li>✕ deletes one entry; <b>Clear all</b> deletes every entry (asks first). Neither changes the units.</li>
+  </ul>
+
+  <h2 class="sub" id="hRetrofit">Retrofit</h2>
+  <p>Retrofit mode groups the work of one job, e.g. fitting ACC.</p>
+  <ol>
+    <li><b>Start retrofit…</b> (here or in Project units): enter a name (by default from the VIN) and tick the units the retrofit
+      covers (<b>All</b> / <b>None</b>). <b>Scan and start</b> scans them and keeps that scan as the state before.</li>
+    <li>While it is active (🔧 in the top bar), every coding, adaptation, firmware and dataset change to those units is stored
+      under its name, and the faults they had before are ignored in counts, scans and the coding fault check.</li>
+    <li>The tab lists its changes as they are written; <i>Units changed</i> filters them by unit, the search field by text.
+      <b>Scan before the retrofit</b> rescans the units and keeps that as the state before; <b>Rename…</b> renames it.</li>
+    <li><b>Stop retrofit</b> when done. Its changes stay here (pick it from the list) and in History.</li>
+  </ol>
+
+  <h2 class="sub" id="hGf">CP &amp; Immobilizer (guided functions)</h2>
+  <p>Both tabs run an ODIS guided function (normally with ODIS-S) and relay what ODIS reports. ODIS does the work — it talks to
+    the units and the VW online service and decides the outcome; Laertes shows its messages and lets you answer its dialogs. They
+    need the car connected and the vehicle identified in ODIS.</p>
+  <dl>
+    <dt>Vehicle identification (CP tab)</dt>
+    <dd><b>Identify vehicle</b> lets ODIS fill in brand, model, year, variant and engine from the VIN. Where it cannot decide, pick
+      the right choice and press <b>Continue</b>; <b>Start over</b> clears ODIS's selection. This changes only ODIS's vehicle
+      selection, nothing in the car.</dd>
+    <dt>Component protection</dt>
+    <dd>Press <b>Remove CP…</b> next to a unit in the list (filter it), or type an address (e.g. <code>5F</code>) and press
+      <b>Remove component protection…</b>. Asks first.</dd>
+    <dt>Immobilizer</dt>
+    <dd>Lists the immobilizer functions ODIS offers for this vehicle; <b>Run…</b> starts one (asks first). <b>Reload
+      functions</b> asks ODIS again.</dd>
+    <dt>While it runs</dt>
+    <dd>The right side shows ODIS's messages with times. Dialogs ODIS raises (choices, inputs, the GeKo username and password, the
+      VW online sign-in in your browser) appear there to answer; the GeKo credentials from Settings are filled in. Click a message
+      to highlight that step's CAN messages in the VCI CAN panel. <b>What is ODIS waiting for?</b> shows ODIS's guided-function
+      threads, to see where a run that seems stuck waits. 🌐 translates the messages, ⧉ copies them.</dd>
+    <dt>Online services</dt>
+    <dd>By default Laertes serves a stand-in for VW's online services on <code>127.0.0.1:23032</code> (sign-in and the GSB web
+      service), so the online step of component protection completes offline, e.g. with the virtual VCI. Start
+      <code>laertes.exe -grpstub=false</code> to use VW's real backend.</dd>
+  </dl>
+
+  <h2 class="sub" id="hCan">VCI CAN panel</h2>
+  <p><b>VCI CAN</b> in the tab bar or <b>◀ CAN</b> on the right edge opens the CAN trace next to any tab; drag its left edge to
+    change the width, <b>▶ Hide</b> closes it. It records all the time, also while hidden. Only the virtual VCI (and the clamp 15
+    wake-up frames) is traced; a real VCI is not.</p>
+  <ul>
+    <li>▶ is ODIS → unit, ◀ is unit → ODIS. Each message is decoded — UDS service, identifiers, values and negative responses with
+      their meaning; hover a message for details.</li>
+    <li><b>⏸ Pause</b> stops updating the table (recording continues); <b>Clear</b> empties the trace; the filter shows only
+      messages containing a CAN ID, service, DID or meaning.</li>
+    <li><i>Setup events</i> adds connects, filters and ioctls; <i>Wake-up frames</i> adds the periodic clamp 15 frames.</li>
+    <li><b>All / Operations / Coding / Adaptation / CP / Basic setting</b> show only the messages sent while that kind of operation
+      ran.</li>
+    <li><b>⧉ Copy</b> copies the shown messages tab-separated, for a spreadsheet or text file.</li>
+  </ul>
+
+  <h2 class="sub" id="hSettings">Settings</h2>
+  <p>Stored in <code>laertes.db</code>, so they apply in every browser and survive restarts.</p>
+  <dl>
+    <dt>ODIS bridge</dt>
+    <dd><ul>
+      <li><b>Start the bridge when Laertes starts</b> — on by default; works only while ODIS is not open with its window.</li>
+      <li><b>Start automatically with the virtual VCI</b> — offline mode: no car or interface, control units do not answer.</li>
+      <li><b>Vehicle project</b> — loaded offline, and online when the car cannot be identified by its VIN. It suggests the
+        projects ODIS has and is filled in from the project ODIS loaded last.</li>
+      <li><b>Load this project directly, without identifying the car by its VIN (bench)</b> — about 15 s faster on a bench; leave
+        it off for a car, so a different car gets its own project.</li>
+      <li><b>Simulation VIN</b> — the VIN the simulated units report (DID <code>0xF190</code>); empty uses the built-in default.
+        Applies on the next start.</li>
+      <li><b>▶ Start bridge</b> / <b>▶ Bridge + virtual VCI</b> — start now.</li>
+    </ul></dd>
+    <dt>Clamp 15 wake-up (bench)</dt>
+    <dd><ul>
+      <li><b>Send a clamp 15 frame periodically</b> — needs a VCI that ODIS uses as a J2534 device; through a car's OBD port the
+        gateway usually does not pass it on. With the virtual VCI the frames only appear in the CAN trace.</li>
+      <li><b>CAN ID</b> (hex; up to <code>7FF</code> is 11-bit; default <code>3C0</code>, Klemmen_Status_01) and <b>every … ms</b>
+        (default 100).</li>
+      <li><b>Data</b> — hex bytes, default <code>00 00 03 00</code> (byte 2: bit 0 clamp S, bit 1 clamp 15, bit 2 clamp X, bit 3
+        clamp 50).</li>
+      <li><b>E2E data ID</b> — default <code>C3</code>: byte 1's low nibble counts 0…15 and byte 0 becomes the AUTOSAR CRC-8.
+        Empty sends the data unchanged (older units).</li>
+      <li>Changes apply on the next bridge start.</li>
+    </ul></dd>
+    <dt>After a write</dt>
+    <dd><b>Read the fault memory before and after each coding/adaptation write</b> — turn it off to write faster without the fault
+      check.</dd>
+    <dt>Translation</dt>
+    <dd>The language 🌐 translates into (English, German, Czech, Slovak, Polish, French, Spanish, Italian, Dutch, Russian,
+      Ukrainian, Turkish, Portuguese, Romanian, Hungarian), and <b>Translate coding and adaptation names and values
+      automatically</b>. Texts go to Google Translate only when you press 🌐, or as they are shown with automatic translation
+      on.</dd>
+    <dt>Dangerous functions</dt>
+    <dd><b>Hide the dangerous unit functions</b> (on by default): Flash firmware, Load dataset and Component protection (test).</dd>
+    <dt>VW online sign-in</dt>
+    <dd><b>Sign in</b> signs ODIS in to the VW online service (GRP) in your browser now; otherwise it asks when an online function
+      needs it. The <b>GeKo username and password</b> are filled into ODIS's dialog when a guided function asks; <b>Save</b>
+      stores them, the password encrypted for this Windows user.</dd>
+  </dl>
+
+  <h2 class="sub" id="hTips">Tips</h2>
   <ul>
     <li>Writes change the control unit. Every write asks for confirmation and shows exactly what changes.</li>
-    <li>One operation runs at a time: while one runs (shown in the top bar), others are refused. <b>Stop</b> ends long
-      scans and live views after the current unit.</li>
-    <li>⧉ copies the text, table or fault next to it; in coding and adaptation tables each row has its own ⧉ too.</li>
-    <li>🌐 translates a fault or error text, and <b>🌐 Translate</b> above a coding or adaptation table translates its
-      names and values, into the language chosen in Settings, with Google Translate — the texts are sent to Google only
-      when you press it, or as they are shown if you turn on automatic translation in Settings. A translated text is
-      underlined with dots; hover it for the original. What is written to a unit is never translated.</li>
+    <li>⧉ copies the text, table, fault or error next to it; in coding and adaptation tables each row has its own ⧉ too.</li>
+    <li>🌐 next to a fault or error text translates it; <b>🌐 Translate</b> above a table translates its names and values. A
+      translated text is underlined with dots; hover it for the original. What is written to a unit is never translated.</li>
     <li>Hover a parameter for help: its ODX name, current value, bit position and possible values.</li>
-    <li>ODIS guided fault finding documents appear only after the vehicle is identified and guided fault finding is
-      started in ODIS; the general guidance works without it.</li>
-    <li>Your data (labels, history, remembered choices) is in <code>laertes.db</code> next to
-      <code>laertes.exe</code>.</li>
+    <li>The filter fields above long lists (units, channels, groups, variants, table rows, trouble codes) narrow them as you
+      type.</li>
+    <li>Laertes serves one browser page at a time, because two pages driving ODIS would interfere. Another page shows
+      <i>Single access limit</i>; <b>Use Laertes here</b> takes over.</li>
+  </ul>
+
+  <h2 class="sub" id="hTrouble">Troubleshooting</h2>
+  <dl>
+    <dt>“ODIS bridge offline”</dt>
+    <dd>Hover it for the reason. ODIS open with its window: close it, or run the macro from its Macros function. ODIS-S waiting on
+      its disclaimer: accept it in the ODIS-S window. Then press <b>▶ Start bridge</b>; <b>📄 ODIS logs</b> shows what ODIS
+      did.</dd>
+    <dt>Units do not answer</dt>
+    <dd>Check the ignition (or 🔑 Ignition on a bench), press <b>↻ Restart VCI</b>, then scan again. With the virtual VCI only the
+      simulated units answer.</dd>
+    <dt>A write is refused</dt>
+    <dd>Use <b>Login…</b> with the unit's login code. The error, and with the virtual VCI the CAN trace, shows the unit's negative
+      response and its meaning.</dd>
+    <dt>A guided function seems stuck</dt>
+    <dd>Look for an open dialog on the right, press <b>What is ODIS waiting for?</b>, or <b>Stop</b> it in the top bar.</dd>
+    <dt>No ODIS guided fault finding</dt>
+    <dd>Identify the vehicle in ODIS and start guided fault finding there, then retry; the general guidance works without it.</dd>
+  </dl>
+
+  <h2 class="sub" id="hFiles">Files &amp; command-line options</h2>
+  <ul>
+    <li><code>laertes.db</code> next to <code>laertes.exe</code> holds your data: settings, labels, history, retrofits and
+      remembered choices.</li>
+    <li><code>-db &lt;file&gt;</code> — use another database file.</li>
+    <li><code>-bridge &lt;host:port&gt;</code> — the bridge address (default <code>127.0.0.1:8765</code>).</li>
+    <li><code>-nobrowser</code> — do not open the browser.</li>
+    <li><code>-grpstub=false</code> — use VW's real online services instead of Laertes's stand-in on
+      <code>127.0.0.1:23032</code>.</li>
+    <li>Building from source: double-click <code>build.cmd</code> (needs <a href="https://go.dev/dl/">Go</a>); it runs the tests
+      and produces <code>laertes.exe</code>.</li>
   </ul>
 
   <h2 class="sub">License</h2>
@@ -997,7 +1270,7 @@ async function stopBridge() {
     await api('POST', '/api/bridge', {action: 'shutdown'});
     toast('Bridge stopped. ODIS can be used again.');
   } catch (e) {
-    toast(/Unknown action/.test(e.message) ? 'This bridge macro is too old to stop from here: install mcpserver.py (see Guide) and stop it in ODIS this time.' : e.message, true);
+    toast(/Unknown action/.test(e.message) ? 'This bridge macro is too old to stop from here: install mcpserver.py (see Help) and stop it in ODIS this time.' : e.message, true);
   }
   pingBridge();
 }
@@ -1223,7 +1496,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', guide: 'guide'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', help: 'help'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -1242,6 +1515,9 @@ function showTab(tab) {
   if (tab === 'immo') loadImmoTab();
   if (tab === 'settings') renderSettings();
 }
+
+// Help contents: scrolls to a section without touching the URL.
+function helpGo(id) { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); }
 
 // Settings tab: options stored in laertes.db (see loadSettings).
 function renderSettings() {
@@ -3911,6 +4187,7 @@ async function importLBL(input) {
 initDatabaseTabs();
 let startTab = 'coding';
 try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
+if (startTab === 'guide') startTab = 'help';  // the tab's old name
 showTab(startTab);
 renderEmptyCoding();
 if (canPrefs.open || startTab === 'vci') toggleCanPanel(true);

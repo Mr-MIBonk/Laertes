@@ -4,7 +4,7 @@ A web front end for ODIS diagnostics. A small macro running inside ODIS (the bri
 unit functions over a local socket; `laertes.exe` serves a web page that uses it to identify units,
 read and write coding and adaptations (each write read back and verified), watch measurement values
 live, read fault memory with repair guidance, flash firmware or datasets, browse the ODIS database offline and keep a history of
-every change. The **Guide** tab in the web page explains setup and use.
+every change. The **Help** tab in the web page explains setup and every tab, button and option.
 
 ![Laertes — Project units with a unit's coding decoded from the ODIS database](docs/screenshot.png)
 

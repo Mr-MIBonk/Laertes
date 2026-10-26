@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.1"
+const version = "0.9.2"
 
 //go:embed index.html
 var indexHTML []byte
