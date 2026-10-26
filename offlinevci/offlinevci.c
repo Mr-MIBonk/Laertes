@@ -852,9 +852,15 @@ static void enqueue(const Channel *c, unsigned long canId, const unsigned char *
 
 // --- Raw CAN with ISO-TP -------------------------------------------------------------------------
 
+// respIdFor maps a request CAN id to the id its response goes out on. VW 11-bit diagnostics (what
+// ODIS-E uses) sit at 0x700..0x73F with the response 0x6A higher (0x710->0x77A, 0x714->0x77E), and the
+// functional request 0x7DF is answered as the gateway. ODIS-S identifies the car over OBD first and
+// addresses ISO 15765-4 ids 0x7E0..0x7E7, whose responses are 8 higher (0x7E0->0x7E8); without this it
+// gets no answer and reports the interface down, so Laertes never comes up under ODIS-S.
 static unsigned long respIdFor(unsigned long reqId) {
     if (reqId == 0x7DF || reqId == gwTx) return gwRx;
     if (reqId >= 0x700 && reqId <= 0x73F) return reqId + 0x6A;
+    if (reqId >= 0x7E0 && reqId <= 0x7E7) return reqId + 0x08; // ISO 15765-4 (OBD) 11-bit
     return 0;
 }
 

@@ -222,6 +222,8 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .tabs button.vcibtn { border:1px solid var(--line); border-radius:4px; padding:2px 8px; margin-left:6px; align-self:center; color:var(--text); font-size:12px; white-space:nowrap; }
 .tabs button.vcibtn.warn { color:var(--warn); }
 .tabs #odisProduct { width:40px; box-sizing:border-box; border:1px solid var(--line); border-radius:4px; padding:2px 2px; margin-left:6px; align-self:center; background:transparent; color:var(--text); font-size:12px; }
+#odisLogsBtn { position:fixed; left:12px; bottom:12px; z-index:60; border:1px solid var(--line); border-radius:6px; padding:6px 10px; background:var(--panel); color:var(--text); font-size:12px; cursor:pointer; opacity:.82; box-shadow:0 1px 4px rgba(0,0,0,.2); }
+#odisLogsBtn:hover { opacity:1; }
 .tabs button.vcibtn.ign-on { color:var(--on); border-color:var(--on); }
 /* The hourglass runs for a while, then turns over, like a real one. */
 .tabs .busy .hourglass { display:inline-block; animation:hourglass 2s ease-in-out infinite; }
@@ -315,6 +317,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <span id="ver" class="ver" title="Laertes version"></span>
   </div></nav>
 <div id="activity" class="activity" hidden></div>
+<button id="odisLogsBtn" onclick="openOdisLogs()" title="Open the engine.log of the selected ODIS (OE or OS) in its default viewer, to watch what ODIS is doing">📄 ODIS logs</button>
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
@@ -558,8 +561,16 @@ async function loadSettings() {
 // The ODIS target selector in the top bar: OE (Engineering) or OS (Service). Saved as a setting and
 // applied by the backend on the next bridge start, so switching needs the bridge stopped first.
 function renderOdisProduct() {
+  const p = settings.odisProduct === 'OS' ? 'OS' : 'OE';
   const sel = $('#odisProduct');
-  if (sel) sel.value = settings.odisProduct === 'OS' ? 'OS' : 'OE';
+  if (sel) sel.value = p;
+  const btn = $('#odisLogsBtn');
+  if (btn) btn.textContent = `📄 ODIS-${p === 'OS' ? 'S' : 'E'} logs`;
+}
+// Opens the selected ODIS's engine.log on this PC so the user can watch its startup and runs.
+async function openOdisLogs() {
+  try { const r = await api('POST', '/api/odis/logs'); toast('Opened ' + r.path); }
+  catch (e) { toast(e.message, true); }
 }
 function setOdisProduct(p) {
   settings.odisProduct = p === 'OS' ? 'OS' : 'OE';

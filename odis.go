@@ -115,6 +115,10 @@ de.volkswagen.odis.vaudas.vehiclefunction.automation.webservice.port=8081
 # Jython 2.7 cannot start a macro when the time zone's short name is not Latin-1 (Czech "SEČ"):
 # ODIS's macro wrapper imports time first. An English default locale names it "CET".
 osgi.nl=en_US
+# ODIS-S opens the vehicle-identification dialog at the start of each session (config.ini sets
+# always_show_identification_dialog=true). Laertes loads the project directly, so skip it to start
+# faster; ODIS-E does not define the key and ignores it.
+de.volkswagen.odis.vaudas.ui.diag.always_show_identification_dialog=false
 eof=eof
 `
 

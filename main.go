@@ -165,6 +165,21 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 		odis.start(strings.TrimSpace(req.Project), req.Offline)
 		reply(w, odis.status(), nil)
 	})
+	// Opens the engine.log of the selected ODIS (OE or OS) in its default viewer, so the user can
+	// watch what ODIS is doing. Laertes runs on the same PC, so it can open the file directly.
+	mux.HandleFunc("POST /api/odis/logs", func(w http.ResponseWriter, r *http.Request) {
+		path := filepath.Join(odisDir, "log", "engine.log")
+		if _, err := os.Stat(path); err != nil {
+			http.Error(w, "the ODIS log "+path+" does not exist yet (start the bridge first)", http.StatusNotFound)
+			return
+		}
+		if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", path).Start(); err != nil {
+			reply(w, nil, err)
+			return
+		}
+		log.Printf("opened ODIS log %s", path)
+		reply(w, map[string]string{"path": path, "product": odisProduct}, nil)
+	})
 	// The offline VCI's CAN trace (offlinevci.c canLog): the "VCI CAN" tab polls it to show the
 	// ISO15765 traffic between ODIS and the simulated units.
 	mux.HandleFunc("GET /api/vci/can", func(w http.ResponseWriter, r *http.Request) {
