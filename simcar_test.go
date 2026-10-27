@@ -128,7 +128,7 @@ func TestSimCarFile(t *testing.T) {
 		"did F187 33 51 30 39 30 37 33 37 39 41 42\n",       // "3Q0907379AB", 11 characters
 		"did F197 45 53 43 20 20 20 20 20 20 20 20 20 20\n", // "ESC" padded to 13
 		"did 0600 01 FA 6A A1\n",
-		"did F1A2 03 40 36\n", // ASAM dataset version "034036": 3 bytes, not text
+		"did F1A2 30 33 34 30 33 36\n", // ASAM dataset version "034036" as text: version "034" + 3 reserved
 		// The gateway's component list: slot 0 the gateway (bus master, with its stored fault), the brakes
 		// (node 19 = byte 2, bit 3) present, coded as VCDS's GVL says.
 		"did 04A3 01 08 3C\n",

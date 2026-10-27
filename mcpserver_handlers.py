@@ -875,6 +875,48 @@ def handle_odx_table_layout(cmd):
     return with_database(read)
 
 
+def handle_odx_variant_patterns(cmd):
+    """How ODIS identifies each ECU variant of a base variant (cmd["base"], or the unit at "address"):
+    its matching patterns, each a list of {service, param, expected} that must all hold (e.g. the
+    ASAM dataset name F19E and its version F1A2)."""
+    def read():
+        bases = mcd_project().getDbProject().getDbEcuBaseVariants()
+        if cmd.get("base"):
+            base_names = [cmd["base"]]
+        else:
+            name = project_ecu_name(parse_address(cmd))
+            base_names = [n for n in bases.getNames() if n.startswith("BV_" + name)]
+        out = []
+        for base_name in base_names:
+            for v in mcd_items(bases.getItemByName(base_name).getDbEcuVariants()):
+                patterns = []
+                try:
+                    location = v.getDbLocations().getItemByIndex(0)
+                    for pat in mcd_items(location.getDbVariantPatterns()):
+                        match = []
+                        for m in mcd_items(pat.getDbMatchingParameters()):
+                            d = {}
+                            try:
+                                d["service"] = m.getDbDiagComPrimitive().getShortName()
+                            except (Exception, Throwable):
+                                pass
+                            try:
+                                d["param"] = m.getDbResponseParameter().getShortName()
+                            except (Exception, Throwable):
+                                pass
+                            try:
+                                d["expected"] = mcd_value(m.getExpectedValue())
+                            except (Exception, Throwable):
+                                pass
+                            match.append(d)
+                        patterns.append(match)
+                except (Exception, Throwable) as e:
+                    patterns = [{"error": error_text(e)}]
+                out.append({"base": base_name, "variant": v.getShortName(), "patterns": patterns})
+        return {"ok": True, "variants": out}
+    return with_database(read)
+
+
 def handle_gateway_nodes(cmd):
     """The gateway's node addresses per logical link ({"LL_Brake1UDS": 19, ...}), from the text table
     of its component list (TAB_RecorDataIdentGatewCompoList, row ECU identification) in the newest
@@ -3126,6 +3168,7 @@ HANDLERS = {
     "odx_did_layouts": handle_odx_did_layouts,
     "odx_table_layout": handle_odx_table_layout,
     "gateway_nodes": handle_gateway_nodes,
+    "odx_variant_patterns": handle_odx_variant_patterns,
     "odx_dtcs": handle_odx_dtcs,
     "odx_table": handle_odx_table,
     "odx_textual_variants": handle_odx_textual_variants,

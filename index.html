@@ -2460,16 +2460,16 @@ const BUILTIN_RULES = [
   // Every other unit the gateway reports silent (gw-node and gw-bus have their own wording).
   {id: 'gw-missing', type: 'case', at: '19', generic: true, name: 'gateway: a unit in the installation list does not answer',
     fault: `^(?![\\s\\S]*(Global|Timeout (Knoten|Node) 0x[0-9A-F]+ / [0-9A-F]{2}\\b))[\\s\\S]*(${NO_COMM})`,
-    check: 'The gateway expects this unit. If it is not fitted (removed, a retrofit undone, a different equipment level): untick it in the gateway installation list. If it is fitted: check its fuse, supply and bus wiring, and that it answers a scan.',
+    check: 'The gateway expects this unit. If it is not fitted (removed, a retrofit undone, a different equipment level): untick it in the gateway installation list. Common leftovers: after a head-unit change the old 56 radio, 37 navigation, 0F digital radio and 77 telephone; 61 battery regulation on a car without start/stop; 13 after an ACC radar was removed. If it is fitted: check its fuse, supply and bus wiring, and that it answers a scan. Change the installation list only with the battery charged: a low battery gives communication faults of its own.',
     src: 'https://forums.ross-tech.com/index.php?threads/53543/'},
   {id: 'gw-bus', type: 'case', at: '19', fault: 'Global(er)? Timeout|bus ?off|Bus Off', name: 'gateway: a whole data bus is silent',
     check: 'Not a coding fault: no unit on that bus answers. Check the bus wiring (twisted pair, terminations), a unit that pulls the bus down (unplug them one by one), and the supply and wake-up of the bus units.'},
   {id: 'trailer', type: 'case', at: '17, 01, 03, 10, 19, 09', fault: `(Anh(ae|ä)nger|Trailer).*(${NO_COMM})|(${NO_COMM}).*(Anh(ae|ä)nger|Trailer)`,
     option: 'Anh(ae|ä)nger|trailer|AAG', name: 'trailer module missing or not coded',
-    check: 'Trailer (69) is referenced in the gateway installation list and in the coding of 01, 03, 10, 17 (and 09): all must match whether a towbar module is fitted.',
+    check: 'Trailer (69) is referenced in the gateway installation list and in the coding of 01, 03, 10, 17 (and 09): all must match whether a towbar module is fitted. Typical MQB places (they vary with the unit version): engine 01 byte 5 bit 4 "trailer installed", cluster 17 byte 14 bit 5, comfort 46 byte 14 bit 6 (trailer control unit) and byte 4 bit 7 (trailer monitoring), side assist 3C byte 2 bits 4-7 (Ross-Tech threads 49735, 54018, 32934).',
     src: 'https://www.t6forum.com/threads/databus-fault-but-to-what-is-there-no-communication.64066/latest'},
   {id: 'cluster-missing', type: 'case', at: '17', generic: true, fault: 'missing message|fehlende Botschaft', name: 'instrument cluster: data bus missing message',
-    check: 'The cluster is coded to expect a unit that is not fitted. On a T6.1 changing one cluster coding value (24 → 14) cleared it: compare the cluster coding with the equipment.',
+    check: 'The cluster is coded to expect a unit that is not fitted. On a T6.1 changing one cluster coding value (24 → 14) cleared it: compare the cluster coding with the equipment. PQ35/46 clusters also keep their own installation list in adaptation channels 60, 61 and 62 (drivetrain, comfort and infotainment CAN): remove the missing unit there too (Ross-Tech threads 19184, 48122).',
     src: 'https://www.t6forum.com/threads/vcds-fault-17-instruments-databus-missing-message-inst.36380/'},
   {id: 'door-missing', type: 'case', at: '42, 52, BB, BC', generic: true, fault: 'missing message|fehlende Botschaft', name: 'door unit: data bus missing message',
     check: 'The door unit expects a message from a unit that is not installed: compare the door coding (mirror, memory seat, alarm options) with the car.',
@@ -2483,6 +2483,17 @@ const BUILTIN_RULES = [
     option: 'Scheinwerfer|headl|Xenon|AFS|LED|Halogen|Lampe|lamp|Kaltdiagnose|cold', name: 'lamp faults: headlight type or lamp check coded wrong',
     check: 'The central electronics coding must match the fitted lights: headlight type (MQB: byte 2 bits 0-2, halogen / xenon / xenon with AFS / LED) and, after LED or HID retrofits, the cold/hot lamp check (PQ35/46: byte 18). Halogen cars have no headlight power modules: untick 29/39 (or D6/D7) in the gateway installation list. A real blown bulb or bad connector gives the same fault, so check the lamp first if nothing was changed.',
     src: 'https://forums.ross-tech.com/index.php?threads/31730/'},
+  {id: 'acc-removed', type: 'case', at: '01, 02, 03, 14, 16, 17, 19, 5F, 75, 76',
+    fault: `(Cruise Control Front Distance|\\bACC\\b|Abstandsregel|Distanzregel|J428)[\\s\\S]*(${NO_COMM}|Invalid Data|unplausib|function restriction|Funktionseinschr)|(${NO_COMM})[\\s\\S]*(Cruise Control Front Distance|\\bACC\\b|Abstandsregel)`,
+    codes: 'U0235', option: '\\bACC\\b|GRA|Geschwindigkeitsregel|cruise|Abstand|Distanz|Front.?Assist|ADR', codeAt: '01, 03, 13, 16, 17, 19',
+    name: 'ACC radar (13) removed or not answering',
+    check: 'If the ACC radar was removed or is not fitted: unplug it, untick 13 in the gateway installation list, then code each unit back to plain (or no) cruise control: engine 01 (MQB byte 5 bits 5-6; PQ by login 16167 off, 11463 on), steering column 16 (cruise stalk), cluster 17 (ACC off), brakes 03 (brake-torque interface without ACC/Front Assist). Clear the faults, cycle the ignition and scan again: units still expecting the radar show up. If it is fitted: check its fuse, connector and alignment.',
+    src: 'https://forums.ross-tech.com/index.php?threads/28572/'},
+  {id: 'microphone', type: 'case', at: '5F, 75, 77, 56, 37',
+    fault: '^(?![\\s\\S]*(short circuit|Kurzschlu))[\\s\\S]*(Microphone|Mikrofon)[\\s\\S]*(open|Interruption|Unterbrechung|no signal|kein Signal|Malfunction)',
+    option: 'Mikrofon|microphone|\\bMic\\b', name: 'microphone coded but not fitted',
+    check: 'The unit is coded for a microphone that is not there: code the microphone out in this unit (RNS 510 head unit: byte 3 bit 1). After a head-unit retrofit the microphone must be wired from the headliner to the head unit and on from it to the Bluetooth module, not to the Bluetooth module alone. With aftermarket Bluetooth also untick 77 in the gateway installation list and disconnect the old under-seat phone module. A real microphone fault (open wire, connector) gives the same text when one is fitted.',
+    src: 'https://forums.ross-tech.com/index.php?threads/10760/'},
   {id: 'mfsw', type: 'case', at: '16', fault: 'Steering Wheel|Lenkrad|MFL|E221', option: 'MFL|Multifunktion|multi.?function|Lenkrad', name: 'multifunction steering wheel: no signal',
     check: 'Steering column electronics (J527) coding must say multifunction wheel, and the gateway installation list must include it; then check fuses, clockspring and wiring.',
     src: 'https://wiki.ross-tech.com/wiki/index.php/01426'},
@@ -2496,7 +2507,7 @@ const BUILTIN_RULES = [
     check: 'Central electronics coding "Kessy" must match whether keyless entry is fitted (retrofits code it as installed).',
     src: 'https://forum.obdeleven.com/thread/10466/keyless-entry-coding-retrofit'},
   {id: 'tpms', type: 'case', at: '65', fault: 'Tire Pressure|Reifendruck', option: 'Reifendruck|RDK|TPMS|tire', name: 'tyre pressure monitoring',
-    check: 'TPMS coding selects the data bus it talks on (MQB: chassis CAN, MLB: extended CAN); the wrong one gives "sensor defective / no signal".',
+    check: 'TPMS coding selects the data bus it talks on (MQB: chassis CAN, MLB: extended CAN); the wrong one gives "sensor defective / no signal". The cluster must name the same system: MQB cluster 17 byte 3 bit 7 = direct TPMS (sensors in the wheels, unit 65), byte 4 bit 0 = indirect TPMS (from the ABS wheel speeds); central electronics 09 byte 8 bit 7 "TPMS installed" (Ross-Tech threads 39757, 53391, 25607).',
     src: 'https://www.audiworld.com/forums/a4-b9-platform-discussion-212/tpms-vcds-coding-3010915/page2/'},
   {id: 'tpms-indirect', type: 'case', at: '19', fault: `(Tire Pressure|Reifendruck|RDK).*(${NO_COMM})|(${NO_COMM}).*(Tire Pressure|Reifendruck|RDK)`,
     codes: 'U0127', option: 'Reifendruck|RDK|TPMS|tire', codeAt: '19, 03', name: 'gateway: tyre pressure unit (65) not answering',
@@ -2697,7 +2708,7 @@ async function unitLinks(u) {
   const def = await codingDefinition(u);
   let table = def.own;
   if (!table) {
-    const pref = await loadCodingPref(u.variant);
+    const pref = await loadCodingPref(labelKey(u));
     if (pref) table = await bridge({action: 'odx_table', variant: pref.borrowVariant, base: pref.borrowBase, table: TEXTUAL_TABLE}).catch(() => null);
   }
   return linksFor(table, dtcs);
@@ -3564,7 +3575,7 @@ async function borrowPick(i) {
   step.borrow.chosen = v; step.borrow.table = null; renderUnitDetail();
   try { step.borrow.table = await bridge({action: 'odx_table', variant: v.variant, base: v.base, table: TEXTUAL_TABLE}); }
   catch (e) { step.borrow.err = e.message; }
-  saveCodingPref(step.unitVariant, v.variant, v.base);  // remember this choice for next time / other cars
+  saveCodingPref(step.labelKey, v.variant, v.base);  // remember this choice for next time / other cars
   if (codingStep() === step) renderUnitDetail();
 }
 
@@ -3582,16 +3593,18 @@ async function loadCodingPref(variant) {
 // and no variant is applied automatically next time (here, in the Coding tab or on other cars).
 async function forgetCodingPref() {
   const step = codingStep();
-  if (!step || !step.unitVariant) return;
-  try { await api('DELETE', '/api/coding-pref?' + new URLSearchParams({variant: step.unitVariant})); }
+  if (!step || !step.labelKey) return;
+  try { await api('DELETE', '/api/coding-pref?' + new URLSearchParams({variant: step.labelKey})); }
   catch (e) { toast('Could not forget the choice: ' + e.message, true); return; }
   step.borrow = null;
-  toast(`Forgot the decoding variant for ${step.unitVariant}.`);
+  toast(`Forgot the decoding variant for ${step.unitVariant || 'unit ' + step.addr}.`);
   renderUnitDetail();
 }
 // Applies a remembered borrowed-variant choice to the coding step, loading its definition table.
+// A unit ODIS has no variant for (e.g. a BCM whose dataset the project lacks) keeps its choice by
+// address, like its labels (labelKey).
 async function applyCodingPref(step) {
-  const pref = await loadCodingPref(step.unitVariant);
+  const pref = await loadCodingPref(step.labelKey);
   if (!pref) return;
   step.borrow = {chosen: {variant: pref.borrowVariant, base: pref.borrowBase}, remembered: true};
   try { step.borrow.table = await bridge({action: 'odx_table', variant: pref.borrowVariant, base: pref.borrowBase, table: TEXTUAL_TABLE}); }
@@ -3701,7 +3714,7 @@ function codingDefinitionHTML(step) {
       (${esc(step.unitVariant || 'unknown variant')}). Its layout may not fit this unit: check the values against what you know about the vehicle
       before writing. Editing here changes the bytes above; review them and use Write to unit with care.</div>`;
     if (!b.list) html += `<button title="Use the coding definition of a related variant from the ODIS database" onclick="op('Searching variants', borrowList)">Decode with a different variant…</button>`;
-    if (step.unitVariant) html += ` <button onclick="forgetCodingPref()" title="Do not decode ${esc(step.unitVariant)} with ${esc(b.chosen.variant)} any more, here or next time">Forget which variant I selected</button>`;
+    if (step.labelKey) html += ` <button onclick="forgetCodingPref()" title="Do not decode ${esc(step.unitVariant || 'unit ' + step.addr)} with ${esc(b.chosen.variant)} any more, here or next time">Forget which variant I selected</button>`;
     html += b.table ? decodedTable(coding, b.table, true, linksFor(b.table, step.dtcs), step.addr) :'<div class="meta">Loading the definition…</div>';
   }
   return html;

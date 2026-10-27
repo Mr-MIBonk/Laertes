@@ -282,11 +282,11 @@ func carFile(car scanCar, source string) string {
 		ascii("F197", u.System, 13) // system name
 		ascii("F18C", u.Serial, 0)  // serial number
 		ascii("F19E", u.ASAM, 0)    // ASAM/ODX dataset
-		// Its version is 3 bytes, which VCDS prints as 6 hex digits ("013020" = 01 30 20). With F19E it
-		// is what ODIS identifies the variant by.
-		if v, err := hex.DecodeString(u.ASAMVer); err == nil && len(v) == 3 {
-			fmt.Fprintf(&b, "did F1A2 %s\n", spacedHex(v))
-		}
+		// Its version is text, as VCDS prints it ("011001"): 3 characters of variant version and 3
+		// reserved ones (some units define only the first 3, others all 6, so all 6 are sent). With
+		// F19E it is what ODIS identifies the variant by: EV_BCMMQB_011 matches F19E "EV_BCMCONTI"
+		// (or EV_BCMBOSCH, EV_BCMMQB, ...) with version "011" (its variant patterns).
+		ascii("F1A2", u.ASAMVer, 0)
 		if c, err := hex.DecodeString(u.Coding); err == nil && len(c) > 0 && len(c) <= 64 {
 			fmt.Fprintf(&b, "did 0600 %s\n", spacedHex(c))
 		}
