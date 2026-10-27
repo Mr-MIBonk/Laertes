@@ -10,7 +10,9 @@
 // identification handshake a VW gateway answers -- DiagnosticSessionControl (0x10), TesterPresent
 // (0x3E) and ReadDataByIdentifier (0x22) -- with canned values. WriteDataByIdentifier (0x2E) accepts
 // any DID (coding 0x0600, workshop code 0xF198, programming date 0xF199, ...) and reads it back;
-// SecurityAccess (0x27) uses a zero seed.
+// SecurityAccess (0x27) uses a zero seed. The units store no faults: ReadDTCInformation (0x19)
+// reports an empty fault memory, ClearDiagnosticInformation (0x14) and ControlDTCSetting (0x85)
+// succeed.
 //
 // Pass-through: when offline.conf names a real J2534 driver (passthru=), every call is forwarded to
 // it instead, so ODIS works with the real interface through this DLL.
@@ -721,6 +723,9 @@ static void loadConfig(void) {
 
 // --- UDS response generation ---------------------------------------------------------------------
 
+// Status bits a simulated unit supports in its DTC replies (all eight of ISO 14229-1).
+#define DTC_AVAILABILITY 0xFF
+
 static unsigned long negative(unsigned char sid, unsigned char nrc, unsigned char *out) {
     out[0] = 0x7F;
     out[1] = sid;
@@ -815,6 +820,64 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
 
         return 2;
     }
+
+    case 0x19: { // ReadDTCInformation: the simulated units store no faults
+        if (n < 2)
+            return negative(sid, 0x13, out);
+
+        unsigned char sub = req[1];
+        out[0] = 0x59;
+        out[1] = sub;
+
+        switch (sub) {
+        case 0x01: // reportNumberOfDTCByStatusMask
+        case 0x07: // reportNumberOfDTCBySeverityMaskRecord
+        case 0x11: // reportNumberOfMirrorMemoryDTCByStatusMask
+        case 0x12: // reportNumberOfEmissionsOBDDTCByStatusMask
+            if (n < 3) return negative(sid, 0x13, out);
+            out[2] = DTC_AVAILABILITY;
+            out[3] = 0x01; // ISO 14229-1 DTC format
+            out[4] = 0x00; // count, high byte
+            out[5] = 0x00;
+            return 6;
+        case 0x02: // reportDTCByStatusMask (ODIS: confirmed and pending)
+        case 0x0F: // reportMirrorMemoryDTCByStatusMask
+        case 0x13: // reportEmissionsOBDDTCByStatusMask
+        case 0x17: // reportUserDefMemoryDTCByStatusMask
+            if (n < 3) return negative(sid, 0x13, out);
+            if (sub == 0x17) { out[2] = n > 3 ? req[3] : 0x00; out[3] = DTC_AVAILABILITY; return 4; }
+            out[2] = DTC_AVAILABILITY;
+            return 3;
+        case 0x0A: // reportSupportedDTC
+        case 0x15: // reportDTCWithPermanentStatus
+            out[2] = DTC_AVAILABILITY;
+            return 3;
+        case 0x03: // reportDTCSnapshotIdentification
+        case 0x14: // reportDTCFaultDetectionCounter
+            return 2;
+        case 0x04: // reportDTCSnapshotRecordByDTCNumber
+        case 0x06: // reportDTCExtDataRecordByDTCNumber
+        case 0x18: // reportUserDefMemoryDTCSnapshotRecordByDTCNumber
+        case 0x19: // reportUserDefMemoryDTCExtDataRecordByDTCNumber
+            return negative(sid, 0x31, out); // no such DTC stored
+        default:
+            return negative(sid, 0x12, out);
+        }
+    }
+
+    case 0x14: // ClearDiagnosticInformation: nothing stored, so always done
+        if (n < 4)
+            return negative(sid, 0x13, out);
+        out[0] = 0x54;
+        return 1;
+
+    case 0x85: // ControlDTCSetting (on/off around coding and flashing)
+        if (n < 2)
+            return negative(sid, 0x13, out);
+        if (suppress) return 0;
+        out[0] = 0xC5;
+        out[1] = (unsigned char)(req[1] & 0x7F);
+        return 2;
 
     default:
         return negative(sid, 0x11, out);

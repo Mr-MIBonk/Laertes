@@ -389,9 +389,22 @@ func (s *Store) SetCodingPref(p CodingPref) error {
 
 // Settings returns the stored UI settings as a JSON object ({} when none are saved yet). They are
 // kept in the database so they survive restarts and are shared by every browser that opens Laertes.
-func (s *Store) Settings() (json.RawMessage, error) {
+func (s *Store) Settings() (json.RawMessage, error) { return s.value("ui") }
+
+// SetSettings replaces the stored UI settings with the given JSON object.
+func (s *Store) SetSettings(v json.RawMessage) error { return s.setValue("ui", v) }
+
+// CodingRules returns the user's edits of the coding <-> trouble code rules as the page saved them
+// ({} when there are none): the page owns their layout and merges them over its built-in rules.
+func (s *Store) CodingRules() (json.RawMessage, error) { return s.value("coding_rules") }
+
+// SetCodingRules replaces the stored rule edits with the given JSON object.
+func (s *Store) SetCodingRules(v json.RawMessage) error { return s.setValue("coding_rules", v) }
+
+// value returns the JSON object stored under key in the settings table, {} when there is none.
+func (s *Store) value(key string) (json.RawMessage, error) {
 	var v string
-	err := s.db.QueryRow(`SELECT value FROM settings WHERE key='ui'`).Scan(&v)
+	err := s.db.QueryRow(`SELECT value FROM settings WHERE key=?`, key).Scan(&v)
 	if err == sql.ErrNoRows {
 		return json.RawMessage("{}"), nil
 	}
@@ -401,10 +414,9 @@ func (s *Store) Settings() (json.RawMessage, error) {
 	return json.RawMessage(v), nil
 }
 
-// SetSettings replaces the stored UI settings with the given JSON object.
-func (s *Store) SetSettings(v json.RawMessage) error {
-	_, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES ('ui', ?)
-		ON CONFLICT (key) DO UPDATE SET value=excluded.value`, string(v))
+func (s *Store) setValue(key string, v json.RawMessage) error {
+	_, err := s.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?)
+		ON CONFLICT (key) DO UPDATE SET value=excluded.value`, key, string(v))
 	return err
 }
 

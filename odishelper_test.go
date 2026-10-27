@@ -149,6 +149,29 @@ func TestSettings(t *testing.T) {
 	}
 }
 
+func TestCodingRules(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "r.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	if v, err := s.CodingRules(); err != nil || string(v) != "{}" {
+		t.Fatalf("default rules = %q, %v", v, err)
+	}
+	if err := s.SetSettings([]byte(`{"dtcCheck":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCodingRules([]byte(`{"rules":{"msg-ESP":null}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.CodingRules(); string(v) != `{"rules":{"msg-ESP":null}}` {
+		t.Errorf("rules = %q", v)
+	}
+	if v, _ := s.Settings(); string(v) != `{"dtcCheck":false}` { // a separate key: settings untouched
+		t.Errorf("settings = %q", v)
+	}
+}
+
 func TestGeko(t *testing.T) {
 	s, err := openStore(filepath.Join(t.TempDir(), "g.db"))
 	if err != nil {

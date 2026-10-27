@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.3"
+const version = "0.9.4"
 
 //go:embed index.html
 var indexHTML []byte
@@ -418,6 +418,19 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 			return
 		}
 		reply(w, nil, store.SetSettings(body))
+	})
+	// The user's edits of the coding <-> trouble code rules (Rules tab).
+	mux.HandleFunc("GET /api/coding-rules", func(w http.ResponseWriter, r *http.Request) {
+		v, err := store.CodingRules()
+		reply(w, v, err)
+	})
+	mux.HandleFunc("PUT /api/coding-rules", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil || !json.Valid(body) {
+			http.Error(w, "coding rules must be a JSON object", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.SetCodingRules(body))
 	})
 	// The GeKo sign-in for ODIS's online functions. Sent back to the page in full: only this
 	// PC's own Laertes page can read it (sameOrigin, singleClient).
