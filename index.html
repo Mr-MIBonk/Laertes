@@ -614,9 +614,11 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       known cases, the unit that sends a missing message, links to other units' coding — and the general guidance. Or type a fault text
       to see what the rules say about it.
       <b>Known cases</b> (faults reported by VCDS/ODIS users and in VW/Audi bulletins) and <b>message senders</b> (which unit sends a CAN
-      message such as <code>ESP_21</code>) can be edited, added and deleted; your changes are kept in <code>laertes.db</code>, a changed
+      message such as <code>ESP_21</code>, or the module an SAE "Lost Communication With …" fault names) can be edited, added and deleted; your changes are kept in <code>laertes.db</code>, a changed
       built-in rule has <b>Reset</b>, and deleted built-ins can be restored. Patterns are case-insensitive regular expressions; addresses
-      are hex, separated by commas. Once <b>Coding links across units</b> is built, its links are listed too: <b>Hide</b> one that is
+      are hex, separated by commas. A case can also name its faults by <b>codes</b>: an SAE code (<code>U112100</code>, or <code>U1121</code>
+      for every fault type) or the VW fault number VCDS lists first (<code>559893</code>). Faults show all three forms
+      (<code>U112100</code>, <code>U1121 00</code>, <code>VCDS 559893</code>), and the code searches take any of them. Once <b>Coding links across units</b> is built, its links are listed too: <b>Hide</b> one that is
       wrong and it stops showing in the hints.</dd>
     <dt>Coding ↔ trouble code rules</dt>
     <dd id="knownLinksHelp"></dd>
@@ -2096,7 +2098,26 @@ function valsTable(rows) {
 
 // The stored faults of an event memory reply: code, text, active (status bit 0, test failed),
 // the set status bits and the detail rows (other event details and environment data).
-function dtcEntries(res) {
+// One fault goes by several codes: the SAE code ODIS shows (U112100), the same as VCDS writes it
+// (U1121 00), and the VW fault number VCDS lists first (559893), which is the ODIS trouble code
+// number of the unit's variant. Codes compare without spaces and dashes.
+const codeKey = s => String(s || '').replace(/[\s\-]/g, '').toUpperCase();
+const vcdsCode = c => /^[PCBU][0-9A-F]{6}$/.test(codeKey(c)) ? codeKey(c).slice(0, 5) + ' ' + codeKey(c).slice(5) : codeKey(c);
+function dtcCodesHTML(code, number) {
+  const parts = [number !== undefined && number !== null && number !== '' ? `VCDS ${number}` : '', vcdsCode(code) !== codeKey(code) ? vcdsCode(code) : ''];
+  return parts.filter(Boolean).length ? `<span class="meta" title="The same fault as VCDS lists it: VW fault number and SAE code">${esc(parts.filter(Boolean).join(' · '))}</span>` : '';
+}
+// The VW fault number of a fault read from a unit: from the unit's ODIS catalog (dtcs) by code, and
+// by text when its variant uses the code for several faults; else the raw value ODIS reported. Some
+// variants have one code and text under several numbers (engine units): no number then, not a guess.
+function dtcNumber(dtcs, code, text, raw) {
+  const same = (dtcs || []).filter(d => d.code && codeKey(d.code) === codeKey(code));
+  const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const hits = same.length === 1 ? same : same.filter(d => norm(d.text) === norm(text));
+  if (hits.length === 1) return hits[0].number;
+  return /^\d+$/.test(String(raw || '').trim()) ? +raw : undefined;
+}
+function dtcEntries(res, dtcs) {
   const m = (res && res.event_memory) || {};
   return (m.eventMemoryEntries || []).map(e => {
     const infos = e.eventInfos || [], info = t => infos.find(i => i.eventInfoType === t);
@@ -2105,7 +2126,7 @@ function dtcEntries(res) {
     const bits = (e.dtcStates || []).filter(b => b.bitSet);
     const details = [...resultRows(infos.filter(i => !['PCODE', 'ERROR_CODE'].includes(i.eventInfoType) && i.translatedValue)),
       ...resultRows(e.environmentData)];
-    return {code, text, bits, details, active: bits.some(b => b.bitPosition === 0)};
+    return {code, text, bits, details, number: dtcNumber(dtcs, code, text, err.value), active: bits.some(b => b.bitPosition === 0)};
   });
 }
 // Identifies a fault across reads, e.g. before and after a coding write.
@@ -2115,14 +2136,14 @@ const activeText = d => d.active ? 'active' : 'passive';
 // Event memory: one collapsible block per stored fault. The summary shows the DTC, its text and
 // whether it is active; opening it shows every set status bit, the other event details and the
 // environment data. During a retrofit, faults the unit had when it started are listed apart.
-function eventMemoryHTML(res, addr, links) {
-  const m = res.event_memory, all = dtcEntries(res);
+function eventMemoryHTML(res, addr, links, dtcs) {
+  const m = res.event_memory, all = dtcEntries(res, dtcs);
   const block = (d, ei) => {
     const rows = [...d.bits.map(b => ({depth: 0, name: `Status bit ${b.bitPosition}`, value: b.bitValueText})), ...d.details];
     return `<details class="event"><summary><span class="mono">${esc(d.code || '—')}</span> ${esc(d.text)} ${trBtn(d.text)}
-      <span class="${d.active ? 'bad' : 'meta'}">${activeText(d)}</span>
+      <span class="${d.active ? 'bad' : 'meta'}">${activeText(d)}</span> ${dtcCodesHTML(d.code, d.number)}
       <button class="cp" title="Copy this fault with its details" onclick="copyEl(this.closest('details'), event)">⧉</button></summary>
-      ${valsTable(rows)}<div class="nocopy">${dtcCodingHTML(links, d.code, d.text, addr)}${dtcGuidanceHTML(d.code, d.text, ei)}</div></details>`;
+      ${valsTable(rows)}<div class="nocopy">${dtcCodingHTML(links, d.code, d.text, addr, d.number)}${dtcGuidanceHTML(d.code, d.text, ei)}</div></details>`;
   };
   const fresh = all.filter(d => !isOld(addr, d)), old = all.filter(d => isOld(addr, d));
   return `<div class="meta">${res.cleared ? 'Event memory cleared. ' : ''}${fresh.length} stored fault${fresh.length === 1 ? '' : 's'}${old.length ? ` (+${old.length} from before the retrofit, ignored)` : ''}
@@ -2217,7 +2238,7 @@ function renderUnitDetail() {
       ? `<button class="op" onclick="unitOpen(${i})" title="${esc(n)}">${esc(txt(n))}</button>` : `<span title="${esc(n)}">${esc(txt(n))}</span>`).join('')}</div>
       <div class="meta">${copyBtn(step.res.names.join('\n'), 'Copy all names')} copy the list ${trTableBtn(step.res.names)}</div>`;
   } else if (step && step.res && step.res.event_memory) {
-    body = eventMemoryHTML(step.res, u.id, step.links) +`<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
+    body = eventMemoryHTML(step.res, u.id, step.links, step.dtcs) +`<details class="rawjson"><summary>JSON</summary>${jsonView(step.res)}</details>`;
   } else if (step && step.res && step.cmd.action === 'read_coding') {
     // Only the way to change it: the editor starts from the unit's current coding.
     body = step.codings && step.codings.length ? codingEditorHTML(step) + dtcChangeHTML(step, u.id)
@@ -2285,9 +2306,11 @@ const LINK_STOP = new Set(`datenbus fehlende botschaft botschaftz botschaften un
   can lin ansteuerung leitung geber sensor schalter lampe ausgang eingang version typ type wert value off aus ein left right
   front rear mechanischer versorgungsspannung grenzwert oberer unterer ueberschritten unterschritten falsch codiert anzeige ohne
   without with vorhanden available extern externem intern allgemein general bedien bedienelement bedienungseinheit taster
-  assist assistent assistant klemme led control controller fahrerseite beifahrerseite kunden spezifisches funktions start stopp`.split(/\s+/));
-// Missing or silent partner: the faults a wrong "installed" bit typically causes.
-const LINK_COMM_RE = /fehlende Botschaft|kein(e|en)? (Signal|Kommunikation)|Timeout|Time_out|missing message|no (signal|communication)/i;
+  assist assistent assistant klemme led control controller fahrerseite beifahrerseite kunden spezifisches funktions start stopp
+  lost communication with message missing`.split(/\s+/));
+// Missing or silent partner: the faults a wrong "installed" bit typically causes ("databus message
+// missing - ESP_21", SAE "Lost Communication With Body Control Module").
+const LINK_COMM_RE = /fehlende Botschaft|kein(e|en)? (Signal|Kommunikation)|Timeout|Time_out|missing message|message missing|lost communication|no (signal|communication)/i;
 function linkWords(s) {
   s = String(s || '').replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe')
     .replace(/Ü/g, 'Ue').replace(/ß/g, 'ss').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
@@ -2334,12 +2357,21 @@ const linkParamText = p => `${p.long_name || p.name} (byte ${p.byte_pos} bit ${p
 // where $1, $2 … stand for the fault pattern's groups; generic: applies only when the fault's address
 // is known (its pattern names no particular part).
 // type "sender": the unit (at) that sends a CAN message (msg, its name without the number: ESP for
-// ESP_21, TSG_FT for TSG_FT_01). A "missing message" fault naming it points at that unit.
-const NO_COMM = 'no signal|no communication|keine? (Signal|Kommunikation)|missing message|fehlende Botschaft|timeout';
+// ESP_21, TSG_FT for TSG_FT_01), or a module named in SAE fault texts (msg with spaces: "Body Control
+// Module" for "Lost Communication With Body Control Module"). A missing-message fault naming it
+// points at that unit.
+const NO_COMM = 'no signal|no communication|keine? (Signal|Kommunikation)|missing message|message missing|lost communication|fehlende Botschaft|time_?out';
 const BUILTIN_RULES = [
   {id: 'gw-node', type: 'case', at: '19', fault: 'Timeout (Knoten|Node) 0x[0-9A-F]+ / ([0-9A-F]{2})\\b', name: 'gateway: timeout of a node',
     check: 'Gateway installation list: entry $2 is ticked. Untick it if that unit is not fitted; otherwise check that unit\'s fuse, supply and bus wiring.',
     src: 'https://www.vag-coding.net/audi/q5-fy/q5-fy-activate-trailer-hitch-retrofit/'},
+  // Every other unit the gateway reports silent (gw-node and gw-bus have their own wording).
+  {id: 'gw-missing', type: 'case', at: '19', generic: true, name: 'gateway: a unit in the installation list does not answer',
+    fault: `^(?![\\s\\S]*(Global|Timeout (Knoten|Node) 0x[0-9A-F]+ / [0-9A-F]{2}\\b))[\\s\\S]*(${NO_COMM})`,
+    check: 'The gateway expects this unit. If it is not fitted (removed, a retrofit undone, a different equipment level): untick it in the gateway installation list. If it is fitted: check its fuse, supply and bus wiring, and that it answers a scan.',
+    src: 'https://forums.ross-tech.com/index.php?threads/53543/'},
+  {id: 'gw-bus', type: 'case', at: '19', fault: 'Global(er)? Timeout|bus ?off|Bus Off', name: 'gateway: a whole data bus is silent',
+    check: 'Not a coding fault: no unit on that bus answers. Check the bus wiring (twisted pair, terminations), a unit that pulls the bus down (unplug them one by one), and the supply and wake-up of the bus units.'},
   {id: 'trailer', type: 'case', at: '17, 01, 03, 10, 19, 09', fault: `(Anh(ae|ä)nger|Trailer).*(${NO_COMM})|(${NO_COMM}).*(Anh(ae|ä)nger|Trailer)`,
     option: 'Anh(ae|ä)nger|trailer|AAG', name: 'trailer module missing or not coded',
     check: 'Trailer (69) is referenced in the gateway installation list and in the coding of 01, 03, 10, 17 (and 09): all must match whether a towbar module is fitted.',
@@ -2368,6 +2400,10 @@ const BUILTIN_RULES = [
   {id: 'tpms', type: 'case', at: '65', fault: 'Tire Pressure|Reifendruck', option: 'Reifendruck|RDK|TPMS|tire', name: 'tyre pressure monitoring',
     check: 'TPMS coding selects the data bus it talks on (MQB: chassis CAN, MLB: extended CAN); the wrong one gives "sensor defective / no signal".',
     src: 'https://www.audiworld.com/forums/a4-b9-platform-discussion-212/tpms-vcds-coding-3010915/page2/'},
+  {id: 'tpms-indirect', type: 'case', at: '19', fault: `(Tire Pressure|Reifendruck|RDK).*(${NO_COMM})|(${NO_COMM}).*(Tire Pressure|Reifendruck|RDK)`,
+    codes: 'U0127', option: 'Reifendruck|RDK|TPMS|tire', codeAt: '19, 03', name: 'gateway: tyre pressure unit (65) not answering',
+    check: 'If the direct TPMS unit 65 was removed for indirect TPMS (in the brakes 03): untick 65 in the gateway installation list and code indirect TPMS in 03 (T6: byte 15 bit 4, T5.1: byte 12 bit 4). If 65 is still fitted, check its fuse (T6: SC52) and wiring.',
+    src: 'https://www.t6forum.com/threads/vcds-and-swapping-direct-tpms-with-the-indirect-tpms-transporter-t6-1.51244/'},
   {id: 'camera', type: 'case', at: '5F, 6C', fault: 'camera|Kamera|R(ue|ü)ckfahr', option: 'Kamera|camera|RVC|R(ue|ü)ckfahr|Area.?view', name: 'rear view camera',
     check: 'The camera only appears after the infotainment coding enables it. A Bentley/VW bulletin says to ignore camera "incorrectly coded" faults unless there is a real fault, and not to run "Perform coding".',
     src: 'https://www.audizine.com/threads/coding-rear-view-camera.674626/'},
@@ -2398,6 +2434,37 @@ const BUILTIN_RULES = [
     ['WFS', '17, 25', 'immobilizer'], ['Sitz', '06, 36', 'seat memory'], ['Klemmen_Status', 'B7, 09', 'keyless entry / central electrics (terminal status)'],
     ['BEM', '19', 'gateway (battery energy management)'], ['ZV', '09', 'central electrics (central locking)'], ['VIN', '19', 'gateway'],
     ['Gate', '19', 'gateway'], ['Lenkhilfe', '44', 'power steering'], ['TSK', '01', 'engine (cruise control coordinator)'],
+    // Further messages named in ODIS missing-message faults (opendbc's VW DBC files confirm WBA,
+    // Waehlhebel, DC_Hybrid and OBD); PQ names (mBremse, mLW, mClima, mNiveau) and English ones.
+    ['Fahrwerk', '14', 'damping control (DCC)'], ['Daempfer', '14', 'damping control (DCC)'], ['Niveau', '34', 'level control'],
+    ['Allrad', '22', 'all-wheel drive'], ['WBA', '02', 'transmission'], ['Waehlhebel', '81', 'gear selector'],
+    ['DC_Hybrid', '51', 'electric drive (power electronics)'], ['OBD', '01', 'engine'], ['LAD', 'C6', 'battery charger'],
+    ['RKA', '03', 'brakes (tyre pressure indicator)'], ['ESC', '03', 'brakes (ESP)'], ['Bremse', '03', 'brakes (ESP)'],
+    ['EBKV', '23', 'brake booster'], ['LW', '44, 16', 'steering angle sensor'], ['Clima', '08', 'climate control'],
+    ['Mem_FS', '36', 'driver seat memory'], ['Mem_BFS', '06', 'passenger seat memory'], ['DoorFunctions_FS', '42', 'driver door'],
+    ['Innenlicht', '09', 'central electrics (interior light)'], ['Wischer', '09', 'central electrics (wipers)'],
+    ['Drehschalter', '09', 'central electrics (light switch)'], ['CentralLocking', '09', 'central electrics (central locking)'],
+    ['Klemmen_Steuerung', 'B7, 09', 'keyless entry / central electrics (terminal control)'], ['KLSTAT', 'B7, 09', 'keyless entry / central electrics (terminal status)'],
+    ['ClampControl', 'B7, 09', 'keyless entry / central electrics (terminal control)'], ['KeylessAccess', 'B7, 09', 'keyless entry'],
+    ['MainUnit', '5F', 'infotainment'], ['NavData', '5F', 'infotainment (navigation)'], ['PSD', '5F', 'infotainment (predictive route data)'],
+    ['AMP', '47', 'sound system'], ['APS', '10, 76', 'park assist'], ['PaCo', '10, 76', 'park assist'], ['Heckradar', '3C', 'side assist (rear radar)'],
+    ['VZE', 'A5', 'front camera (traffic sign recognition)'], ['BV_Linie', 'A5', 'front camera (lane detection)'],
+    ['Dashboard', '17', 'instrument cluster'], ['ECM', '01', 'engine'], ['TCM', '02', 'transmission'], ['Steering_angle', '44, 16', 'steering angle sensor'],
+    // SAE module names in "Lost Communication With …" (U01xx) faults.
+    ['Drive Motor Control Module', '51', 'electric drive'], ['Battery Energy Control Module', '8C', 'high-voltage battery'],
+    ['Four-Wheel Drive Clutch Control Module', '22', 'all-wheel drive'], ['Gear Shift Module', '81', 'gear selector'],
+    ['Anti-Lock Brake System', '03', 'brakes (ESP)'], ['Vehicle Dynamics Control Module', '03', 'brakes (ESP)'],
+    ['Brake System Control Module', '03', 'brakes (ESP)'], ['Steering Angle Sensor Module', '44, 16', 'steering angle sensor'],
+    ['Power Steering Control Module', '44', 'power steering'], ['Steering Effort Control Module', '44', 'power steering'],
+    ['Suspension Control Module', '14', 'damping control (DCC)'], ['Body Control Module', '09', 'central electrics (BCM)'],
+    ['Instrument Panel Cluster', '17', 'instrument cluster'], ['Serial Data Gateway Module', '19', 'gateway'],
+    ['Restraints Control Module', '15', 'airbag'], ['Cruise Control Front Distance Range Sensor', '13', 'adaptive cruise control'],
+    ['Parking Assist Control Module', '10, 76', 'park assist'], ['HVAC Control Module', '08', 'climate control'],
+    ['Auxiliary Heater Control Module', '18', 'auxiliary heater'], ['Navigation Control Module', '5F', 'infotainment (navigation)'],
+    ['Steering Column Control Module', '16', 'steering column electronics'], ['Column Lock Module', '2B', 'steering column lock'],
+    ['Battery Charger Control Module', 'C6', 'battery charger'], ['Electronic Brake Booster Control Module', '23', 'brake booster'],
+    ['Door Control Module A', '42', 'driver door'], ['Door Control Module B', '52', 'passenger door'],
+    ['Door Control Module C', 'BB', 'rear left door'], ['Door Control Module D', 'BC', 'rear right door'],
   ].map(([msg, at, name]) => ({id: 'msg-' + msg, type: 'sender', msg, at, name})),
 ];
 // The user's edits: {rules: {id: rule or null (deleted)}, hidden: [link keys]}; loaded at startup.
@@ -2411,7 +2478,8 @@ function compileRules() {
     else byId.set(id, {...r, id, builtin: BUILTIN_RULES.some(b => b.id === id), edited: true});
   }
   RULES = [...byId.values()].map(r => {
-    const out = {...r, atN: ruleAddrs(r.at), codeAtN: ruleAddrs(r.codeAt || r.at)};
+    const out = {...r, atN: ruleAddrs(r.at), codeAtN: ruleAddrs(r.codeAt || r.at),
+      codesN: String(r.codes || '').split(/[,;]+/).map(codeKey).filter(Boolean)};
     const re = s => { try { return s ? new RegExp(s, 'i') : null; } catch (e) { out.bad = e.message; return null; } };
     out.faultRe = re(r.fault); out.optionRe = re(r.option);
     return out;
@@ -2426,10 +2494,16 @@ const saveRuleEdits = () => api('PUT', '/api/coding-rules', ruleEdits);
 const hexAddr = a => a === undefined || a === null || a === '' ? null : parseInt(String(a).replace(/^0x/i, ''), 16);
 const addrText = a => (+a).toString(16).toUpperCase().padStart(2, '0');
 const ruleCheck = (r, m) => String(r.check || '').replace(/\$(\d)/g, (_, i) => (m && m[i]) || '');
+// A case's codes (U112100, U1121 for every fault type, or a VW fault number such as 559893) name a
+// fault besides its text pattern.
+const ruleCodeHit = (r, code, number) => r.codesN.some(c => /^\d+$/.test(c)
+  ? number !== undefined && number !== null && +c === +number
+  : !!code && (c === codeKey(code) || (c.length === 5 && codeKey(code).startsWith(c))));
 // The known cases for a fault read at addr (null: any unit, e.g. the offline catalog).
-function knownForFault(text, addr) {
+function knownForFault(text, addr, code, number) {
   const a = hexAddr(addr);
-  return RULES.filter(r => r.type === 'case' && r.faultRe).map(r => ({r, m: (text || '').match(r.faultRe)}))
+  return RULES.filter(r => r.type === 'case' && (r.faultRe || r.codesN.length))
+    .map(r => ({r, m: (r.faultRe && (text || '').match(r.faultRe)) || (ruleCodeHit(r, code, number) ? [] : null)}))
     .filter(({r, m}) => m && (a === null ? !r.generic : r.atN.includes(a)));
 }
 // The known cases a coding option of the unit at addr is part of.
@@ -2437,10 +2511,20 @@ const knownForOption = (name, addr) => RULES.filter(r => r.type === 'case' && r.
   && (hexAddr(addr) === null || r.codeAtN.includes(hexAddr(addr))));
 // The CAN messages a missing-message fault names (ESP_21, TSG_FT_01, also wrapped as FAULT_TIMEOUT_ESP,
 // Timeout_mMotor_14 or TIMEOUT_mLenkhilfe), each with its sender rule; the longest message name wins
-// (TSG_FT before TSG).
+// (TSG_FT before TSG). Senders named as a module ("Body Control Module") match as a phrase, the
+// longest first ("Door Control Module A", not "Door Control Module B").
+const phraseNorm = s => ' ' + String(s || '').toLowerCase().replace(/[^a-z0-9\-\/]+/g, ' ').trim() + ' ';
 function sendersForFault(text) {
-  const out = [], senders = new Map(RULES.filter(r => r.type === 'sender' && r.msg).map(r => [r.msg.toLowerCase(), r]));
+  const out = [], all = RULES.filter(r => r.type === 'sender' && r.msg);
+  const senders = new Map(all.filter(r => !/\s/.test(r.msg.trim())).map(r => [r.msg.toLowerCase(), r]));
   if (!LINK_COMM_RE.test(text || '')) return out;
+  let t = phraseNorm(text);
+  for (const r of all.filter(r => /\s/.test(r.msg.trim())).sort((a, b) => b.msg.length - a.msg.length)) {
+    const p = phraseNorm(r.msg), i = t.indexOf(p);
+    if (i < 0) continue;
+    t = t.slice(0, i) + ' '.repeat(p.length) + t.slice(i + p.length);
+    if (!out.some(o => o.r === r)) out.push({r, msg: r.msg.trim()});
+  }
   for (const m of String(text || '').matchAll(/\b[A-Za-z]+(?:_[A-Za-z]+)*(?:_\d{1,2})?\b/g)) {
     const parts = m[0].replace(/_\d{1,2}$/, '').split('_').map(p => p.replace(/^m(?=[A-Z])/, '').toLowerCase());
     let best = null;
@@ -2474,7 +2558,7 @@ function knownLinksHelpHTML() {
 // The hint under a fault read at addr:the coding options its text names, the known cases it
 // matches, or that it reports the coding itself.
 const CODING_FAULT_RE = /falsch codiert|nicht codiert|codierung|incorrectly coded|not coded|coding/i;
-function dtcCodingHTML(links, code, text, addr) {
+function dtcCodingHTML(links, code, text, addr, number) {
   const where = hexAddr(addr) === null ? '' : ` at address ${addrText(hexAddr(addr))}`;
   let html = '';
   if (CODING_FAULT_RE.test(text || '')) html += `<li>This fault reports the unit's coding itself${where}: compare the coding with the car's
@@ -2482,16 +2566,16 @@ function dtcCodingHTML(links, code, text, addr) {
   const ps = links ? links.paramsOf(code, text) : [];
   if (ps.length) html += `<li>Named in the ODIS coding definition${where}: ${ps.map(p => esc(linkParamText(p))).join(', ')}
     <span class="meta">(${LINK_COMM_RE.test(text || '') ? 'a missing or silent partner usually means it is coded as installed but absent' : 'the option enables the part this fault monitors'})</span></li>`;
-  for (const {r, m} of knownForFault(text, addr)) html += `<li><b>Known case</b> (${esc(r.name)}, seen at address ${esc(r.at)}):
+  for (const {r, m} of knownForFault(text, addr, code, number)) html += `<li><b>Known case</b> (${esc(r.name)}, seen at address ${esc(r.at)}):
     ${esc(ruleCheck(r, m))} <span class="meta">${srcLink(r.src)}</span></li>`;
-  for (const {r, msg} of sendersForFault(text)) html += `<li><b>${esc(msg)}</b> is sent by address ${esc(r.at)} (${esc(r.name)}): check that unit
+  for (const {r, msg} of sendersForFault(text)) html += `<li><b>${esc(msg)}</b> ${/\s/.test(msg) ? 'is' : 'is sent by'} address ${esc(r.at)} (${esc(r.name)}): check that unit
     is fitted, answers and is in the gateway installation list. If it is not fitted, this unit${where} must be coded without it.</li>`;
   const cross = crossForFault(code, text, addr);
   if (cross.length) html += `<li><b>Coding in other units</b> that says whether the partner (${esc([...new Set(cross.map(p => p.partner))].join(', '))}) is fitted:
     ${cross.map(p => `address ${addrText(p.optionAt)}: ${esc(linkParamText(p.param))}${hexAddr(addr) === null ? ` (fault at ${addrText(p.faultAt)})` : ''}`).join('; ')}</li>`;
   return html ? `<div class="guide"><b>Coding that can affect this</b><ul>${html}</ul></div>` : '';
 }
-const dtcHasCoding = (links, code, text, addr) => CODING_FAULT_RE.test(text || '') || knownForFault(text, addr).length > 0
+const dtcHasCoding = (links, code, text, addr, number) => CODING_FAULT_RE.test(text || '') || knownForFault(text, addr, code, number).length > 0
   || sendersForFault(text).length > 0
   || crossForFault(code, text, addr).length > 0 || !!(links && links.paramsOf(code, text).length);
 // Built once per coding definition table (the coding editor re-renders on every edit).
@@ -2635,9 +2719,10 @@ async function ruleLookup() {
 }
 const RULE_FIELDS = {
   case: [['at', 'Fault at (addresses)', '19, 3C'], ['name', 'Name', 'what the case is'], ['fault', 'Fault text pattern (regular expression)', 'missing message|fehlende Botschaft'],
+    ['codes', 'Codes (optional, instead of or besides the pattern): SAE or VCDS number', 'U112100, U1121, 559893'],
     ['option', 'Coding setting pattern (optional)', 'Kessy|keyless'], ['codeAt', 'Setting in units (optional, default: fault at)', '09'],
     ['check', 'What to check ($1, $2 … = pattern groups)', ''], ['src', 'Source URL (optional)', 'https://…']],
-  sender: [['msg', 'Message name without number', 'ESP or TSG_FT'], ['at', 'Sent by (addresses)', '03'], ['name', 'Unit name', 'brakes (ESP)']],
+  sender: [['msg', 'Message name without number, or SAE module name', 'ESP, TSG_FT or Body Control Module'], ['at', 'Sent by (addresses)', '03'], ['name', 'Unit name', 'brakes (ESP)']],
 };
 function renderRules() {
   const el = $('#rules'); if (!el) return;
@@ -2650,7 +2735,7 @@ function renderRules() {
     <h2 class="sub">Test error code <small class="meta">a unit and its fault code: the causes the rules and the ODIS database give</small></h2>
     <div class="bar"><input id="tryAddr" list="tryUnits" placeholder="unit, e.g. 09" value="${esc(tryAddr)}" style="width:9em" oninput="tryAddr = this.value; tryHits = null; renderRuleTry()">
       <datalist id="tryUnits">${(units || []).map(u => `<option value="${esc(addrText(hexAddr(u.id)))}">${esc(u.sname || '')}</option>`).join('')}</datalist>
-      <input id="tryCode" placeholder="code, e.g. U112100 or U1121 00" value="${esc(tryCode)}" style="width:13em" oninput="tryCode = this.value; tryHits = null"
+      <input id="tryCode" placeholder="code, e.g. U112100, U1121 00 or 559893" value="${esc(tryCode)}" style="width:13em" oninput="tryCode = this.value; tryHits = null"
         onkeydown="if (event.key === 'Enter') op('Looking up the code', ruleLookup)">
       <button class="op" onclick="op('Looking up the code', ruleLookup)" title="Find the code in this unit's trouble codes in the ODIS database and show the causes of each fault it stands for">Find causes</button>
       <input id="tryText" placeholder="or a fault text, e.g. Kessy_04 Datenbus fehlende Botschaft" value="${esc(tryText)}" style="width:30em" oninput="tryText = this.value; renderRuleTry()"></div>
@@ -2681,15 +2766,16 @@ function renderRuleTry() {
       ${h.data.table ? '' : ' · no textual coding definition, so no name matching'}</div>`;
     if (!h.hits.length) html += '<div class="meta">This unit\'s ODIS data has no such code. Check the address, or type the fault text below.</div>';
     html += h.hits.slice(0, 200).map((d, i) => `<details class="event" ${h.hits.length <= 3 ? 'open' : ''}><summary><span class="mono">${esc(d.code)}</span> ${esc(d.text || '')} ${trBtn(d.text)}
-        ${dtcHasCoding(links, d.code, d.text, h.addr) ? '<span class="meta">⚙ coding</span>' : ''}</summary>
-      ${dtcCodingHTML(links, d.code, d.text, h.addr) || '<div class="meta">No coding rule matches this fault.</div>'}
+        ${dtcCodesHTML(d.code, d.number)} ${dtcHasCoding(links, d.code, d.text, h.addr, d.number) ? '<span class="meta">⚙ coding</span>' : ''}</summary>
+      ${dtcCodingHTML(links, d.code, d.text, h.addr, d.number) || '<div class="meta">No coding rule matches this fault.</div>'}
       <div class="guide"><b>General guidance</b><ul>${dtcGuidance(d.code, d.text).map(s => `<li>${esc(s)}</li>`).join('')}</ul></div></details>`).join('');
     if (h.hits.length > 200) html += `<div class="meta">${h.hits.length - 200} more not shown.</div>`;
   }
   if (tryText.trim()) html += `<h3>Fault text</h3>${dtcCodingHTML(null, '', tryText, addr) || '<div class="meta">No rule matches this fault.</div>'}`;
   el.innerHTML = html;
 }
-const ruleShown = r => !rulesQ.trim() || [r.at, r.name, r.fault, r.option, r.check, r.msg, r.src].join(' ').toLowerCase().includes(rulesQ.trim().toLowerCase());
+const ruleShown = r => !rulesQ.trim() || [r.at, r.name, r.fault, r.codes, r.option, r.check, r.msg, r.src].join(' ').toLowerCase().includes(rulesQ.trim().toLowerCase())
+  || (codeKey(rulesQ).length >= 4 && r.codesN.some(c => c.startsWith(codeKey(rulesQ)) || codeKey(rulesQ).startsWith(c)));
 function ruleActions(r) {
   const id = esc(jsStr(r.id));
   return `<button onclick="ruleEditStart('${id}')">Edit</button>${r.builtin && r.edited ? `<button onclick="op('Saving rules', () => ruleReset('${id}'))" title="Back to the built-in rule">Reset</button>` : ''}
@@ -2708,12 +2794,12 @@ function renderRuleTables() {
   const cases = RULES.filter(r => r.type === 'case' && ruleShown(r)), senders = RULES.filter(r => r.type === 'sender' && ruleShown(r));
   const form = t => ruleDraft && ruleDraft.rule.type === t ? ruleFormHTML() : '';
   const tag = r => r.bad ? ` <span class="bad" title="${esc(r.bad)}">invalid pattern</span>` : !r.builtin ? ' <span class="meta">yours</span>' : r.edited ? ' <span class="meta">edited</span>' : '';
-  $('#ruleCases').innerHTML = form('case') + `<table class="vals"><tr><th>Fault at</th><th>Case</th><th>Fault pattern</th><th>Coding setting</th><th>What to check</th><th>Source</th><th></th></tr>
+  $('#ruleCases').innerHTML = form('case') + `<table class="vals"><tr><th>Fault at</th><th>Case</th><th>Fault pattern / codes</th><th>Coding setting</th><th>What to check</th><th>Source</th><th></th></tr>
     ${cases.map(r => `<tr><td class="mono">${esc(r.at)}${r.generic ? '<br><span class="meta">address only</span>' : ''}</td><td>${esc(r.name)}${tag(r)}</td>
-      <td class="mono">${esc(r.fault)}</td><td class="mono">${esc(r.option || '—')}${r.codeAt ? `<br><span class="meta">in ${esc(r.codeAt)}</span>` : ''}</td>
+      <td class="mono">${esc(r.fault || '')}${r.codesN.length ? `${r.fault ? '<br>' : ''}<span class="meta">codes ${esc(r.codesN.map(vcdsCode).join(', '))}</span>` : ''}</td><td class="mono">${esc(r.option || '—')}${r.codeAt ? `<br><span class="meta">in ${esc(r.codeAt)}</span>` : ''}</td>
       <td>${esc(r.check || '')}</td><td>${r.src ? srcLink(r.src) : ''}</td><td class="acts">${ruleActions(r)}</td></tr>`).join('')}</table>`;
   $('#ruleSenders').innerHTML = form('sender') + `<table class="vals"><tr><th>Message</th><th>Sent by</th><th>Unit</th><th></th></tr>
-    ${senders.map(r => `<tr><td class="mono">${esc(r.msg)}_NN</td><td class="mono">${esc(r.at)}</td><td>${esc(r.name)}${tag(r)}</td><td class="acts">${ruleActions(r)}</td></tr>`).join('')}</table>`;
+    ${senders.map(r => `<tr><td class="mono">${esc(r.msg)}${/\s/.test(r.msg) ? '' : '_NN'}</td><td class="mono">${esc(r.at)}</td><td>${esc(r.name)}${tag(r)}</td><td class="acts">${ruleActions(r)}</td></tr>`).join('')}</table>`;
 }
 function renderRuleLinks() {
   const el = $('#ruleLinks'); if (!el || !projectLinks) return;
@@ -2739,8 +2825,13 @@ async function ruleSave() {
   const d = ruleDraft, r = {id: d.rule.id, type: d.rule.type};
   for (const [k] of RULE_FIELDS[r.type]) { const v = $('#rf_' + k).value.trim(); if (v) r[k] = v; }
   if (r.type === 'case' && $('#rf_generic').checked) r.generic = true;
-  const need = r.type === 'case' ? ['at', 'name', 'fault'] : ['msg', 'at', 'name'];
+  const need = r.type === 'case' ? ['at', 'name'] : ['msg', 'at', 'name'];
   d.err = need.filter(k => !r[k]).length ? `Fill in: ${need.filter(k => !r[k]).join(', ')}.` : '';
+  if (!d.err && r.type === 'case' && !r.fault && !r.codes) d.err = 'Fill in a fault text pattern, codes, or both.';
+  if (!d.err && r.codes) {
+    const badCode = String(r.codes).split(/[,;]+/).map(codeKey).filter(Boolean).find(c => !/^(\d+|[PCBU][0-9A-F]{4}([0-9A-F]{2})?)$/.test(c));
+    if (badCode) d.err = `Code ${badCode}: write an SAE code (U112100 or U1121) or a VCDS number (559893).`;
+  }
   for (const k of ['fault', 'option']) if (!d.err && r[k]) try { new RegExp(r[k], 'i'); } catch (e) { d.err = `${k} pattern: ${e.message}`; }
   if (!d.err && !ruleAddrs(r.at).length) d.err = 'Addresses are hex numbers separated by commas, e.g. 09, 46.';
   if (d.err) { renderRuleTables(); return; }
@@ -3026,7 +3117,8 @@ function codingDetails(step, oldB, newB) {
 // Reads the unit's fault memory: {faults} or {err}. Also updates the unit's count in the list.
 async function readFaults(u) {
   try {
-    const faults = dtcEntries(await bridge({action: 'read_event_memory', address: u.id}));
+    const res = await bridge({action: 'read_event_memory', address: u.id});
+    const faults = dtcEntries(res, dtcEntries(res).length ? await unitDtcs(u) : null);
     markFaults(u.id, faults);
     return {faults};
   } catch (e) { return {err: e.message}; }
@@ -3938,7 +4030,11 @@ function vcdsLog(s) {
       L.push(`${r.faults.length} Fault${r.faults.length === 1 ? '' : 's'} Found:`);
       r.faults.forEach(f => {
         const bit = n => f.bits.some(b => b.bitPosition === n);  // UDS status: bit 3 confirmed, bit 4 not tested since clear
-        L.push(`${f.code} - ${f.text}`, `          ${bit(3) ? 'Confirmed' : 'Intermittent'} - ${bit(4) ? 'Not Tested' : 'Tested'} Since Memory Clear`);
+        // VCDS layout: the VW fault number, then the SAE code with the UDS status byte in decimal.
+        const status = String(f.bits.reduce((v, b) => v | (1 << b.bitPosition), 0)).padStart(3, '0');
+        if (f.number !== undefined) L.push(`${f.number} - ${f.text}`, `          ${vcdsCode(f.code)} [${status}] - -`);
+        else L.push(`${vcdsCode(f.code) || '-'} - ${f.text}`);
+        L.push(`          ${bit(3) ? 'Confirmed' : 'Intermittent'} - ${bit(4) ? 'Not Tested' : 'Tested'} Since Memory Clear`);
         if (f.details.length) {
           L.push('             Freeze Frame:');
           f.details.filter(x => !x.head).forEach(x => L.push(`                    ${x.name}: ${x.value}${x.unit ? ' ' + x.unit : ''}`));
@@ -4599,7 +4695,10 @@ async function unitRun(cmd, label, extra) {
   if (step.res && cmd.action === 'read_identification') applyIdent(u, step.res);
   if (step.res && step.res.event_memory) {
     markFaults(u.id, dtcEntries(step.res));  // updates the unit's count in the list
-    if (dtcEntries(step.res).length) step.links = await unitLinks(u);  // coding hints under each fault
+    if (dtcEntries(step.res).length) {
+      step.dtcs = await unitDtcs(u);  // the VW fault number of each fault
+      step.links = await unitLinks(u);  // coding hints under each fault
+    }
   }
   if (unitPath === path) renderUnitDetail();
 }
@@ -4748,18 +4847,18 @@ function renderDtc() {
     const real = dtcList.filter(d => d.code);
     // Each DTC expands to the same guidance as the units event memory: general (code-based) steps
     // and, on demand, ODIS guided fault finding. Guidance is built when a code is opened.
-    const coded = real.filter(d => dtcHasCoding(dtcLinks, d.code, d.text, dtcAddr())).length;
+    const coded = real.filter(d => dtcHasCoding(dtcLinks, d.code, d.text, dtcAddr(), d.number)).length;
     html = `<h1>${esc(odxLoc.label)} <small class="meta">${real.length} trouble codes · ${coded} with a coding hint (⚙)</small></h1>
       <div class="meta">${dtcLinks ? 'Coding hints from the textual coding definition of this data' : 'No textual coding definition here: name hints are off'}
         and ${ruleStats().cases} known cases and ${ruleStats().senders} message senders${dtcAddr() ? ` (for address ${addrText(hexAddr(dtcAddr()))})` : ' (address unknown: specific ones only)'}.</div>
       ${real.length ? '' : '<div class="meta">This data defines no trouble codes. Base data usually has none: pick a variant above.</div>'}
       <div class="meta"><button class="cp" title="Copy the shown trouble codes" onclick="copyEl(this.parentElement.nextElementSibling.nextElementSibling)">⧉ Copy list</button></div>
-      <input type="text" placeholder="Search code or text, e.g. P0122 or throttle" oninput="filterDtc(this)">
+      <input type="text" placeholder="Search code, VCDS number or text, e.g. P0122, U1121 00, 559893 or throttle" oninput="filterDtc(this)">
       <div class="dtclist">${real.map((d, i) => `<details class="event" ontoggle="dtcFill(this)"
-        data-code="${esc(d.code)}" data-text="${esc(d.text || '')}" data-idx="dtc${i}">
+        data-code="${esc(d.code)}" data-text="${esc(d.text || '')}" data-number="${d.number}" data-idx="dtc${i}">
         <summary><span class="mono">${esc(d.code)}</span> ${esc(d.text || '')} ${trBtn(d.text)}
-          <span class="meta">level ${d.level} · ${d.number} (0x${d.number.toString(16).toUpperCase()})</span>
-          ${dtcHasCoding(dtcLinks, d.code, d.text, dtcAddr()) ? '<span class="meta nocopy" title="A coding option names the same part: open the code to see which">⚙ coding</span>' : ''}
+          <span class="meta">level ${d.level} · VCDS ${d.number} · ${esc(vcdsCode(d.code))} (0x${d.number.toString(16).toUpperCase()})</span>
+          ${dtcHasCoding(dtcLinks, d.code, d.text, dtcAddr(), d.number) ? '<span class="meta nocopy" title="A coding option names the same part: open the code to see which">⚙ coding</span>' : ''}
           ${copyBtn(`${d.code} ${d.text || ''}`, 'Copy code and text')}</summary></details>`).join('')}</div>`;
   }
   $('#dtcBody').innerHTML = html;
@@ -4770,13 +4869,15 @@ const dtcAddr = () => (odxLoc && odxLoc.cmd.address) || (odxFound && odxFound.ad
 function dtcFill(el) {
   if (el.open && !el.dataset.filled) {
     el.dataset.filled = '1';
-    el.insertAdjacentHTML('beforeend', `<div class="nocopy">${dtcCodingHTML(dtcLinks, el.dataset.code, el.dataset.text, dtcAddr())}${dtcGuidanceHTML(el.dataset.code, el.dataset.text, el.dataset.idx)}</div>`);
+    el.insertAdjacentHTML('beforeend', `<div class="nocopy">${dtcCodingHTML(dtcLinks, el.dataset.code, el.dataset.text, dtcAddr(), el.dataset.number)}${dtcGuidanceHTML(el.dataset.code, el.dataset.text, el.dataset.idx)}</div>`);
   }
 }
+// Matches the text, or a code written with or without spaces (U112100 = U1121 00).
 function filterDtc(input) {
-  const q = input.value.trim().toLowerCase();
+  const q = input.value.trim().toLowerCase(), qc = codeKey(q).toLowerCase();
   input.nextElementSibling.querySelectorAll('details').forEach(d => {
-    d.hidden = q && !(d.querySelector('summary').textContent.toLowerCase().includes(q));
+    const t = d.querySelector('summary').textContent.toLowerCase();
+    d.hidden = q && !(t.includes(q) || (qc.length >= 4 && codeKey(t).toLowerCase().includes(qc)));
   });
 }
 
