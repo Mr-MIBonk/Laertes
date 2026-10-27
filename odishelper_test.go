@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -125,6 +126,37 @@ func TestForgetCodingPref(t *testing.T) {
 	}
 	if p, _ := s.CodingPref("EV_C"); p == nil || p.BorrowVariant != "EV_D" {
 		t.Errorf("EV_C lost: %+v", p)
+	}
+}
+
+func TestCoverageLists(t *testing.T) {
+	s, err := openStore(filepath.Join(t.TempDir(), "c.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	if ps, err := s.CodingPrefs(); err != nil || len(ps) != 0 {
+		t.Fatalf("empty store: %v %v", ps, err)
+	}
+	s.SetCodingPref(CodingPref{Variant: "EV_B", BorrowVariant: "EV_X", BorrowBase: "BV_X"})
+	s.SetCodingPref(CodingPref{Variant: "EV_A", BorrowVariant: "EV_Y"})
+	if ps, _ := s.CodingPrefs(); len(ps) != 2 || ps[0].Variant != "EV_A" || ps[1].BorrowBase != "BV_X" {
+		t.Errorf("prefs: %+v", ps)
+	}
+	if err := s.SetLabels("EV_A", "Master", []Label{{Byte: 0, Lo: 0, Hi: 0, Value: -1, Text: "a"}, {Byte: 1, Lo: 0, Hi: 7, Value: -1, Text: "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := s.Coverage(); string(v) != "{}" {
+		t.Errorf("coverage before a check: %s", v)
+	}
+	s.SetCoverage(json.RawMessage(`{"units":[]}`))
+	if v, _ := s.Coverage(); string(v) != `{"units":[]}` {
+		t.Errorf("coverage: %s", v)
+	}
+	s.SetLabels("EV_A", "Sub1", []Label{{Byte: 0, Lo: 3, Hi: 3, Value: -1, Text: "c"}})
+	ls, err := s.LabelSets()
+	if err != nil || len(ls) != 2 || ls[0] != (LabelSet{"EV_A", "Master", 2}) || ls[1] != (LabelSet{"EV_A", "Sub1", 1}) {
+		t.Errorf("label sets: %+v %v", ls, err)
 	}
 }
 

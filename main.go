@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.5"
+const version = "0.9.6"
 
 //go:embed index.html
 var indexHTML []byte
@@ -185,6 +185,38 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 	// ISO15765 traffic between ODIS and the simulated units.
 	mux.HandleFunc("GET /api/vci/can", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, map[string]any{"lines": readCANLog(), "tickOffset": canTickOffset()}, nil)
+	})
+	// The simulated car of the virtual VCI (simcar.go): a VCDS Auto-Scan turned into car.txt.
+	mux.HandleFunc("GET /api/vci/car", func(w http.ResponseWriter, r *http.Request) {
+		car, err := store.SimCar()
+		_, statErr := os.Stat(simCarPath())
+		reply(w, map[string]any{"active": statErr == nil, "car": car}, err)
+	})
+	mux.HandleFunc("POST /api/vci/car", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Scan   string            `json:"scan"`
+			Snames map[string]string `json:"snames"` // unit address ("09") -> ODIS short name in the project
+			Nodes  map[string]int    `json:"nodes"`  // logical link -> gateway node address (bridge gateway_nodes)
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4<<20)).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		car, err := setSimCar(req.Scan, req.Snames, req.Nodes)
+		if err != nil {
+			reply(w, nil, err)
+			return
+		}
+		log.Printf("virtual VCI simulates %s: %d units", car.VIN, len(car.Units))
+		b, _ := json.Marshal(car)
+		reply(w, car, store.SetSimCar(b))
+	})
+	mux.HandleFunc("DELETE /api/vci/car", func(w http.ResponseWriter, r *http.Request) {
+		if err := clearSimCar(); err != nil {
+			reply(w, nil, err)
+			return
+		}
+		reply(w, nil, store.SetSimCar(json.RawMessage("{}")))
 	})
 	// The Ignition button: switches the VCI's periodic clamp 15 wake-up frame on or off, live.
 	mux.HandleFunc("POST /api/vci/ignition", func(w http.ResponseWriter, r *http.Request) {
@@ -457,6 +489,28 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 			return
 		}
 		reply(w, p, nil)
+	})
+	// Coverage tab: the last check (kept so its list shows without the bridge), every borrowed
+	// coding definition and every set of .lbl labels.
+	mux.HandleFunc("GET /api/coverage", func(w http.ResponseWriter, r *http.Request) {
+		v, err := store.Coverage()
+		reply(w, v, err)
+	})
+	mux.HandleFunc("PUT /api/coverage", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+		if err != nil || !json.Valid(body) {
+			http.Error(w, "coverage must be a JSON object", http.StatusBadRequest)
+			return
+		}
+		reply(w, nil, store.SetCoverage(body))
+	})
+	mux.HandleFunc("GET /api/coding-prefs", func(w http.ResponseWriter, r *http.Request) {
+		ps, err := store.CodingPrefs()
+		reply(w, ps, err)
+	})
+	mux.HandleFunc("GET /api/labels/summary", func(w http.ResponseWriter, r *http.Request) {
+		ls, err := store.LabelSets()
+		reply(w, ls, err)
 	})
 	mux.HandleFunc("PUT /api/coding-pref", func(w http.ResponseWriter, r *http.Request) {
 		var p CodingPref

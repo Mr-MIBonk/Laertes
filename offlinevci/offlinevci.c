@@ -12,7 +12,8 @@
 // any DID (coding 0x0600, workshop code 0xF198, programming date 0xF199, ...) and reads it back;
 // SecurityAccess (0x27) uses a zero seed. The units store no faults: ReadDTCInformation (0x19)
 // reports an empty fault memory, ClearDiagnosticInformation (0x14) and ControlDTCSetting (0x85)
-// succeed.
+// succeed. With car.txt (see "Simulated car") it answers as a real car instead: only that car's
+// units, each with its own identification, coding and faults.
 //
 // Pass-through: when offline.conf names a real J2534 driver (passthru=), every call is forwarded to
 // it instead, so ODIS works with the real interface through this DLL.
@@ -410,15 +411,159 @@ static void persistDid(unsigned short did, const unsigned char *data, unsigned l
     ReleaseSRWLockExclusive(&didFileLock);
 }
 
-static const unsigned char *didValue(unsigned short did, unsigned long *len) {
+// --- Simulated car (car.txt) ---------------------------------------------------------------------
+
+// car.txt next to the DLL, written by Laertes from a VCDS Auto-Scan, makes the simulated device answer
+// as that car: each unit on its own CAN ids with its identification, coding and faults, and no answer
+// on the ids of units the car does not have (ODIS then shows them as not reachable). Without the file
+// every id gets the generic unit above. Lines, numbers in hex:
+//   vin WVWZZZAUZEW042268
+//   unit <request id> <response id> <address>   starts a unit, e.g. "unit 713 77D 03"
+//   did <DID> <value bytes>                      a DID of that unit, e.g. "did F189 39 31 37 30"
+//   dtc <DTC> <status>                           a stored fault, e.g. "dtc EA6200 09"
+// The file is read again whenever it changes, so a new car applies without restarting ODIS. Writes and
+// a fault memory clear change the unit in memory until then.
+
+#define MAXUNITS 96
+#define MAXUDID  32
+#define MAXUDTC  32
+#define MAXUVAL  256 // bytes per DID of a car's unit (the gateway's component lists grow with the units)
+
+typedef struct {
+    unsigned short did;
+    unsigned long len;
+    unsigned char data[MAXUVAL];
+} UnitDid;
+
+typedef struct {
+    unsigned long req, resp, addr;
+    unsigned ndid, ndtc;
+    UnitDid dids[MAXUDID];
+    unsigned long dtc[MAXUDTC];
+    unsigned char status[MAXUDTC];
+} Unit;
+
+static Unit carUnits[MAXUNITS];
+static unsigned carCount;
+static int carActive;          // car.txt is loaded and names at least one unit
+static int carStampValid;
+static FILETIME carStamp;
+static char carVin[18];
+static char carBuf[65536];
+
+static unsigned long hexBytes(const char *p, unsigned char *out, unsigned long cap) {
+    unsigned long n = 0;
+    while (n < cap) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p || *p == '\r' || *p == '\n') break;
+        char *end;
+        unsigned long b = strtoul(p, &end, 16);
+        if (end == p || b > 0xFF) break;
+        out[n++] = (unsigned char)b;
+        p = end;
+    }
+    return n;
+}
+
+// loadCar reads car.txt when it appeared or changed (called with the lock held).
+static void loadCar(void) {
+    char path[MAX_PATH];
+    laertesFile(path, sizeof path, "car.txt");
+    WIN32_FILE_ATTRIBUTE_DATA a;
+    if (!path[0] || !GetFileAttributesExA(path, GetFileExInfoStandard, &a)) {
+        if (carActive) logStr("car.txt removed: the generic unit answers again");
+        carActive = 0;
+        carCount = 0;
+        carStampValid = 0;
+        return;
+    }
+    if (carStampValid && CompareFileTime(&a.ftLastWriteTime, &carStamp) == 0) return;
+
+    HANDLE f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (f == INVALID_HANDLE_VALUE) return; // being replaced: try again on the next request
+    DWORD got = 0;
+    BOOL ok = ReadFile(f, carBuf, sizeof carBuf - 1, &got, 0);
+    CloseHandle(f);
+    if (!ok) return;
+    carBuf[got] = 0;
+
+    carCount = 0;
+    carVin[0] = 0;
+    Unit *u = 0;
+    for (char *p = carBuf; *p;) {
+        char *line = p;
+        while (*p && *p != '\n') p++;
+        if (*p) *p++ = 0;
+        while (*line == ' ' || *line == '\t') line++;
+        char *e;
+        if (strncmp(line, "vin ", 4) == 0) {
+            unsigned long i = 0;
+            for (const char *v = line + 4; *v && *v != '\r' && *v != ' ' && i < sizeof carVin - 1; v++) carVin[i++] = *v;
+            carVin[i] = 0;
+        } else if (strncmp(line, "unit ", 5) == 0) {
+            u = carCount < MAXUNITS ? &carUnits[carCount++] : 0;
+            if (!u) continue;
+            memset(u, 0, sizeof *u);
+            u->req = strtoul(line + 5, &e, 16);
+            u->resp = strtoul(e, &e, 16);
+            u->addr = strtoul(e, &e, 16);
+        } else if (u && strncmp(line, "did ", 4) == 0 && u->ndid < MAXUDID) {
+            UnitDid *d = &u->dids[u->ndid];
+            d->did = (unsigned short)strtoul(line + 4, &e, 16);
+            d->len = hexBytes(e, d->data, MAXUVAL);
+            if (d->len) u->ndid++;
+        } else if (u && strncmp(line, "dtc ", 4) == 0 && u->ndtc < MAXUDTC) {
+            u->dtc[u->ndtc] = strtoul(line + 4, &e, 16) & 0xFFFFFF;
+            u->status[u->ndtc] = (unsigned char)strtoul(e, &e, 16);
+            u->ndtc++;
+        }
+    }
+    carActive = carCount > 0;
+    carStamp = a.ftLastWriteTime;
+    carStampValid = 1;
+
+    char b[64];
+    wsprintfA(b, "car.txt: %u units", carCount);
+    logStr(b);
+}
+
+// carUnitFor returns the simulated car's unit a request id addresses, 0 when the car has none there.
+// The OBD functional request 0x7DF is answered by the engine (0x7E0), else by the gateway.
+static Unit *carUnitFor(unsigned long reqId) {
+    if (reqId == 0x7DF) {
+        Unit *u = carUnitFor(0x7E0);
+        return u ? u : carUnitFor(gwTx);
+    }
+    for (unsigned i = 0; i < carCount; i++)
+        if (carUnits[i].req == reqId) return &carUnits[i];
+    return 0;
+}
+
+static UnitDid *unitDid(Unit *u, unsigned short did) {
+    for (unsigned i = 0; u && i < u->ndid; i++)
+        if (u->dids[i].did == did) return &u->dids[i];
+    return 0;
+}
+
+// The value of did as unit u answers it (u is 0 without a simulated car): dids.txt first, then the
+// VIN, the unit's own value, and the generic unit's.
+static const unsigned char *didValue(Unit *u, unsigned short did, unsigned long *len) {
     if (didOverride(did, len)) {
         logStr("DID value from dids.txt");
         return overrideValue;
     }
 
     if (did == 0xF190) {
-        *len = (unsigned long)strlen(vin);
-        return (const unsigned char *)vin;
+        const char *v = u && carVin[0] ? carVin : vin;
+        *len = (unsigned long)strlen(v);
+        return (const unsigned char *)v;
+    }
+
+    UnitDid *ud = unitDid(u, did);
+    if (ud) {
+        *len = ud->len;
+        return ud->data;
     }
 
     const Written *w = findWritten(did);
@@ -733,7 +878,90 @@ static unsigned long negative(unsigned char sid, unsigned char nrc, unsigned cha
     return 3;
 }
 
-static unsigned long buildResponse(const unsigned char *req, unsigned long n, unsigned char *out) {
+// unitWrite stores a WriteDataByIdentifier value in a car's unit (coding, workshop code, ...).
+static unsigned char unitWrite(Unit *u, unsigned short did, const unsigned char *data, unsigned long len) {
+    if (len == 0 || len > MAXUVAL) return 0x13;
+    UnitDid *d = unitDid(u, did);
+    if (!d) {
+        if (u->ndid >= MAXUDID) return 0x22;
+        d = &u->dids[u->ndid++];
+        d->did = did;
+    }
+    memcpy(d->data, data, len);
+    d->len = len;
+    return 0;
+}
+
+// unitDtcResponse answers ReadDTCInformation from a car's unit's stored faults (ISO 14229-1 format: a
+// DTC is 3 bytes plus its status byte). Snapshot and extended data requests get the fault without
+// records, which ODIS takes as "no freeze frame".
+static unsigned long unitDtcResponse(Unit *u, const unsigned char *req, unsigned long n, unsigned char *out) {
+    unsigned char sub = req[1], mask = n > 2 ? req[2] : 0xFF;
+    unsigned long o = 2, count = 0;
+    out[0] = 0x59;
+    out[1] = sub;
+    switch (sub) {
+    case 0x01: // reportNumberOfDTCByStatusMask
+    case 0x07: // reportNumberOfDTCBySeverityMaskRecord
+    case 0x11: // reportNumberOfMirrorMemoryDTCByStatusMask
+    case 0x12: // reportNumberOfEmissionsOBDDTCByStatusMask
+        if (n < 3) return negative(0x19, 0x13, out);
+        for (unsigned i = 0; sub == 0x01 && i < u->ndtc; i++)
+            if (u->status[i] & mask) count++;
+        out[2] = DTC_AVAILABILITY;
+        out[3] = 0x01; // ISO 14229-1 DTC format
+        out[4] = (unsigned char)(count >> 8);
+        out[5] = (unsigned char)count;
+        return 6;
+    case 0x02: // reportDTCByStatusMask (ODIS: confirmed and pending)
+    case 0x0A: // reportSupportedDTC
+        if (sub == 0x02 && n < 3) return negative(0x19, 0x13, out);
+        out[o++] = DTC_AVAILABILITY;
+        for (unsigned i = 0; i < u->ndtc && o + 4 <= MAXRESP; i++) {
+            if (sub == 0x02 && !(u->status[i] & mask)) continue;
+            out[o++] = (unsigned char)(u->dtc[i] >> 16);
+            out[o++] = (unsigned char)(u->dtc[i] >> 8);
+            out[o++] = (unsigned char)u->dtc[i];
+            out[o++] = u->status[i];
+        }
+        return o;
+    case 0x0F: // reportMirrorMemoryDTCByStatusMask
+    case 0x13: // reportEmissionsOBDDTCByStatusMask
+    case 0x15: // reportDTCWithPermanentStatus
+        out[2] = DTC_AVAILABILITY;
+        return 3;
+    case 0x17: // reportUserDefMemoryDTCByStatusMask
+        if (n < 3) return negative(0x19, 0x13, out);
+        out[2] = n > 3 ? req[3] : 0x00;
+        out[3] = DTC_AVAILABILITY;
+        return 4;
+    case 0x03: // reportDTCSnapshotIdentification
+    case 0x14: // reportDTCFaultDetectionCounter
+        return 2;
+    case 0x04: // reportDTCSnapshotRecordByDTCNumber
+    case 0x06: { // reportDTCExtDataRecordByDTCNumber
+        if (n < 5) return negative(0x19, 0x13, out);
+        unsigned long dtc = ((unsigned long)req[2] << 16) | ((unsigned long)req[3] << 8) | req[4];
+        for (unsigned i = 0; i < u->ndtc; i++)
+            if (u->dtc[i] == dtc) {
+                out[2] = req[2];
+                out[3] = req[3];
+                out[4] = req[4];
+                out[5] = u->status[i];
+                return 6;
+            }
+        return negative(0x19, 0x31, out); // no such DTC stored
+    }
+    case 0x18: // reportUserDefMemoryDTCSnapshotRecordByDTCNumber
+    case 0x19: // reportUserDefMemoryDTCExtDataRecordByDTCNumber
+        return negative(0x19, 0x31, out);
+    default:
+        return negative(0x19, 0x12, out);
+    }
+}
+
+// u is the simulated car's unit the request is for, 0 for the generic unit (no car.txt).
+static unsigned long buildResponse(Unit *u, const unsigned char *req, unsigned long n, unsigned char *out) {
     if (n == 0) return 0;
 
     unsigned char sid = req[0];
@@ -774,7 +1002,7 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
         for (unsigned long i = 1; i + 1 < n; i += 2) {
             unsigned short did = (unsigned short)((req[i] << 8) | req[i + 1]);
             unsigned long vlen;
-            const unsigned char *val = didValue(did, &vlen);
+            const unsigned char *val = didValue(u, did, &vlen);
             if (!val) continue;
 
             if (o + 2 + vlen > MAXRESP) break;
@@ -796,7 +1024,7 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
             return negative(sid, 0x13, out);
 
         unsigned short did = (unsigned short)((req[1] << 8) | req[2]);
-        unsigned char nrc = writeDid(did, req + 3, n - 3);
+        unsigned char nrc = u ? unitWrite(u, did, req + 3, n - 3) : writeDid(did, req + 3, n - 3);
         if (nrc)
             return negative(sid, nrc, out);
 
@@ -821,9 +1049,10 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
         return 2;
     }
 
-    case 0x19: { // ReadDTCInformation: the simulated units store no faults
+    case 0x19: { // ReadDTCInformation: the generic unit stores no faults; a car's unit has its own
         if (n < 2)
             return negative(sid, 0x13, out);
+        if (u) return unitDtcResponse(u, req, n, out);
 
         unsigned char sub = req[1];
         out[0] = 0x59;
@@ -865,9 +1094,10 @@ static unsigned long buildResponse(const unsigned char *req, unsigned long n, un
         }
     }
 
-    case 0x14: // ClearDiagnosticInformation: nothing stored, so always done
+    case 0x14: // ClearDiagnosticInformation: the generic unit stores nothing; a car's unit forgets its faults
         if (n < 4)
             return negative(sid, 0x13, out);
+        if (u) u->ndtc = 0;
         out[0] = 0x54;
         return 1;
 
@@ -920,7 +1150,12 @@ static void enqueue(const Channel *c, unsigned long canId, const unsigned char *
 // functional request 0x7DF is answered as the gateway. ODIS-S identifies the car over OBD first and
 // addresses ISO 15765-4 ids 0x7E0..0x7E7, whose responses are 8 higher (0x7E0->0x7E8); without this it
 // gets no answer and reports the interface down, so Laertes never comes up under ODIS-S.
+// With a simulated car (car.txt) only its units answer, each on its own response id.
 static unsigned long respIdFor(unsigned long reqId) {
+    if (carActive) {
+        Unit *u = carUnitFor(reqId);
+        return u ? u->resp : 0;
+    }
     if (reqId == 0x7DF || reqId == gwTx) return gwRx;
     if (reqId >= 0x700 && reqId <= 0x73F) return reqId + 0x6A;
     if (reqId >= 0x7E0 && reqId <= 0x7E7) return reqId + 0x08; // ISO 15765-4 (OBD) 11-bit
@@ -978,9 +1213,9 @@ static void sendIsoTp(Channel *c, unsigned long respId, const unsigned char *dat
     memcpy(c->tp.txBuf, data, len);
 }
 
-static void answer(Channel *c, unsigned long respId, const unsigned char *uds, unsigned long n) {
+static void answer(Channel *c, unsigned long reqId, unsigned long respId, const unsigned char *uds, unsigned long n) {
     unsigned char out[MAXRESP];
-    unsigned long len = buildResponse(uds, n, out);
+    unsigned long len = buildResponse(carActive ? carUnitFor(reqId) : 0, uds, n, out);
 
     if (len) {
         canLog('T', c->id, respId, out, len);
@@ -997,7 +1232,7 @@ static void handleCanFrame(Channel *c, unsigned long reqId, const unsigned char 
     case 0x00: { // single frame
         unsigned long len = p[0] & 0x0F;
         if (respId == 0 || len == 0 || len + 1 > n) return;
-        answer(c, respId, p + 1, len);
+        answer(c, reqId, respId, p + 1, len);
         return;
     }
 
@@ -1033,7 +1268,7 @@ static void handleCanFrame(Channel *c, unsigned long reqId, const unsigned char 
 
         if (c->tp.rxLen >= c->tp.rxExp) {
             c->tp.rxActive = 0;
-            answer(c, respId, c->tp.rxBuf, c->tp.rxExp);
+            answer(c, reqId, respId, c->tp.rxBuf, c->tp.rxExp);
         }
         return;
     }
@@ -1422,6 +1657,7 @@ long WINAPI PassThruWriteMsgs(unsigned long channelId, void *msgs, unsigned long
     unsigned long processed = 0;
 
     AcquireSRWLockExclusive(&lock);
+    loadCar(); // a new or changed car.txt applies from this request on
 
     Channel *c = findChannel(channelId);
     if (c && m) {
@@ -1450,9 +1686,11 @@ long WINAPI PassThruWriteMsgs(unsigned long channelId, void *msgs, unsigned long
 
             if (!rspId && c->nflt > 0) rspId = c->flt[0].rx;
             if (!rspId) continue;
+            Unit *u = carActive ? carUnitFor(reqId) : 0;
+            if (carActive && !u) continue; // the simulated car has no unit there
 
             unsigned char out[MAXRESP];
-            unsigned long len = buildResponse(m[k].Data + 4, m[k].DataSize - 4, out);
+            unsigned long len = buildResponse(u, m[k].Data + 4, m[k].DataSize - 4, out);
 
             if (len) {
                 canLog('T', channelId, rspId, out, len);

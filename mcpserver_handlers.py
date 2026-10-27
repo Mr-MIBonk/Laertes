@@ -728,6 +728,192 @@ def mcd_value(value):
         return None
 
 
+def pdu_hex(value):
+    """Bytes of an MCD PDU value as hex ("22F187"), "" when there are none."""
+    try:
+        return "".join("%02X" % (b & 0xFF) for b in value.getValueAsBytefield())
+    except (Exception, Throwable):
+        try:
+            return re.sub(r"[^0-9A-Fa-f]", "", unicode(value.getValueAsString())).upper()
+        except (Exception, Throwable):
+            return ""
+
+
+def handle_odx_did_layouts(cmd):
+    """The ReadDataByIdentifier services of a unit's ODX variant (cmd as for odx_unit, optional
+    "dids": ["2A26", ...]): each DID with its service name, request PDU and the positive response's
+    minimum/maximum length and parameters, so a simulated unit can answer it in a format ODIS accepts."""
+    want = set(d.upper() for d in (cmd.get("dids") or []))
+    named = (cmd.get("service_query") or "").lower()  # services by name, also those without a default PDU
+
+    def read():
+        location, info = odx_location(cmd)
+        out = []
+        for prim in mcd_items(location.getDbDiagComPrimitives()):
+            if named:
+                if named not in prim.getShortName().lower():
+                    continue
+                try:
+                    pdu = pdu_hex(prim.getDbRequest().getDefaultPDU())
+                except (Exception, Throwable):
+                    pdu = ""
+                item = {"did": pdu[2:6], "service": prim.getShortName(), "request": pdu}
+                try:
+                    item["request_params"] = [param_tree(q) for q in mcd_items(prim.getDbRequest().getDbRequestParameters())]
+                except (Exception, Throwable):
+                    pass
+                out.append(item)
+                continue
+            try:
+                pdu = pdu_hex(prim.getDbRequest().getDefaultPDU())
+            except (Exception, Throwable):
+                continue  # jobs and other primitives without a request PDU
+            if not pdu.startswith("22") or len(pdu) < 6 or (want and pdu[2:6] not in want):
+                continue
+            item = {"did": pdu[2:6], "service": prim.getShortName(), "request": pdu, "responses": []}
+            for resp in mcd_items(prim.getDbResponses()):
+                params = []
+                for p in mcd_items(resp.getDbResponseParameters()):
+                    d = {"name": p.getShortName()}
+                    for key, get in (("byte_pos", p.getBytePos), ("bit_pos", p.getBitPos), ("byte_length", p.getByteLength),
+                                     ("bit_length", p.getBitLength), ("min_length", p.getMinLength), ("max_length", p.getMaxLength)):
+                        try:
+                            d[key] = int(get())
+                        except (Exception, Throwable):
+                            pass
+                    for key, get in (("type", p.getMCDParameterType), ("data_type", p.getDataType)):
+                        try:
+                            d[key] = unicode(get())
+                        except (Exception, Throwable):
+                            pass
+                    try:
+                        d["coded_default"] = mcd_value(p.getCodedDefaultValue())
+                    except (Exception, Throwable):
+                        pass
+                    params.append(d)
+                item["responses"].append({"type": unicode(resp.getResponseType()), "params": params})
+            out.append(item)
+        out.sort(key=lambda x: x["did"])
+        result = {"ok": True, "count": len(out), "dids": out}
+        result.update(info)
+        return result
+    return with_database(read)
+
+
+def param_tree(p, depth=0):
+    """A database parameter with its position, length and type, and its sub-parameters (structures,
+    fields that repeat to the end of the PDU), as a dict."""
+    d = {"name": p.getShortName()}
+    for key, get in (("byte_pos", p.getBytePos), ("bit_pos", p.getBitPos), ("byte_length", p.getByteLength),
+                     ("bit_length", p.getBitLength), ("min_length", p.getMinLength), ("max_length", p.getMaxLength)):
+        try:
+            d[key] = int(get())
+        except (Exception, Throwable):
+            pass
+    for key, get in (("type", p.getMCDParameterType), ("data_type", p.getDataType), ("long_name", p.getLongName)):
+        try:
+            d[key] = unicode(get())
+        except (Exception, Throwable):
+            pass
+    try:
+        d["coded_default"] = mcd_value(p.getCodedDefaultValue())
+    except (Exception, Throwable):
+        pass
+    try:
+        d["variable_length"] = bool(p.isVariableLength())
+    except (Exception, Throwable):
+        pass
+    try:  # a text table: its coded values and names (e.g. a DID number per table row)
+        values = [{"text": e.getLongName(), "low": mcd_value(e.getInterval().getLowerLimit())}
+                  for e in mcd_items(p.getTextTableElements())]
+        if values:
+            d["values"] = values
+    except (Exception, Throwable):
+        pass
+    if depth < 6:
+        try:
+            subs = [param_tree(s, depth + 1) for s in mcd_items(p.getDbParameters())]
+            if subs:
+                d["params"] = subs
+        except (Exception, Throwable):
+            pass
+    return d
+
+
+def handle_odx_table_layout(cmd):
+    """A database table's read services (request PDUs) and each row's key and full parameter tree
+    (cmd as for odx_table): the layout a simulated unit must answer the table's DIDs in."""
+    def read():
+        location, info = odx_location(cmd)
+        table = location.getDbTables().getItemByName(cmd["table"])
+        services = []
+        for prim in mcd_items(table.getDbDiagComPrimitives()):
+            s = {"service": prim.getShortName()}
+            try:
+                s["request"] = pdu_hex(prim.getDbRequest().getDefaultPDU())
+            except (Exception, Throwable):
+                pass
+            try:
+                s["request_params"] = [param_tree(p) for p in mcd_items(prim.getDbRequest().getDbRequestParameters())]
+                s["responses"] = [{"type": unicode(r.getResponseType()), "params": [param_tree(p) for p in mcd_items(r.getDbResponseParameters())]}
+                                  for r in mcd_items(prim.getDbResponses())]
+            except (Exception, Throwable):
+                pass
+            services.append(s)
+        rows = []
+        for row in mcd_items(table.getDbTableRows()):
+            r = {"name": row.getShortName(), "long_name": row.getLongName(), "key": mcd_value(row.getKey())}
+            try:
+                r["key_coded"] = pdu_hex(row.getKey())
+            except (Exception, Throwable):
+                pass
+            r["params"] = [param_tree(p) for p in mcd_items(row.getDbParameters())]
+            rows.append(r)
+        result = {"ok": True, "table": cmd["table"], "services": services, "rows": rows}
+        result.update(info)
+        return result
+    return with_database(read)
+
+
+def handle_gateway_nodes(cmd):
+    """The gateway's node addresses per logical link ({"LL_Brake1UDS": 19, ...}), from the text table
+    of its component list (TAB_RecorDataIdentGatewCompoList, row ECU identification) in the newest
+    gateway variant of the project: what the virtual VCI's simulated gateway lists its units by."""
+    def find(p, name):
+        if p.getShortName() == name:
+            return p
+        for s in mcd_items(p.getDbParameters()):
+            hit = find(s, name)
+            if hit is not None:
+                return hit
+        return None
+
+    def read():
+        bases = mcd_project().getDbProject().getDbEcuBaseVariants()
+        names = [n for n in bases.getNames() if n.startswith("BV_Gatew")]
+        if not names:
+            raise Exception("the vehicle project has no gateway (BV_Gatew...) in the ODIS database")
+        variants = sorted(bases.getItemByName(names[0]).getDbEcuVariants().getNames())
+        for v in reversed(variants):
+            location = bases.getItemByName(names[0]).getDbEcuVariants().getItemByName(v).getDbLocations().getItemByIndex(0)
+            try:
+                table = location.getDbTables().getItemByName("TAB_RecorDataIdentGatewCompoList")
+            except (Exception, Throwable):
+                continue
+            for row in mcd_items(table.getDbTableRows()):
+                if row.getShortName() != "TABROW_GatewCompoListECUIdent":
+                    continue
+                for p in mcd_items(row.getDbParameters()):
+                    links = find(p, "Param_LOGICLINKSHORTNAME")
+                    if links is not None:
+                        nodes = {}
+                        for e in mcd_items(links.getTextTableElements()):
+                            nodes[e.getLongName()] = int(mcd_value(e.getInterval().getLowerLimit()))
+                        return {"ok": True, "variant": v, "nodes": nodes}
+        raise Exception("no gateway variant with a component list node table")
+    return with_database(read)
+
+
 def handle_odx_unit(cmd):
     def read():
         location, info = odx_location(cmd)
@@ -802,13 +988,55 @@ def handle_odx_table(cmd):
 
 
 TEXTUAL_TABLE = "TAB_RecorDataIdentVariaCodinWritaTextu"
-_textual_cache = {}  # base variant -> its variants that define textual coding (reset on reload)
+_textual_cache = {}  # base variant -> family_textual() of it (reset on reload)
 
 
 def textual_params(location):
     """Short names of the textual coding parameters a database location defines."""
     table = location.getDbTables().getItemByName(TEXTUAL_TABLE)
     return [p.getShortName() for row in mcd_items(table.getDbTableRows()) for p in mcd_items(row.getDbParameters())]
+
+
+def family_textual(bases, base_name):
+    """Each ECU variant of a base variant with its number of textual coding parameters: more than one
+    is a coding definition; 0 or 1 (a "Disabled" or plain byte field) is none; -1 means the variant
+    has no textual coding table."""
+    if base_name not in _textual_cache:
+        out = []
+        for v in mcd_items(bases.getItemByName(base_name).getDbEcuVariants()):
+            try:
+                n = len(textual_params(v.getDbLocations().getItemByIndex(0)))
+            except (Exception, Throwable):
+                n = -1
+            out.append({"variant": v.getShortName(), "params": n})
+        _textual_cache[base_name] = out
+    return _textual_cache[base_name]
+
+
+def handle_coding_coverage(cmd):
+    """Textual coding of every unit of the vehicle project: each ECU variant the database has for it
+    (by base variant), with family_textual()'s parameter count. A base variant named after several
+    units (BV_Airba… for Airba and Airba2) belongs to the longest name."""
+    def read():
+        context = get_context()
+        entrance, entrance_ref = get_entrance(context)
+        try:
+            ecus = [re.search(r"id\[(0x[0-9A-Fa-f]+)\] sname\[([^\]]*)\]", unicode(e))
+                    for e in entrance.createProjectEcuPlan().getEcuList()]
+        finally:
+            context.ungetService(entrance_ref)
+        ecus = [(m.group(1), m.group(2)) for m in ecus if m]
+        bases = mcd_project().getDbProject().getDbEcuBaseVariants()
+        owner = {}
+        for base_name in bases.getNames():
+            names = [n for _, n in ecus if n and base_name.startswith("BV_" + n)]
+            if names:
+                owner[base_name] = max(names, key=len)
+        units = [{"address": a, "sname": n,
+                  "bases": [{"base": b, "variants": family_textual(bases, b)} for b in sorted(owner) if owner[b] == n]}
+                 for a, n in ecus]
+        return {"ok": True, "units": units}
+    return with_database(read)
 
 
 def handle_odx_textual_variants(cmd):
@@ -821,19 +1049,8 @@ def handle_odx_textual_variants(cmd):
         else:
             name = project_ecu_name(parse_address(cmd))
             base_names = [n for n in bases.getNames() if n.startswith("BV_" + name)]
-        found = []
-        for base_name in base_names:
-            if base_name not in _textual_cache:
-                hits = []
-                for v in mcd_items(bases.getItemByName(base_name).getDbEcuVariants()):
-                    try:
-                        params = textual_params(v.getDbLocations().getItemByIndex(0))
-                    except (Exception, Throwable):
-                        continue  # no textual coding table in this variant
-                    if len(params) > 1:  # one parameter is "Disabled" or a plain byte field
-                        hits.append({"base": base_name, "variant": v.getShortName(), "params": len(params)})
-                _textual_cache[base_name] = hits
-            found += _textual_cache[base_name]
+        found = [dict(v, base=base_name) for base_name in base_names
+                 for v in family_textual(bases, base_name) if v["params"] > 1]
         def family(name):  # GV_/EV_ prefixes differ between otherwise related variants
             return re.sub(r"^[A-Z]V_", "", name)
         ref = family(cmd.get("variant") or "")
@@ -2906,7 +3123,11 @@ HANDLERS = {
     "clear_event_memory": handle_clear_event_memory,
     "odx_variants": handle_odx_variants,
     "odx_unit": handle_odx_unit,
+    "odx_did_layouts": handle_odx_did_layouts,
+    "odx_table_layout": handle_odx_table_layout,
+    "gateway_nodes": handle_gateway_nodes,
     "odx_dtcs": handle_odx_dtcs,
     "odx_table": handle_odx_table,
     "odx_textual_variants": handle_odx_textual_variants,
+    "coding_coverage": handle_coding_coverage,
 }

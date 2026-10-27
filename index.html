@@ -143,6 +143,8 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .units details.event .bad { color:var(--warn); font-weight:bold; margin-left:6px; }
 .units details.event .meta { margin-left:6px; }
 .units details.event table.vals { margin:0 0 4px; }
+.coverage .ok { color:var(--on); } .coverage .chg { color:var(--chg); } .coverage .bad { color:var(--warn); font-weight:bold; }
+.coverage tr.sel td { font-weight:bold; }
 .units td { font-family:Consolas, monospace; font-size:13px; white-space:nowrap; }
 .units .detail { flex:1; min-width:0; position:sticky; top:0; }
 /* Wide screens: the unit list and the unit detail scroll on their own, so the list stays in view. */
@@ -207,6 +209,11 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 #settings .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:12px 16px; max-width:1500px; }
 #settings .card { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 14px 12px; }
 #settings .card h2.sub { margin-top:10px; }
+#settings .card.wide { grid-column:1 / -1; min-width:0; }
+#simCar table.vals { margin-top:6px; color:var(--text); }
+#simCar td { overflow-wrap:anywhere; vertical-align:top; }
+#simCar td.mono { font-family:Consolas, monospace; font-size:12px; }
+#simCar td.unit { white-space:nowrap; }
 #settings .card label { display:flex; gap:8px; }
 .help ol, .help ul { padding-left:22px; margin:4px 0 8px; }
 .help li { margin:3px 0; }
@@ -319,7 +326,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <svg class="logo" aria-hidden="true" viewBox="0 0 48 48"><defs><linearGradient id="logoBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1e3a8a"/></linearGradient><linearGradient id="logoGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fcd34d"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs><rect width="48" height="48" rx="11" fill="url(#logoBg)"/><rect x="1" y="1" width="46" height="46" rx="10" fill="none" stroke="#fff" stroke-opacity=".14"/><g fill="url(#logoGold)"><path d="M20.20 43.20C11.00 42.20 5.60 34.00 8.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(16.09 42.16) rotate(-194.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-173.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(12.29 39.60) rotate(-97.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-152.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(9.49 35.50) rotate(-76.7)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-137.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.84 29.80) rotate(-61.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-125.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(7.47 22.40) rotate(-49.8)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(8.00 16.50) rotate(-82.2)"/><path d="M27.80 43.20C37.00 42.20 42.40 34.00 40.00 16.50" fill="none" stroke="#f59e0b" stroke-width="1.3" stroke-linecap="round"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(31.91 42.16) rotate(-61.1)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-6.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(35.71 39.60) rotate(-82.9)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-27.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(38.51 35.50) rotate(-103.3)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-43.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.16 29.80) rotate(-119.0)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-54.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.53 22.40) rotate(-130.2)"/><path d="M0 0C1.4-1.9 4.6-1.9 6.2 0C4.6 1.9 1.4 1.9 0 0Z" transform="translate(40.00 16.50) rotate(-97.8)"/></g><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#0b1f4d" fill-opacity=".35" transform="translate(0 1)"/><path d="M24 11L32.4 35H27.6L24 24L20.4 35H15.6Z" fill="#fff"/></svg>
   <span class="name">Laertes<small>father of Odis</small></span></span>
   <div class="navtabs">
-  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, output tests, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="The coding ↔ trouble code rules: see, edit and add them, and hide wrong computed links" data-tab="rules" onclick="showTab('rules')">Rules</button><button title="Which ODIS project a car needs: decode a VIN, or pick the model and year (from ODIS&#39;s own vehicle tables; ODIS need not run)" data-tab="vehicles" onclick="showTab('vehicles')">Vehicles</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes: every tab, button and option" data-tab="help" onclick="showTab('help')">Help</button>
+  <button title="The control units of the vehicle project: identification, faults, coding, adaptation, measurements, basic settings, output tests, scans" data-tab="units" onclick="showTab('units')">Project units</button><button title="The ODIS database without a car: search a part number or variant and see its tables" data-tab="odx" onclick="showTab('odx')">Unit database</button><button title="Every trouble code of a unit in the ODIS database, with repair guidance" data-tab="dtc" onclick="showTab('dtc')">Trouble codes</button><button title="The coding ↔ trouble code rules: see, edit and add them, and hide wrong computed links" data-tab="rules" onclick="showTab('rules')">Rules</button><button title="Which project units and ECU variants have their coding as text (ODIS definition, borrowed, or your .lbl labels) and which are missing" data-tab="coverage" onclick="showTab('coverage')">Coverage</button><button title="Which ODIS project a car needs: decode a VIN, or pick the model and year (from ODIS&#39;s own vehicle tables; ODIS need not run)" data-tab="vehicles" onclick="showTab('vehicles')">Vehicles</button><button title="The large coding editor: bit grid, .lbl labels and the variant&#39;s coding definition" data-tab="coding" onclick="showTab('coding')">Coding</button><button title="Every coding and adaptation write with old → new value; survives restarts" data-tab="history" onclick="showTab('history')">History</button><button title="Retrofit mode: a scan before, then every change to the chosen units kept under the retrofit&#39;s name" data-tab="retrofit" onclick="showTab('retrofit')">Retrofit</button><button title="Component protection: remove it after a unit exchange (online, needs GeKo)" data-tab="cp" onclick="showTab('cp')">CP</button><button title="Immobilizer functions (online, needs GeKo)" data-tab="immo" onclick="showTab('immo')">Immobilizer</button><button id="canTabBtn" title="Show or hide the CAN trace of the virtual VCI, over any tab (also ◀ CAN on the right edge)" onclick="toggleCanPanel()">VCI CAN</button><button title="Laertes options, the ODIS bridge, the clamp 15 wake-up and your sign-ins" data-tab="settings" onclick="showTab('settings')">Settings</button><button title="How to set up and use Laertes: every tab, button and option" data-tab="help" onclick="showTab('help')">Help</button>
   </div>
   <div class="navstatus">
   <span class="navleft"><span id="busy" class="busy" hidden><span class="hourglass" aria-hidden="true">⏳</span> <span class="txt"></span><span class="time mono" title="Running for"></span><button onclick="cancelOp()" title="Stop after the current step">Stop</button></span>
@@ -343,6 +350,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="main"></div>
 <div id="units" class="units" hidden>
   <div class="list">
+    <div class="meta projnote" data-proj></div>
     <div class="bar"><input title="Show only units whose address or name contains this text" type="text" id="unitFilter" placeholder="Filter by address or name" oninput="renderUnitList()">
       <label title="Units that answered: identified by ODIS or by a Laertes scan, and not failed since"><input title="Show only units that answered (identified by ODIS or a Laertes scan)" type="checkbox" id="unitResponded" onchange="renderUnitList()"> responded only</label>
       <button title="Ask ODIS again for the units of the loaded vehicle project" class="op" onclick="op('Loading units', loadUnits)">Reload from ODIS</button></div>
@@ -362,6 +370,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
 <div id="odx" class="db" hidden></div>
 <div id="dtc" class="db" hidden></div>
 <div id="rules" class="db units rules" hidden></div>
+<div id="coverage" class="db units coverage" hidden></div>
 <div id="vehicles" class="db units" hidden></div>
 <div id="history" class="db units" hidden></div>
 <div id="retrofit" class="db units" hidden></div>
@@ -620,6 +629,17 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       for every fault type) or the VW fault number VCDS lists first (<code>559893</code>). Faults show all three forms
       (<code>U112100</code>, <code>U1121 00</code>, <code>VCDS 559893</code>), and the code searches take any of them. Once <b>Coding links across units</b> is built, its links are listed too: <b>Hide</b> one that is
       wrong and it stops showing in the hints.</dd>
+    <dt>Coverage</dt>
+    <dd>Whether the coding of every project unit can be shown as text. <b>Check coverage</b> reads, from the ODIS database, every ECU
+      variant of every unit of the vehicle project and whether it has a textual coding definition (needs the bridge; about a minute
+      the first time). Each variant is one of: <b>ODIS definition</b>; <b>borrowed</b> (you chose a related variant's definition in the
+      coding view); <b>.lbl labels</b> (you imported labels for it); <b>can be borrowed</b> (no definition of its own, but a related
+      variant has one: open the unit's coding and pick it); <b>nothing</b> (no source yet: import a .lbl file). A unit identified on
+      the car shows its own variant first. <b>only variants without an ODIS definition</b> hides the covered ones; ⧉ copies the
+      missing variants as a tab-separated list. <b>To find</b> at the top lists what to look for: first the units no source covers
+      (.lbl files needed), with the hardware families from the variant names as search terms, then the units that can borrow a
+      related variant's definition; units of this car first. The last check is kept, so the list shows whenever the tab opens,
+      also without the bridge; your borrowed definitions and .lbl labels are always counted as they are now.</dd>
     <dt>Coding ↔ trouble code rules</dt>
     <dd id="knownLinksHelp"></dd>
   </dl>
@@ -740,6 +760,14 @@ button.exp { border-color:var(--chg); color:var(--chg); }
         Applies on the next start.</li>
       <li><b>▶ Start bridge</b> / <b>▶ Bridge + virtual VCI</b> — start now.</li>
     </ul></dd>
+    <dt>Virtual VCI: simulated car</dt>
+    <dd>Paste a VCDS Auto-Scan and press <b>Simulate this car</b>: the virtual VCI then answers as that car. Each unit answers on
+      its own CAN ids with its part and hardware numbers, versions, system name, serial number, ASAM dataset, coding and stored faults
+      (with their status, so they show as active or passive); a unit the scan does not list does not answer, as on the real car. Writes
+      (coding, adaptation) and <b>Clear DTCs</b> work on the simulated unit until a new scan is loaded. Subsystems (wiper motor, rain
+      sensor, ...) and freeze frames are not simulated. The CAN ids come from ODIS's <code>can_ids.properties</code>, for the units of
+      the loaded vehicle project, so the bridge must run; a scan unit at an address the project does not have is listed as left out.
+      Applies from the next request. <b>Back to the generic unit</b> ends it.</dd>
     <dt>Clamp 15 wake-up (bench)</dt>
     <dd><ul>
       <li><b>Send a clamp 15 frame periodically</b> — needs a VCI that ODIS uses as a J2534 device; through a car's OBD port the
@@ -911,6 +939,7 @@ async function loadSettings() {
   try { Object.assign(settings, await api('GET', '/api/settings')); } catch (e) {}
   try { geko = await api('GET', '/api/geko'); } catch (e) {}
   renderOdisProduct();
+  renderProjectNotes();
   if (currentTab() === 'settings') renderSettings();
 }
 // The ODIS target selector in the top bar: OE (Engineering) or OS (Service). Saved as a setting and
@@ -1240,7 +1269,8 @@ async function pingBridge() {
       // Remembered for starting the bridge when the car cannot be identified by its VIN.
       if (v.project && v.project !== settings.odisProject) { settings.odisProject = v.project; saveSettings(); }
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
-      veh.title = v.project ? 'Vehicle project loaded in ODIS' : 'No vehicle project loaded in ODIS';
+      veh.title = v.project ? `Vehicle project loaded in ODIS. Every unit, trouble code and coding definition Laertes shows comes from ${v.project}.` : 'No vehicle project loaded in ODIS';
+      renderProjectNotes();
     } catch (e) { veh.hidden = true; }
     try {
       const c = await api('POST', '/api/bridge', {action: 'vci'});
@@ -1578,7 +1608,7 @@ function resultRows(v, rows = [], depth = 0) {
 }
 
 // Each tab shows the element with the id in TABS; the coding view lives in #main.
-const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', rules: 'rules', vehicles: 'vehicles', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', help: 'help'};
+const TABS = {coding: 'main', units: 'units', odx: 'odx', dtc: 'dtc', rules: 'rules', coverage: 'coverage', vehicles: 'vehicles', history: 'history', retrofit: 'retrofit', cp: 'cp', immo: 'immo', settings: 'settings', help: 'help'};
 let activeTab = 'coding';
 const currentTab = () => activeTab;
 function showTab(tab) {
@@ -1594,6 +1624,7 @@ function showTab(tab) {
   if (tab === 'vehicles') loadVehiclesTab();
   if (tab === 'help') $('#knownLinksHelp').innerHTML = knownLinksHelpHTML();
   if (tab === 'rules') renderRules();
+  if (tab === 'coverage') showCoverageTab();
   if (tab === 'history') loadHistory();
   if (tab === 'retrofit') loadRetrofitTab();
   if (tab === 'cp') loadCpTab();
@@ -1605,6 +1636,57 @@ function showTab(tab) {
 function helpGo(id) { const el = document.getElementById(id); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); }
 
 // Settings tab: options stored in laertes.db (see loadSettings).
+// Settings › Virtual VCI: simulated car (simcar.go). The page gives each scan address its ODIS short
+// name from the project's unit list; Laertes maps that to CAN ids and writes car.txt for the VCI.
+async function simCarLoad() {
+  const scan = $('#simCarScan').value;
+  if (!scan.trim()) throw new Error('Paste a VCDS Auto-Scan first.');
+  if (!units || !units.length) await loadUnits();
+  if (!units || !units.length) throw new Error('The vehicle project\'s units are not known: start the bridge first.');
+  const snames = Object.fromEntries(units.filter(u => u.sname).map(u => [addrText(hexAddr(u.id)), u.sname]));
+  // The gateway's node address per unit, for its component list (what Quick scan reads).
+  let nodes = {}, nodeErr = '';
+  try { nodes = (await bridge({action: 'gateway_nodes'})).nodes || {}; } catch (e) { nodeErr = e.message; }
+  const car = await api('POST', '/api/vci/car', {scan, snames, nodes});
+  $('#simCarScan').value = '';
+  renderSimCar({active: true, car});
+  toast(`The virtual VCI now answers as ${car.vin || 'the scanned car'}: ${car.units.filter(u => u.req).length} units. Read the units again in Project units.`
+    + (nodeErr ? ` Quick scan will not work: the gateway's node addresses could not be read (${nodeErr}).` : ''), !!nodeErr);
+}
+async function simCarClear() {
+  await api('DELETE', '/api/vci/car');
+  renderSimCar({active: false, car: {}});
+  toast('The virtual VCI answers as the generic unit again.');
+}
+async function showSimCar() {
+  try { renderSimCar(await api('GET', '/api/vci/car')); } catch (e) { $('#simCar').textContent = e.message; }
+}
+function renderSimCar(s) {
+  const el = $('#simCar'); if (!el) return;
+  const car = s.car || {}, us = car.units || [];
+  if (!s.active || !us.length) { el.innerHTML = 'Now: the generic unit (every CAN id answers the same).'; return; }
+  const on = us.filter(u => u.req), faults = on.reduce((n, u) => n + (u.faults || []).length, 0);
+  el.innerHTML = `Now: <b>${esc(car.vin || '?')}</b> · ${on.length} units answer · ${faults} stored fault${faults === 1 ? '' : 's'}
+    ${us.length > on.length ? ` · <span class="bad">${us.length - on.length} left out</span>` : ''}
+    <table class="vals"><tr><th>Unit</th><th>CAN ids</th><th>Part number · system</th><th>Coding</th><th>Faults</th></tr>${us.map(u => `<tr>
+      <td class="mono unit">${esc(u.address)} <span class="meta">${esc(u.name)}${u.sname ? ' · ' + esc(u.sname) : ''}</span></td>
+      <td class="mono unit">${u.req ? esc(u.req + ' / ' + u.resp) : '—'}</td>
+      <td>${esc(u.partSW || '')} <span class="meta">${esc([u.system, u.hwVer, u.swVer].filter(Boolean).join(' '))}</span></td>
+      <td class="mono">${esc(u.coding || '')}</td>
+      <td>${(u.faults || []).map(f => `<span class="mono">${esc(f.sae)}</span> ${esc(f.text)} <span class="meta">VCDS ${f.number}</span>`).join('<br>')}
+        ${(u.problems || []).map(p => `<div class="bad">${esc(p)}</div>`).join('')}</td></tr>`).join('')}</table>`;
+}
+
+// Units, trouble codes and coding definitions all come from ODIS's vehicle project, so each view that
+// shows them names it: a list is not to be taken for another project's (or another car's).
+function projectNoteText() {
+  const p = settings.odisProject;
+  return p ? `Vehicle project <b>${esc(p)}</b>: the units, trouble codes and coding definitions shown are those of this ODIS project.`
+    : 'No ODIS vehicle project known yet: start the bridge. Units, trouble codes and coding definitions always come from the loaded project.';
+}
+const projectNoteHTML = () => `<div class="meta projnote" data-proj>${projectNoteText()}</div>`;
+function renderProjectNotes() { document.querySelectorAll('[data-proj]').forEach(e => { e.innerHTML = projectNoteText(); }); }
+
 function renderSettings() {
   $('#settings').innerHTML = `<h1>Settings</h1>
     <p class="meta">Stored in laertes.db, so they apply in every browser and survive restarts.</p>
@@ -1638,6 +1720,15 @@ function renderSettings() {
     </label>
     <div class="bar"><button class="op" onclick="startBridge(false)" title="Start ODIS in the background with your own VCI and run the bridge macro now">▶ Start bridge</button>
       <button class="op" onclick="startBridge(true)" title="Start ODIS in the background with Laertes's virtual VCI and the vehicle project above, and run the bridge macro now">▶ Bridge + virtual VCI</button></div>
+    </section><section class="card wide"><h2 class="sub">Virtual VCI: simulated car</h2>
+    <div class="meta">Paste a VCDS Auto-Scan and the virtual VCI answers as that car: each unit on its own CAN ids with its part numbers,
+      versions, ASAM dataset, coding and stored faults; units the scan does not list do not answer. The CAN ids come from ODIS's
+      can_ids.properties for the units of the vehicle project <b>${esc(settings.odisProject || '(none set)')}</b>, so the bridge must be running.
+      Applies from the next request, no restart.</div>
+    <div id="simCar" class="meta">…</div>
+    <textarea id="simCarScan" rows="5" style="width:100%; font:12px Consolas, monospace" placeholder="VCDS Auto-Scan: from &quot;VCDS -- Windows Based VAG/VAS Emulator&quot; to &quot;End----&quot;"></textarea>
+    <div class="bar"><button class="op" onclick="op('Loading the simulated car', simCarLoad)" title="Turn the scan into the virtual VCI's car (car.txt)">Simulate this car</button>
+      <button onclick="op('Removing the simulated car', simCarClear)" title="Delete car.txt: every unit answers as the generic unit again">Back to the generic unit</button></div>
     </section><section class="card"><h2 class="sub">Clamp 15 wake-up (bench)</h2>
     <label style="align-items:flex-start" title="Laertes's VCI DLL sits between ODIS and your VCI's J2534 driver, forwards everything and sends this frame periodically on the CAN bus">
       <input type="checkbox" ${settings.wakeOn ? 'checked' : ''} onchange="settings.wakeOn = this.checked; saveSettings()">
@@ -1692,6 +1783,7 @@ function renderSettings() {
     </table>
     <div class="bar"><button title="Store the GeKo username and password (encrypted for this Windows user)" onclick="saveGeko()">Save</button></div></section></div>`;
   api('GET', '/api/odis/projects').then(ps => { const dl = $('#odisProjects'); if (dl) dl.innerHTML = ps.map(p => `<option value="${esc(p)}">`).join(''); }, () => {});
+  showSimCar();
 }
 
 // VCI CAN tab: the offline VCI (offlinevci.c) appends every ISO15765 request/response to vci-can.log;
@@ -2385,6 +2477,12 @@ const BUILTIN_RULES = [
   {id: 'rls', type: 'case', at: '09', fault: 'Regen|Rain|Light Recognition|Lichterkennung|Feuchte|humidity', option: 'Regen|Rain|RLS|RLHS|Feuchte', name: 'rain/light sensor',
     check: 'Central electronics coding of the rain/light sensor (Ross-Tech: "J519 incorrectly coded" is a cause). The sensor part must match it: a humidity-only sensor cannot run the wipers.',
     src: 'https://wiki.ross-tech.com/wiki/index.php/01520'},
+  {id: 'headlight-type', type: 'case', at: '09',
+    // A short to ground is wiring, never the lamp check; interior lights are not part of it.
+    fault: '^(?![\\s\\S]*(Kurzschlu(ß|ss) nach Masse|short to ground|short circuit to ground|Innen|interior|Lese|reading))[\\s\\S]*(bulb|lamp|headl|low beam|high beam|main beam|DRL|daytime|xenon|AFS|cornering|Gl(ue|ü)hlampe|Lampe|Leuchte|Scheinwerfer|Abblend|Fernlicht|Tagfahr|Abbiege)',
+    option: 'Scheinwerfer|headl|Xenon|AFS|LED|Halogen|Lampe|lamp|Kaltdiagnose|cold', name: 'lamp faults: headlight type or lamp check coded wrong',
+    check: 'The central electronics coding must match the fitted lights: headlight type (MQB: byte 2 bits 0-2, halogen / xenon / xenon with AFS / LED) and, after LED or HID retrofits, the cold/hot lamp check (PQ35/46: byte 18). Halogen cars have no headlight power modules: untick 29/39 (or D6/D7) in the gateway installation list. A real blown bulb or bad connector gives the same fault, so check the lamp first if nothing was changed.',
+    src: 'https://forums.ross-tech.com/index.php?threads/31730/'},
   {id: 'mfsw', type: 'case', at: '16', fault: 'Steering Wheel|Lenkrad|MFL|E221', option: 'MFL|Multifunktion|multi.?function|Lenkrad', name: 'multifunction steering wheel: no signal',
     check: 'Steering column electronics (J527) coding must say multifunction wheel, and the gateway installation list must include it; then check fuses, clockspring and wiring.',
     src: 'https://wiki.ross-tech.com/wiki/index.php/01426'},
@@ -2674,6 +2772,135 @@ function crossForFault(code, text, addr) {
 const crossForOption = (name, addr) => projectLinks && hexAddr(addr) !== null
   ? projectLinks.pairs.filter(p => p.optionAt === hexAddr(addr) && p.faultAt !== p.optionAt && !linkHidden(p) && (p.param.long_name || p.param.name) === name) : [];
 
+// --- Coverage tab ---------------------------------------------------------------------------
+// For every unit of the vehicle project, each ECU variant the ODIS database has for it and whether
+// its coding can be shown as text: an own ODIS definition, a definition borrowed from a related
+// variant (coding_pref), the user's .lbl labels, or nothing yet (with or without a related variant
+// that could lend one). The car's own variant, when ODIS identified it, comes first.
+// The last check is kept in laertes.db, so the list shows without the bridge; the user's own
+// coverage (borrowed definitions, .lbl labels) is always read fresh.
+let coverage = null, covMissingOnly = true, covQ = '';
+async function coverageFrom(cunits, at) {
+  const [prefs, sets] = await Promise.all([api('GET', '/api/coding-prefs'), api('GET', '/api/labels/summary')]);
+  const labels = new Map();
+  for (const l of sets) {
+    const x = labels.get(l.variant) || {count: 0, subs: []};
+    x.count += l.count; x.subs.push(l.subsystem || 'master'); labels.set(l.variant, x);
+  }
+  return {units: cunits, prefs: new Map(prefs.map(p => [p.variant, p])), labels, at: new Date(at)};
+}
+async function loadCoverage() {
+  coverage = {busy: true}; renderCoverage();
+  try {
+    const res = await bridge({action: 'coding_coverage'}), at = new Date().toISOString();
+    if (!units) await loadUnits();
+    coverage = await coverageFrom(res.units, at);
+    api('PUT', '/api/coverage', {units: res.units, at}).catch(e => toast('Coverage not saved: ' + e.message, true));
+  } catch (e) { coverage = {err: e.message}; }
+  renderCoverage();
+}
+async function showCoverageTab() {
+  if (!coverage) {
+    try {
+      const saved = await api('GET', '/api/coverage');
+      if (saved && saved.units) coverage = await coverageFrom(saved.units, saved.at);
+    } catch (e) { /* not checked yet */ }
+  }
+  renderCoverage();
+}
+// own: ODIS defines it; borrowed / labels: covered by the user; borrowable: a related variant could
+// lend its definition; none: no source at all.
+const COV_KINDS = {own: 'ODIS definition', borrowed: 'borrowed', labels: '.lbl labels', borrowable: 'can be borrowed', none: 'nothing'};
+function covStatus(v, family) {
+  const lbl = coverage.labels.get(v.variant), pref = coverage.prefs.get(v.variant);
+  const lblText = lbl ? `.lbl labels: ${lbl.count} (${lbl.subs.join(', ')})` : '';
+  if (v.params > 1) return {k: 'own', text: `ODIS definition, ${v.params} settings${lbl ? ' · ' + lblText : ''}`};
+  if (pref) return {k: 'borrowed', text: `borrowed from ${pref.borrowVariant}${lbl ? ' · ' + lblText : ''}`};
+  if (lbl) return {k: 'labels', text: lblText};
+  const why = v.params === -1 ? 'no textual coding table' : 'plain-text coding disabled';
+  return family.some(x => x.params > 1) ? {k: 'borrowable', text: `${why}; a related variant has a definition to borrow`}
+    : {k: 'none', text: `${why}; no related variant has one`};
+}
+function coverageRows() {
+  return coverage.units.map(cu => {
+    const family = cu.bases.flatMap(b => b.variants.map(v => ({...v, base: b.base})));
+    const vs = family.map(v => ({...v, st: covStatus(v, family)}));
+    const u = (units || []).find(u => hexAddr(u.id) === hexAddr(cu.address));
+    const car = u && u.variant ? vs.find(v => v.variant === u.variant) : null;
+    const n = Object.fromEntries(Object.keys(COV_KINDS).map(k => [k, vs.filter(v => v.st.k === k).length]));
+    return {cu, u, vs, car, n, missing: vs.length - n.own};
+  });
+}
+const covCls = k => k === 'own' ? 'ok' : k === 'none' ? 'bad' : k === 'borrowable' ? 'chg' : 'meta';
+// A variant name without its EV_/GV_ prefix and _NNN suffix names the hardware family (TCMDQ200021,
+// Brake1UDSContiMK100ESP, DMCM…5QE907080A): what to search label files by.
+const covFamily = v => v.replace(/^[A-Z]V_/, '').replace(/_\d{3}$/, '');
+// What to look for: units whose variants nothing covers yet (.lbl files needed), then units where a
+// related variant could lend its definition. Units on this car come first.
+function coverageTodoHTML(rows) {
+  const need = rows.filter(r => r.n.none), lend = rows.filter(r => !r.n.none && r.n.borrowable);
+  const byCar = (a, b) => !!b.car - !!a.car || hexAddr(a.cu.address) - hexAddr(b.cu.address);
+  const fams = r => [...new Set(r.vs.filter(v => v.st.k === 'none').map(v => covFamily(v.variant)))];
+  const name = r => esc((r.u && r.u.sname) || r.cu.sname) + (r.car ? ' <b>(this car)</b>' : '');
+  const text = ['To find: .lbl files needed (nothing covers these variants)',
+    ...need.sort(byCar).map(r => `${addrText(hexAddr(r.cu.address))}\t${r.cu.sname}\t${r.n.none} variants\t${fams(r).join(', ')}`),
+    '', 'Can be borrowed (a related variant has an ODIS definition)',
+    ...lend.sort(byCar).map(r => `${addrText(hexAddr(r.cu.address))}\t${r.cu.sname}\t${r.n.borrowable} without, ${r.n.own} with a definition`)].join('\n');
+  if (!need.length && !lend.length) return '<h2 class="sub">To find</h2><div class="meta">Nothing: every variant is covered.</div>';
+  return `<h2 class="sub">To find <small class="meta">label files to look for, by unit · search by the hardware family</small> ${copyBtn(text, 'Copy the list')}</h2>
+    ${need.length ? `<div class="meta"><b>1. .lbl files needed</b> — neither these variants nor a related one has an ODIS definition:</div>
+    <table class="vals"><tr><th>Unit</th><th></th><th>Variants</th><th>Hardware families (search terms)</th></tr>${need.map(r => `<tr${r.car ? ' class="sel"' : ''}>
+      <td class="mono">${esc(addrText(hexAddr(r.cu.address)))}</td><td>${name(r)}</td><td>${r.n.none}</td>
+      <td class="mono">${fams(r).map(esc).join(', ')}</td></tr>`).join('')}</table>` : ''}
+    ${lend.length ? `<div class="meta"><b>2. Can be borrowed</b> — open the unit's coding and pick a related variant's definition; a .lbl file still
+      helps where it does not match exactly:</div>
+    <table class="vals"><tr><th>Unit</th><th></th><th>Without a definition</th><th>With one</th></tr>${lend.map(r => `<tr${r.car ? ' class="sel"' : ''}>
+      <td class="mono">${esc(addrText(hexAddr(r.cu.address)))}</td><td>${name(r)}</td><td>${r.n.borrowable}</td><td>${r.n.own}</td></tr>`).join('')}</table>` : ''}
+    <h2 class="sub">All units</h2>`;
+}
+function renderCoverage() {
+  const el = $('#coverage'); if (!el) return;
+  let html = `<h1>Coding label coverage</h1>${projectNoteHTML()}
+    <div class="meta">For every unit of the vehicle project: its ECU variants in the ODIS database and whether their coding can be
+      shown as text — an ODIS definition, one borrowed from a related variant, or your .lbl labels.</div>
+    <div class="bar"><button class="op" onclick="op('Checking coding coverage', loadCoverage)" title="Read the textual coding definition of every variant of every project unit from the ODIS database (needs the bridge; can take a minute)">${coverage && coverage.units ? 'Check again' : 'Check coverage'}</button>
+      <label><input type="checkbox" ${covMissingOnly ? 'checked' : ''} onchange="covMissingOnly = this.checked; renderCoverage()"> only variants without an ODIS definition</label>
+      <input placeholder="Filter unit, address or variant" value="${esc(covQ)}" oninput="covQ = this.value; renderCoverageList()" style="max-width:260px"></div>`;
+  if (!coverage) html += '<div class="meta">Not checked yet.</div>';
+  else if (coverage.busy) html += '<div class="meta">Reading every variant\'s coding definition from the ODIS database…</div>';
+  else if (coverage.err) html += `<div class="status err">${esc(coverage.err)}</div>`;
+  else {
+    const rows = coverageRows(), all = rows.flatMap(r => r.vs), cars = rows.filter(r => r.car);
+    const count = k => all.filter(v => v.st.k === k).length;
+    html += `<div class="meta"><b>${rows.length}</b> units · <b>${all.length}</b> variants: ${Object.entries(COV_KINDS).map(([k, t]) =>
+        `<span class="${covCls(k)}">${count(k)} ${t}</span>`).join(' · ')}
+      ${cars.length ? ` · this car: <b>${cars.filter(r => r.car.st.k !== 'none' && r.car.st.k !== 'borrowable').length}</b> of ${cars.length} identified units decodable` : ' · no unit identified on a car yet'}
+      · checked ${esc(coverage.at.toLocaleString())}
+      ${copyBtn(rows.flatMap(r => r.vs.filter(v => v.st.k !== 'own').map(v => [addrText(hexAddr(r.cu.address)), r.cu.sname, v.variant, COV_KINDS[v.st.k], v.st.text].join('\t'))).join('\n'), 'Copy every variant without an ODIS definition (tab-separated)')}</div>
+      ${coverageTodoHTML(rows)}<div id="covList"></div>`;
+  }
+  el.innerHTML = html;
+  if (coverage && coverage.units) renderCoverageList();
+}
+function renderCoverageList() {
+  const el = $('#covList'); if (!el || !coverage || !coverage.units) return;
+  const q = covQ.trim().toLowerCase();
+  const rows = coverageRows().filter(r => !q || [addrText(hexAddr(r.cu.address)), r.cu.sname, r.u && r.u.sname, ...r.vs.map(v => v.variant)].join(' ').toLowerCase().includes(q))
+    .filter(r => !covMissingOnly || r.missing || (r.car && r.car.st.k !== 'own'));
+  el.innerHTML = rows.map(r => {
+    const shown = r.vs.filter(v => !covMissingOnly || v.st.k !== 'own').sort((a, b) => (b === r.car) - (a === r.car) || a.variant.localeCompare(b.variant));
+    const carText = r.car ? `<span class="${covCls(r.car.st.k)}">this car (${esc(r.car.variant)}): ${esc(COV_KINDS[r.car.st.k])}</span>`
+      : r.u && r.u.variant ? `<span class="meta">this car's variant ${esc(r.u.variant)} is not in the database</span>` : '';
+    return `<details class="event"><summary><span class="mono">${esc(addrText(hexAddr(r.cu.address)))}</span> ${esc((r.u && r.u.sname) || r.cu.sname)}
+        <span class="meta">${r.vs.length} variant${r.vs.length === 1 ? '' : 's'}: ${Object.keys(COV_KINDS).filter(k => r.n[k]).map(k =>
+          `<span class="${covCls(k)}">${r.n[k]} ${COV_KINDS[k]}</span>`).join(' · ') || 'none in the database'}</span> ${carText}</summary>
+      ${shown.length ? `<table class="vals"><tr><th>Variant</th><th>Base</th><th>Coding as text</th></tr>${shown.map(v => `<tr${v === r.car ? ' class="sel"' : ''}>
+        <td class="mono">${esc(v.variant)}${v === r.car ? ' ◀ this car' : ''}</td><td class="mono">${esc(v.base)}</td>
+        <td><span class="${covCls(v.st.k)}">${esc(COV_KINDS[v.st.k])}</span> <span class="meta">${esc(v.st.text)}</span></td></tr>`).join('')}</table>`
+        : '<div class="meta">Every variant has an ODIS definition.</div>'}</details>`;
+  }).join('') || '<div class="meta">No unit matches.</div>';
+}
+
 // --- Rules tab ------------------------------------------------------------------------------
 // Shows every coding ↔ trouble code rule with counts, lets the user edit, add and delete known cases
 // and message senders (edits saved to laertes.db, over the built-in ones) and hide computed
@@ -2727,7 +2954,7 @@ const RULE_FIELDS = {
 function renderRules() {
   const el = $('#rules'); if (!el) return;
   const st = ruleStats(), pl = projectLinks;
-  el.innerHTML = `<h1>Coding ↔ trouble code rules</h1>
+  el.innerHTML = `<h1>Coding ↔ trouble code rules</h1>${projectNoteHTML()}
     <div class="meta"><b>${st.cases}</b> known cases (${st.withOption} also mark a coding setting) · <b>${st.senders}</b> message senders ·
       ${st.addrs} unit addresses · ${st.edited} edited by you${st.deleted ? ` (${st.deleted} deleted: <a href="#" onclick="op('Saving rules', ruleRestoreDeleted); return false">restore them</a>)` : ''}${st.bad ? ` · <span class="bad">${st.bad} with an invalid pattern</span>` : ''}
       · name matching ignores ${LINK_STOP.size} generic words${pl ? ` · <b>${pl.pairs.length}</b> computed links (${pl.pairs.filter(p => p.faultAt !== p.optionAt).length}
@@ -2980,7 +3207,7 @@ async function codingSelect(step, i) {
   step.entry = i; step.sysName = c.systemName || 'master';
   step.orig = c.byteCoding ? bytesOf(c.byteCoding.replace(/\s/g, '')) : [];
   step.work = step.orig.slice(); step.writeMsg = ''; step.dtcBefore = step.dtcAfter = null; step.dtcHidden = false;
-  step.unitLabels = await loadUnitLabels(step.unitVariant, step.sysName);
+  ({labels: step.unitLabels, key: step.labelFrom} = await loadUnitLabels(step.labelKey, step.sysName, step.addr));
 }
 async function codingPick(i) { const step = codingStep(); if (step) { await codingSelect(step, i); renderUnitDetail(); } }
 // Re-renders the unit detail after an edit without losing the keyboard position: the render runs
@@ -3006,7 +3233,7 @@ function codingReset() { const s = codingStep(); if (s) { s.work = s.orig.slice(
 async function openUnitCodingInTab() {
   const step = codingStep(), u = units.find(u => u.index === unitSel);
   if (!step || !step.work) return;
-  openCoding = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.unitVariant || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true, step};
+  openCoding = {id: -1, time: '', ecu: u.sname || u.id || '', variant: step.labelFrom || step.labelKey || '', subsystem: step.sysName || 'master', coding: step.work.map(hex).join(''), fromUnit: true, step};
   work = step.work.slice(); labelsKey = null;
   showTab('coding');
   await loadLabels(true);  // the unit's own .lbl labels (by variant/subsystem)
@@ -3159,12 +3386,22 @@ async function stepDtcReload() {
 function dtcHide() { const s = curStep(); if (s) { s.dtcHidden = true; renderUnitDetail(); } }
 
 // Decode the (edited) coding with the user's own .lbl labels, independent of the ODIS database.
-async function loadUnitLabels(variant, subsystem) {
-  try { return await api('GET', '/api/labels?' + new URLSearchParams({variant: variant || '', subsystem: subsystem || ''})); }
-  catch (e) { return []; }
+// Labels are kept per ODX variant and subsystem. A unit ODIS has not identified (no variant) keeps
+// them under its address ("@0x0003"): an empty variant would give every such unit the same labels.
+const labelKey = u => u.variant || '@' + u.id;
+// A unit's labels: by its key, else (identified since) those imported by its address before.
+// Returns {labels, key}: key is where they came from, so the Coding tab shows and edits the same set.
+async function loadUnitLabels(key, subsystem, addr) {
+  const get = k => api('GET', '/api/labels?' + new URLSearchParams({variant: k, subsystem: subsystem || ''}));
+  try {
+    const ls = key ? await get(key) : [];
+    if (ls.length || !addr || key === '@' + addr) return {labels: ls, key};
+    const byAddr = await get('@' + addr);
+    return byAddr.length ? {labels: byAddr, key: '@' + addr} : {labels: ls, key};
+  } catch (e) { return {labels: [], key}; }
 }
 function lblDecodeHTML(step) {
-  const ls = step.unitLabels || [], where = `${esc(step.unitVariant || '?')} / ${esc(step.sysName)}`;
+  const ls = step.unitLabels || [], where = `${esc(step.unitVariant || 'unit ' + step.addr)} / ${esc(step.sysName)}`;
   const btn = `<button title="Load a VCDS-style .lbl label file for this unit&#39;s coding" onclick="importUnitLBL()">Import .lbl for ${where}…</button>`;
   if (!ls.length) return `<div class="meta">No .lbl labels stored for ${where}.</div>${btn}`;
   return `<div class="meta">${ls.length} labels for ${where}. ${btn} ${trTableBtn(ls.map(l => l.text))}</div>
@@ -3213,9 +3450,9 @@ async function onUnitLBL(input) {
   const file = input.files[0], step = pendingLblStep; input.value = '';
   if (!file || !step) return;
   try {
-    const n = await api('POST', '/api/labels/import?' + new URLSearchParams({variant: step.unitVariant || '', subsystem: step.sysName}), await file.text());
-    step.unitLabels = await loadUnitLabels(step.unitVariant, step.sysName);
-    alert(`Imported ${n} labels for ${step.unitVariant} / ${step.sysName}`);
+    const n = await api('POST', '/api/labels/import?' + new URLSearchParams({variant: step.labelKey, subsystem: step.sysName}), await file.text());
+    ({labels: step.unitLabels, key: step.labelFrom} = await loadUnitLabels(step.labelKey, step.sysName, step.addr));
+    alert(`Imported ${n} labels for ${step.unitVariant || 'unit ' + step.addr} / ${step.sysName}`);
     renderUnitDetail();
   } catch (e) { alert('Import failed: ' + e.message); }
 }
@@ -4676,7 +4913,7 @@ async function unitRun(cmd, label, extra) {
   if (step.res && cmd.action === 'read_coding') {
     // The first entry is the master's coding, then one per slave/subsystem (the gateway, for
     // example, codes the units behind it); each can be picked and written on its own.
-    step.unitVariant = u.variant; step.addr = u.id;
+    step.unitVariant = u.variant; step.addr = u.id; step.labelKey = labelKey(u);
     step.codings = (step.res.coding || []).filter(c => c && c.byteCoding);
     await codingSelect(step, 0);
     step.odx = await codingDefinition(u);
@@ -4692,7 +4929,12 @@ async function unitRun(cmd, label, extra) {
     } catch (e) { step.options = {}; }
     if (unitPath === path) renderUnitDetail();
   }
-  if (step.res && cmd.action === 'read_identification') applyIdent(u, step.res);
+  if (step.res && cmd.action === 'read_identification') {
+    applyIdent(u, step.res);
+    // ODIS now knows this unit (part number, variant, state): reload the list as "Reload from ODIS"
+    // does, so the list and the other units show what ODIS learned. The selection is kept (by index).
+    await loadUnits();
+  }
   if (step.res && step.res.event_memory) {
     markFaults(u.id, dtcEntries(step.res));  // updates the unit's count in the list
     if (dtcEntries(step.res).length) {
@@ -4751,7 +4993,7 @@ function bridge(cmd) { return api('POST', '/api/bridge', cmd); }
 
 function initDatabaseTabs() {
   for (const p of ['odx', 'dtc']) {
-    $('#' + p).innerHTML = `<div class="bar"><input type="text" class="wide" id="${p}Q"
+    $('#' + p).innerHTML = `${projectNoteHTML()}<div class="bar"><input type="text" class="wide" id="${p}Q"
         placeholder="Unit address (0x0001) or part number / variant (04C906026, GV_ECM10…)"
         onkeydown="if (event.key === 'Enter') op('Searching the database', () => odxFind('${p}'))"><button onclick="op('Searching the database', () => odxFind('${p}'))">Find</button>
       <span class="status" id="${p}Msg"></span></div><div class="found" id="${p}Found"></div><div id="${p}Body"></div>`;

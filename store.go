@@ -380,6 +380,49 @@ func (s *Store) CodingPref(variant string) (*CodingPref, error) {
 	return &p, nil
 }
 
+// CodingPrefs returns every saved preference, for the coverage overview.
+func (s *Store) CodingPrefs() ([]CodingPref, error) {
+	rows, err := s.db.Query(`SELECT variant, borrow_variant, borrow_base FROM coding_pref ORDER BY variant`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CodingPref{}
+	for rows.Next() {
+		var p CodingPref
+		if err := rows.Scan(&p.Variant, &p.BorrowVariant, &p.BorrowBase); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// LabelSet is how many .lbl labels are stored for one variant and subsystem.
+type LabelSet struct {
+	Variant   string `json:"variant"`
+	Subsystem string `json:"subsystem"`
+	Count     int    `json:"count"`
+}
+
+// LabelSets returns every variant and subsystem that has labels, for the coverage overview.
+func (s *Store) LabelSets() ([]LabelSet, error) {
+	rows, err := s.db.Query(`SELECT variant, subsystem, count(*) FROM labels GROUP BY variant, subsystem ORDER BY variant, subsystem`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []LabelSet{}
+	for rows.Next() {
+		var l LabelSet
+		if err := rows.Scan(&l.Variant, &l.Subsystem, &l.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) SetCodingPref(p CodingPref) error {
 	_, err := s.db.Exec(`INSERT INTO coding_pref (variant, borrow_variant, borrow_base) VALUES (?,?,?)
 		ON CONFLICT (variant) DO UPDATE SET borrow_variant=excluded.borrow_variant, borrow_base=excluded.borrow_base`,
@@ -400,6 +443,18 @@ func (s *Store) CodingRules() (json.RawMessage, error) { return s.value("coding_
 
 // SetCodingRules replaces the stored rule edits with the given JSON object.
 func (s *Store) SetCodingRules(v json.RawMessage) error { return s.setValue("coding_rules", v) }
+
+// Coverage returns the last coding coverage check (Coverage tab), {} before the first one.
+func (s *Store) Coverage() (json.RawMessage, error) { return s.value("coverage") }
+
+// SetCoverage replaces the stored coverage check.
+func (s *Store) SetCoverage(v json.RawMessage) error { return s.setValue("coverage", v) }
+
+// SimCar returns the car the virtual VCI was last given (simcar.go), {} when none.
+func (s *Store) SimCar() (json.RawMessage, error) { return s.value("sim_car") }
+
+// SetSimCar replaces it.
+func (s *Store) SetSimCar(v json.RawMessage) error { return s.setValue("sim_car", v) }
 
 // value returns the JSON object stored under key in the settings table, {} when there is none.
 func (s *Store) value(key string) (json.RawMessage, error) {
