@@ -232,6 +232,9 @@ func (o *odisStarter) run(project string, offline bool) error {
 		o.set("running", "The ODIS bridge is running.")
 		return nil
 	}
+	if err := bridgePortsFree(o.bridgeAddr); err != nil {
+		return err
+	}
 	macro := filepath.Join(odisDir, "macros", "mcpserver.py")
 	if err := installBridge(filepath.Dir(macro)); err != nil {
 		return fmt.Errorf("cannot install the bridge macro: %w", err)
@@ -432,6 +435,28 @@ func odisProjects() []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// bridgePortsFree checks that the macro can listen on the bridge port and the development port
+// (the next one, DEV_PORT in mcpserver.py). Windows reserves port ranges for Hyper-V, WSL and
+// Docker that change with each boot; inside one the macro fails with "Address already in use".
+func bridgePortsFree(addr string) error {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil
+	}
+	port, err := net.LookupPort("tcp", portStr)
+	if err != nil || !(host == "127.0.0.1" || host == "localhost") {
+		return nil // a bridge elsewhere is not ours to check
+	}
+	for _, p := range []int{port, port + 1} {
+		l, err := net.Listen("tcp", net.JoinHostPort(host, fmt.Sprint(p)))
+		if err != nil {
+			return fmt.Errorf("the bridge cannot listen on port %d (%v). Windows has probably reserved it for Hyper-V/WSL/Docker: see `netsh interface ipv4 show excludedportrange protocol=tcp`. As administrator, run `net stop winnat` and `net start winnat` (or reboot) to free it", p, err)
+		}
+		l.Close()
+	}
+	return nil
 }
 
 func reachable(addr string) bool {

@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.10"
+const version = "0.9.11"
 
 //go:embed index.html
 var indexHTML []byte
@@ -29,7 +29,7 @@ func main() {
 	exe, _ := os.Executable()
 	dbPath := flag.String("db", filepath.Join(filepath.Dir(exe), "laertes.db"), "SQLite database file")
 	noBrowser := flag.Bool("nobrowser", false, "do not open the browser")
-	bridgeAddr := flag.String("bridge", "127.0.0.1:8765", "ODIS Jython bridge (mcpserver.py) address")
+	bridgeAddr := flag.String("bridge", "127.0.0.1:18765", "ODIS Jython bridge (mcpserver.py) address")
 	grpStub := flag.Bool("grpstub", true, "serve the stand-in for VW's online services (sign-in and GSB web service) on 127.0.0.1:23032, so online guided functions such as component protection run offline; -grpstub=false uses VW's real backend (account admin/admin)")
 	flag.Parse()
 	adoptOldDatabase(*dbPath)

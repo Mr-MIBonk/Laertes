@@ -3066,12 +3066,158 @@ def handle_flash_run(cmd):
     return {"ok": True, "job_id": run_background(job, cmd), "log_offset": log_offset}
 
 
+# Data transfer: ODIS-E's 010 Data transfer, "Write data block". The automation API's
+# dataSetDownload writes a parameter dataset (an .xml with its PARAMETER_DATA, or a .zip with the
+# data and its signature) to the unit. EXPERIMENTAL / UNTESTED, like flashing: a wrong dataset can
+# disable functions of the unit until the right one is written again.
+
+DATASET_EXTENSIONS = (".xml", ".zip")
+DATASET_HEADER_MAX = 16 << 20
+_PARAMETER_DATA = re.compile(r"<PARAMETER_DATA\b([^>]*)>([^<]*)<", re.I)
+_XML_ATTR = re.compile(r"""([\w.-]+)\s*=\s*["']([^"']*)["']""")
+
+
+def _dataset_file(cmd):
+    path = cmd.get("file") or cmd.get("path")
+    if not path:
+        raise Exception("missing file (a parameter dataset .xml or .zip on the ODIS PC)")
+    if not os.path.isfile(path):
+        raise Exception("file not found on the ODIS PC: %s" % path)
+    if not path.lower().endswith(DATASET_EXTENSIONS):
+        raise Exception("a data transfer takes a parameter dataset .xml or .zip, not %s" % os.path.basename(path))
+    return path
+
+
+_ZDC_IDENT = ("DATEINAME", "DATEIID", "VERSION-INHALT", "DATUM", "BESCHREIBUNG")
+
+
+def _zdc_ident(text):
+    """The IDENT of a ZDC data container (part number DATEIID, content version, date, description)."""
+    ident = {}
+    for tag in _ZDC_IDENT:
+        m = re.search(r"<IDENT>.*?<%s>(.*?)</%s>" % (tag, tag), text, re.S)
+        if m:
+            ident[tag] = m.group(1).strip()
+    return ident
+
+
+def _dataset_info(path):
+    """What a dataset file holds, best effort: for an .xml its PARAMETER_DATA blocks (attributes
+    such as DIAGNOSTIC_ADDRESS, START_ADDRESS, ZDC_NAME, ZDC_VERSION, LOGIN, and data size in bytes)
+    and a ZDC container's IDENT; for a .zip its files and the IDENT of the ZDC container in it."""
+    if path.lower().endswith(".zip"):
+        import zipfile
+        z = zipfile.ZipFile(path)
+        try:
+            names = z.namelist()
+            info = {"entries": names, "blocks": []}
+            for n in names:
+                if n.lower().endswith(".xml") and z.getinfo(n).file_size <= DATASET_HEADER_MAX:
+                    text = z.read(n).decode("latin-1")
+                    if "<ZDC>" in text[:4096]:
+                        info["zdc"] = _zdc_ident(text)
+                        break
+            return info
+        finally:
+            z.close()
+    if os.path.getsize(path) > DATASET_HEADER_MAX:
+        return {"blocks": []}
+    f = open(path, "rb")
+    try:
+        text = f.read().decode("latin-1")
+    finally:
+        f.close()
+    info = {"blocks": _dataset_blocks(text)}
+    if "<ZDC>" in text[:4096]:
+        info["zdc"] = _zdc_ident(text)
+    return info
+
+
+def _dataset_blocks(text):
+    blocks = []
+    for attrs, data in _PARAMETER_DATA.findall(text):
+        block = dict((k.upper(), v) for k, v in _XML_ATTR.findall(attrs))
+        block["bytes"] = len(re.findall(r"0x[0-9a-fA-F]{1,2}\b", data)) or len(re.sub(r"[^0-9a-fA-F]", "", data)) // 2
+        blocks.append(block)
+    return blocks
+
+
+def handle_data_transfer_check(cmd):
+    """Read-only check before a data transfer: the dataset file (size, its PARAMETER_DATA blocks
+    and whether they are meant for the unit at cmd["address"]) and the datasets ODIS lists on the
+    unit. Nothing is written."""
+    try:
+        path = _dataset_file(cmd)
+        address = parse_address(cmd)
+    except Exception as e:
+        return {"ok": False, "error": unicode(e)}
+    out = {"ok": True, "file": path, "size": os.path.getsize(path)}
+    try:
+        out.update(_dataset_info(path))
+    except Exception as e:
+        out["blocks"], out["info_error"] = [], unicode(e)
+    targets = set()
+    for b in out["blocks"]:
+        try:
+            targets.add(int(b.get("DIAGNOSTIC_ADDRESS", ""), 0))
+        except ValueError:
+            pass
+    for n in out.get("entries", []):  # a ZDC zip's datasets are named DA_<unit address>_<...>
+        m = re.match(r"DA_([0-9A-Fa-f]{3,4})_", os.path.basename(n))
+        if m:
+            targets.add(int(m.group(1), 16))
+    if targets and address not in targets:
+        out["warning"] = "the dataset is for unit address %s, not 0x%04X" % (
+            ", ".join("0x%04X" % t for t in sorted(targets)), address)
+
+    def read(diag, h):
+        try:
+            out["on_unit"] = [{"name": unicode(d.getDatasetName() or ""), "address": unicode(d.getDatasetAddress() or ""),
+                               "version": unicode(d.getDatasetVersion() or "")}
+                              for d in diag.getAvailableDatasetsOnEcu(h) or []]
+        except (Exception, Throwable) as e:
+            out["on_unit_error"] = error_text(e)
+        return out
+    return with_connection(cmd, read)
+
+
+def handle_data_transfer_run(cmd):
+    """EXPERIMENTAL / UNTESTED. Writes the parameter dataset "file" to the unit at "address"
+    through IDiagnosticInterface.dataSetDownload, as a background job. ODIS reports no progress
+    while it writes, only the result."""
+    try:
+        path = _dataset_file(cmd)
+        address = parse_address(cmd)
+    except Exception as e:
+        return {"ok": False, "error": unicode(e)}
+
+    def job(progress, jid):
+        progress(3, "Selecting the unit...", "prepare")
+        diag = Factory.getInstance()
+        handle = diag.connectToEcu(address).getConnectionHandle()
+        if _job_cancelled(jid):
+            return {"cancelled": True, "stage": "before writing"}
+        progress(10, "Writing the data block. Do not switch off or disconnect.", "writing")
+        result = diag.dataSetDownload(handle, path)
+        if result is not None and result.isErrorOccured():
+            raise Exception("ODIS did not write the dataset: %s%s" % (
+                result.getErrorMessage() or "unknown error",
+                " (%s)" % result.getErrorID() if result.getErrorID() else ""))
+        progress(100, "Data block written", "done")
+        out = {"written": True, "file": path}
+        if result is not None:
+            out["link"] = unicode(result.getLogicalLinkname() or "")
+        return out
+    log_offset = _engine_log_size()
+    return {"ok": True, "job_id": run_background(job, cmd), "log_offset": log_offset}
+
+
 # ODIS logs every flash step (container loading, sessions, the programming sequence, errors) to
 # its engine.log. flash_log returns the flash-related entries from a byte offset on (flash_run
 # reports the offset at its start), so the page can show and keep them even if the flash fails.
 ODIS_ENGINE_LOG = r"C:\ProgramData\OE\log\engine.log"
 _LOG_ENTRY = re.compile(r"^(\d{8}) (\d\d:\d\d:\d\d):(\d{3}) \[(\w+)\s*\] \[[^\]]*\] ([\w$.]+)\([^)]*\) -> ?(.*)$")
-_FLASH_LOG_KEEP = re.compile(r"flash|programm|sequenc|session|ecumem|download|transfer|erase|checksum|"
+_FLASH_LOG_KEEP = re.compile(r"flash|programm|sequenc|session|ecumem|download|transfer|dataset|erase|checksum|"
                              r"seed|security|fingerprint|routine|reset", re.I)
 _FLASH_LOG_NOISE = re.compile(r"WLAN_STATUS|WlanConnection|MCD LogicalLink = null")
 FLASH_LOG_READ_MAX = 8 << 20
@@ -3269,6 +3415,8 @@ HANDLERS = {
     "flash_config": handle_flash_config,
     "flash_run": handle_flash_run,
     "flash_log": handle_flash_log,
+    "data_transfer_check": handle_data_transfer_check,
+    "data_transfer_run": handle_data_transfer_run,
     "job_cancel": handle_job_cancel,
     "job_status": handle_job_status,
     "job_list": handle_job_list,

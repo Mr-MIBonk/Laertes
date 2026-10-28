@@ -42,7 +42,7 @@ sign-in is served on the same port once ODIS's `grp.discovery` points there.) Ru
 -grpstub=false` to use VW's real backend instead.
 
 To send bridge actions by hand while Laertes is running, use the development connection on
-`127.0.0.1:8766`: `python scripts/devbridge.py '{"action": "ping"}'` (several commands as further
+`127.0.0.1:18766`: `python scripts/devbridge.py '{"action": "ping"}'` (several commands as further
 arguments, or one per line on stdin). While it is connected the bridge refuses Laertes's commands with
 "development connection active", so the two never drive ODIS at once; Laertes works again as soon as
 the script exits. `"token": "@"` in a command stands for the debug token (for `_debug`). A command

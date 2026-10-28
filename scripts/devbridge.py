@@ -1,4 +1,4 @@
-"""Development connection to the ODIS Jython bridge (mcpserver.py, port 8766).
+"""Development connection to the ODIS Jython bridge (mcpserver.py, port 18766).
 
 While this script is connected, the bridge refuses Laertes's commands, so the two never drive
 ODIS at once; Laertes works again as soon as the script exits.
@@ -14,7 +14,7 @@ import json
 import socket
 import sys
 
-PORT = 8766
+PORT = 18766
 TOKEN_FILE = r"C:\ProgramData\OE\macros\.mcpserver_debug_token"
 
 

@@ -18,10 +18,10 @@ from java.lang import Throwable
 
 
 HOST = "127.0.0.1"
-PORT = 8765
+PORT = 18765
 # The development connection (devbridge.py): one client at a time, on its own port. While it is
 # connected, commands on PORT (Laertes) are refused, so the two never drive ODIS at once.
-DEV_PORT = 8766
+DEV_PORT = 18766
 MACRO_DIR = r"C:\ProgramData\OE\macros"
 HANDLERS_FILE = os.path.join(MACRO_DIR, "mcpserver_handlers.py")
 

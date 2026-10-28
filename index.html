@@ -463,7 +463,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <dd>ODIS cannot run a macro started from outside while it is open with its window. Either open its <b>Macros</b> function and
       run <code>mcpserver.py</code> there, or close ODIS and press <b>▶ Start bridge</b>.</dd>
     <dt>Stopping</dt>
-    <dd>The macro listens on <code>127.0.0.1:8765</code>. <b>■ Stop bridge</b> ends it (asks first); if Laertes started ODIS in
+    <dd>The macro listens on <code>127.0.0.1:18765</code>. <b>■ Stop bridge</b> ends it (asks first); if Laertes started ODIS in
       the background, that ODIS closes too, so you can open ODIS normally.</dd>
     <dt>Jobs that outlive the page</dt>
     <dd>Long jobs (basic settings, output tests, flashing, guided functions) run inside ODIS. If you reload or reopen the page while one runs,
@@ -617,6 +617,12 @@ button.exp { border-color:var(--chg); color:var(--chg); }
           configuration on the ODIS PC (<b>Browse…</b>) or from your browser (<b>Upload…</b>), then <b>Read / validate
           config</b> (reads only), then <b>Execute</b> (typed confirmation). A progress bar, ODIS's messages, <b>Cancel</b> and
           <b>Show the log of the last flash</b> (from ODIS's engine.log) follow the job.</li>
+        <li><b>⚠ Data transfer (experimental)…</b> is ODIS-E's <i>010 Data transfer › Write data block</i>: choose a parameter
+          dataset (<code>.xml</code>, or a ZDC container <code>.zip</code> such as <code>09_158.zip</code>) the same way, then
+          <b>Read / validate config</b> shows its ZDC part number, content version, the datasets in it and warns when they are for
+          another unit address (reads only), then <b>Execute</b> (typed confirmation) writes it with the same progress, Cancel and
+          log. ODIS reports no progress while it writes, only the result. A wrong dataset can disable functions of the unit until
+          the right one is written again.</li>
       </ul></dd>
   </dl>
 
@@ -731,7 +737,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   </ul>
 
   <h2 class="sub" id="hHistory">History</h2>
-  <p>Every coding and adaptation write, flash, dataset, basic-setting and output-test run with time, unit, variant, old → new value and result;
+  <p>Every coding and adaptation write, flash, dataset, data transfer, basic-setting and output-test run with time, unit, variant, old → new value and result;
     for coding also each changed byte and bit and, where a coding definition or .lbl labels are known, each setting before →
     after. Stored in <code>laertes.db</code>, so it survives restarts.</p>
   <ul>
@@ -853,7 +859,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       automatically</b>. Texts go to Google Translate only when you press 🌐, or as they are shown with automatic translation
       on.</dd>
     <dt>Dangerous functions</dt>
-    <dd><b>Hide the dangerous unit functions</b> (on by default): Flash firmware, Load dataset and Component protection (test).</dd>
+    <dd><b>Hide the dangerous unit functions</b> (on by default): Flash firmware, Load dataset, Data transfer and Component protection (test).</dd>
     <dt>VW online sign-in</dt>
     <dd><b>Sign in</b> signs ODIS in to the VW online service (GRP) in your browser now; otherwise it asks when an online function
       needs it. The <b>GeKo username and password</b> are filled into ODIS's dialog when a guided function asks; <b>Save</b>
@@ -904,7 +910,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <li><code>laertes.db</code> next to <code>laertes.exe</code> holds your data: settings, labels, history, retrofits and
       remembered choices.</li>
     <li><code>-db &lt;file&gt;</code> — use another database file.</li>
-    <li><code>-bridge &lt;host:port&gt;</code> — the bridge address (default <code>127.0.0.1:8765</code>).</li>
+    <li><code>-bridge &lt;host:port&gt;</code> — the bridge address (default <code>127.0.0.1:18765</code>).</li>
     <li><code>-nobrowser</code> — do not open the browser.</li>
     <li><code>-grpstub=false</code> — use VW's real online services instead of Laertes's stand-in on
       <code>127.0.0.1:23032</code>.</li>
@@ -1891,7 +1897,7 @@ function renderSettings() {
     </section><section class="card"><h2 class="sub">Dangerous functions</h2>
     <label style="align-items:flex-start">
       <input type="checkbox" id="setHideDangerous" ${settings.hideDangerous ? 'checked' : ''} onchange="settings.hideDangerous = this.checked; saveSettings(); renderUnitDetail()">
-      <span>Hide the dangerous unit functions: <b>Flash firmware</b>, <b>Load dataset</b> and <b>Component protection (test)</b>.
+      <span>Hide the dangerous unit functions: <b>Flash firmware</b>, <b>Load dataset</b>, <b>Data transfer</b> and <b>Component protection (test)</b>.
         <br><span class="meta">Hides the buttons on a unit; the other functions are unaffected.</span></span>
     </label></section><section class="card"><h2 class="sub">VW online sign-in</h2>
     <p class="meta">ODIS signs in to the VW online service (GRP) in your browser, when an online function such as component protection needs it. <b>Sign in</b> does it now.</p>
@@ -2205,7 +2211,7 @@ async function pollVci(force) {
 // The operations of this page session (from the activity log) with their time span and a category
 // for the trace's colour: what to mark a message with when it went over the bus during one.
 const OP_CATS = [[/coding/i, 'coding', 'CODING'], [/adapt/i, 'adapt', 'ADAPTATION'], [/component protection|\bCP\b/i, 'cp', 'CP'],
-  [/basic setting/i, 'basic', 'BASIC SETTING'], [/output test/i, 'output', 'OUTPUT TEST'], [/immobil/i, 'immo', 'IMMO'], [/flash|dataset/i, 'flash', 'FLASH']];
+  [/basic setting/i, 'basic', 'BASIC SETTING'], [/output test/i, 'output', 'OUTPUT TEST'], [/immobil/i, 'immo', 'IMMO'], [/flash|dataset|data transfer/i, 'flash', 'FLASH']];
 function vciOperations() {
   return activity.filter(e => ['run', 'ok', 'err', 'stop'].includes(e.kind)).map(e => {
     const label = e.text.split(': ')[0], c = OP_CATS.find(([re]) => re.test(label));
@@ -2506,7 +2512,8 @@ function renderUnitDetail() {
       <button class="op" onclick="fullScanUnit()" title="Identification, coding and faults of this unit as a VCDS-style log">Full scan</button>
       ${settings.hideDangerous ? '' : `<button class="warn op" onclick="cpStart()" title="Find the component-protection control on this unit and set it, to test how the unit behaves while locked (recovery needs an online VW/ODIS SVM session)">Component protection (test)…</button>
       <button class="exp op" onclick="flashPanel('flash')" title="EXPERIMENTAL / UNTESTED: flash firmware to this unit">⚠ Flash firmware (experimental)…</button>
-      <button class="exp op" onclick="flashPanel('dataset')" title="EXPERIMENTAL / UNTESTED: load a dataset into this unit">⚠ Load dataset (experimental)…</button>`}
+      <button class="exp op" onclick="flashPanel('dataset')" title="EXPERIMENTAL / UNTESTED: load a dataset into this unit">⚠ Load dataset (experimental)…</button>
+      <button class="exp op" onclick="flashPanel('transfer')" title="EXPERIMENTAL / UNTESTED: write a parameter dataset (.xml or ZDC .zip) to this unit, as ODIS-E's 010 Data transfer › Write data block">⚠ Data transfer (experimental)…</button>`}
       <button title="Erase the fault memory of this unit (asks first)" class="warn op" onclick="unitClearDtcs()">Clear DTCs</button></div>
     ${step ? '' : unitRecipesHTML(u, null)}
     ${step ? `<div class="status ${step.err ? 'err' : ''}">${crumbs}${step.busy ? ' …' : ''}${step.err ? ': ' + esc(step.err) + ' ' + trBtn(step.err) + copyBtn(step.err) : ''}
@@ -8288,8 +8295,16 @@ function cpOpen(name) { op(name, () => unitRun({action: 'read_adaptation', chann
 // background job whose text/percent progress this page polls. A wrong or interrupted flash can
 // leave a unit inoperable, so execute is staged behind validation and a typed confirmation, and
 // the cancel button must be confirmed once real programming has started.
-const FLASH = {flash: {label: 'Flash firmware', kind: 'firmware', what: 'a firmware flash container (.frf/.odx) or programming configuration file'},
-  dataset: {label: 'Load dataset', kind: 'dataset', what: 'a dataset programming configuration file'}};
+// Data transfer is ODIS-E's 010 "Write data block": a parameter dataset (.xml, or a ZDC .zip) goes
+// to the unit through its own bridge actions, with the same panel, job and log as a flash.
+const FLASH = {flash: {label: 'Flash firmware', kind: 'firmware', what: 'a firmware flash container (.frf/.odx) or programming configuration file',
+    example: 'C:\\\\flash\\\\FL_xxxx.frf or config.xml', check: 'flash_config', run: 'flash_run'},
+  dataset: {label: 'Load dataset', kind: 'dataset', what: 'a dataset programming configuration file',
+    example: 'C:\\\\flash\\\\config.xml', check: 'flash_config', run: 'flash_run'},
+  transfer: {label: 'Data transfer', kind: 'transfer', what: 'a parameter dataset (.xml, or a ZDC container .zip)',
+    example: 'C:\\\\datasets\\\\09_158.zip or DA_0009_….xml', check: 'data_transfer_check', run: 'data_transfer_run'}};
+// The phases in which the unit is being written: cancelling then must be confirmed.
+const WRITING_PHASES = ['flashing', 'writing'];
 function flashPanel(which) {
   unitReport = null;
   unitPath = [{cmd: {action: 'flash_panel'}, which, label: FLASH[which].label + ' (experimental)', log: []}];
@@ -8300,13 +8315,15 @@ function flashPanelHTML(step, u) {
   let h = `<div class="warnbox"><b>Experimental and untested.</b> ${esc(f.label)} writes to ${esc(u.sname || 'the unit')} ${esc(u.id || '')}.
     A wrong or interrupted flash can leave the unit inoperable, and recovery may need an online VW/ODIS SVM session. Only on a unit you own.</div>
     <div class="expform"><div class="meta">${esc(f.what)} on the ODIS PC:</div>
-      <input type="text" id="flashFile" placeholder="e.g. C:\\\\flash\\\\FL_xxxx.frf or config.xml" value="${esc(step.path || '')}" oninput="flashPathInput(this)" ${p && p.status === 'running' ? 'disabled' : ''}>
+      <input type="text" id="flashFile" placeholder="e.g. ${f.example}" value="${esc(step.path || '')}" oninput="flashPathInput(this)" ${p && p.status === 'running' ? 'disabled' : ''}>
       <div class="bar"><button title="Browse the folders on this PC for a flash file" onclick="flashBrowse(curStep().browseDir || '')">Browse…</button>
         <button title="Copy a flash file from your browser into Laertes&#39;s uploads folder" onclick="$('#flashUpload').click()">Upload…</button>
         <button title="Read the file and check it matches this unit before anything is written" class="op" onclick="flashReadConfig()" ${step.path ? '' : 'disabled'}>Read / validate config</button></div></div>`;
   if (step.browse) h += flashBrowserHTML(step);
-  if (step.config) {
-    const steps = (((step.config.content || {}).programmingSteps) != null) ? JSON.stringify(step.config.content.programmingSteps).length : 0;
+  if (step.config && f.kind === 'transfer') {
+    h += `${transferCheckHTML(step.config)}
+      <div class="bar"><button class="exp op" onclick="flashExecute()">⚠ Execute data transfer — writes to the unit…</button></div>`;
+  } else if (step.config) {
     h += `<h2 class="sub">Configuration (validated, nothing written)</h2>
       ${valsTable([{name: 'File', value: step.config.file}, {name: 'Diagnostic system', value: (step.config.content || {}).diagnosticSystem || '—'}])}
       <details class="rawjson"><summary>Full configuration JSON</summary>${jsonView(step.config.content)}</details>
@@ -8319,7 +8336,7 @@ function flashPanelHTML(step, u) {
     h += `<h2 class="sub">Progress</h2>
       <div class="progress ${cls}"><div style="width:${p.percent || 0}%"></div></div>
       <div class="status ${cls === 'err' ? 'err' : ''}">${p.percent || 0}% · ${esc(mmss)}${p.phase ? ' · ' + esc(p.phase) : ''} — ${esc(p.message || '')}${p.error ? ' — ' + esc(p.error) + ' ' + trBtn(p.error) : ''}</div>
-      ${p.status === 'running' ? `<div class="bar"><button title="Abort the running flash/dataset job" class="warn" onclick="flashCancel()">Cancel</button>${p.phase === 'flashing' ? '<span class="meta">Cancelling during programming must be confirmed and may not be possible.</span>' : ''}</div>` : ''}
+      ${p.status === 'running' ? `<div class="bar"><button title="Abort the running flash/dataset job" class="warn" onclick="flashCancel()">Cancel</button>${WRITING_PHASES.includes(p.phase) ? '<span class="meta">Cancelling during programming must be confirmed and may not be possible.</span>' : ''}</div>` : ''}
       ${step.log && step.log.length ? `<h2 class="sub">ODIS messages ${copyBtn(step.log.join('\n'), 'Copy the log')}</h2><pre class="report">${esc(step.log.join('\n'))}</pre>` : ''}`;
   }
   const fl = step.flashLog;
@@ -8328,6 +8345,24 @@ function flashPanelHTML(step, u) {
       <span class="meta">Flash steps and errors from ODIS's engine.log${fl && !fl.lastFlash ? ' (last 2 MB — no flash started from this browser yet)' : ''}.</span></div>
     ${fl ? flashLogHTML(fl) : ''}`;
   return h;
+}
+// The read-only check of a data transfer (data_transfer_check): what the file holds, whether it is
+// meant for this unit, and the datasets ODIS lists on the unit (not every unit can list them).
+function transferCheckHTML(c) {
+  const z = c.zdc || {}, datasets = (c.entries || []).filter(n => /(^|\/)DA_/i.test(n));
+  const rows = [{name: 'File', value: c.file}, {name: 'Size', value: `${(c.size / 1024).toFixed(1)} KB`}];
+  if (z.DATEIID) rows.push({name: 'ZDC container', value: `${z.DATEIID} · content version ${z['VERSION-INHALT'] || '?'}${z.DATUM ? ' · ' + z.DATUM : ''}`});
+  if (z.BESCHREIBUNG) rows.push({name: 'Description', value: z.BESCHREIBUNG});
+  if (c.entries) rows.push({name: 'Datasets in the zip', value: `${datasets.length} (of ${c.entries.length} files)`});
+  (c.blocks || []).forEach((b, i) => rows.push({name: `Data block ${i + 1}`, value: [b.ZDC_NAME, b.ZDC_VERSION && 'version ' + b.ZDC_VERSION,
+    b.DIAGNOSTIC_ADDRESS && 'unit ' + b.DIAGNOSTIC_ADDRESS, b.START_ADDRESS && 'at ' + b.START_ADDRESS, b.LOGIN && 'login ' + b.LOGIN,
+    b.bytes + ' bytes'].filter(Boolean).join(' · ')}));
+  rows.push(c.on_unit ? {name: 'Datasets on the unit', value: c.on_unit.map(d => [d.name, d.address, d.version].filter(Boolean).join(' ')).join('; ') || 'none'}
+    : {name: 'Datasets on the unit', value: c.on_unit_error || 'not listed', err: !!c.on_unit_error});
+  return `<h2 class="sub">Dataset (checked, nothing written)</h2>
+    ${c.warning ? `<div class="warnbox"><b>Check the target:</b> ${esc(c.warning)}.</div>` : ''}
+    ${valsTable(rows)}
+    ${datasets.length ? `<details class="rawjson"><summary>Files in the zip</summary><pre class="report">${esc(c.entries.join('\n'))}</pre></details>` : ''}`;
 }
 // Server-side file browser (Laertes runs on the ODIS PC): one directory at a time.
 async function flashBrowse(dir) {
@@ -8373,7 +8408,7 @@ function flashReadConfig() {
   if (!path) { toast('Choose or upload a file first.', true); return; }
   op('Reading config', async () => {
     step.config = null; renderUnitDetail();
-    step.config = await bridge({action: 'flash_config', address: u.id, file: path});
+    step.config = await bridge({action: FLASH[step.which].check, address: u.id, file: path});
     renderUnitDetail();
   });
 }
@@ -8426,7 +8461,7 @@ function flashExecute() {
     step.progress = {percent: 0, message: 'Starting…', status: 'running', phase: 'prepare'}; renderUnitDetail();
     let jid;
     try {
-      const r = await bridge({action: 'flash_run', address: u.id, file: path, resume: {type: 'flash', label: f.label,
+      const r = await bridge({action: f.run, address: u.id, file: path, resume: {type: 'flash', label: f.label,
         record: {kind: f.kind, address: u.id, unit: u.sname || '', variant: u.variant || '', target: path, oldValue: '', newValue: path}}});
       jid = r.job_id;
       step.flashLog = {start: r.log_offset, next: r.log_offset, lines: [], lastFlash: true};
@@ -8460,7 +8495,7 @@ function flashExecute() {
 async function flashCancel(fromStop) {
   const step = curStep();
   if (!step || !step.jobId) return;
-  const flashing = step.progress && step.progress.phase === 'flashing';
+  const flashing = step.progress && WRITING_PHASES.includes(step.progress.phase);
   if (flashing && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
   try { await bridge({action: 'job_cancel', job_id: step.jobId}); toast(flashing ? 'Cancellation requested (may not stop programming).' : 'Cancelling…'); }
   catch (e) { toast(e.message, true); }
@@ -9082,7 +9117,7 @@ function resumedRender() { const el = $('#resumed'); el.hidden = !resumed; if (r
 async function resumedStop() {
   const r = resumed;
   if (!r || r.status !== 'running') return;
-  if (r.type === 'flash' && r.phase === 'flashing' && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
+  if (r.type === 'flash' && WRITING_PHASES.includes(r.phase) && !confirm('Programming is in progress. Cancelling now can leave the unit inoperable, and ODIS may not be able to stop it. Really request cancellation?')) return;
   try { await bridge({action: 'job_cancel', job_id: r.jobId}); r.phase = 'stopping'; resumedRender(); }
   catch (e) { toast(e.message, true); }
 }
