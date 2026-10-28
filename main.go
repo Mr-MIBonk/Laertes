@@ -19,7 +19,7 @@ import (
 )
 
 // version of Laertes, shown in the web page's top bar.
-const version = "0.9.7"
+const version = "0.9.8"
 
 //go:embed index.html
 var indexHTML []byte
@@ -180,6 +180,37 @@ func routes(store *Store, b *bridge, grp *grpReturns, odis *odisStarter, dataDir
 		}
 		log.Printf("opened ODIS log %s", path)
 		reply(w, map[string]string{"path": path, "product": odisProduct}, nil)
+	})
+	// Car backups (backups.go): the list, a file to download, and opening one on this PC.
+	mux.HandleFunc("GET /api/backups", func(w http.ResponseWriter, r *http.Request) {
+		list, err := listBackups(backupDir())
+		reply(w, map[string]any{"dir": backupDir(), "backups": list}, err)
+	})
+	mux.HandleFunc("GET /api/backups/{name}", func(w http.ResponseWriter, r *http.Request) {
+		path := backupPath(backupDir(), r.PathValue("name"))
+		if path == "" {
+			http.Error(w, "not a backup file", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Disposition", `attachment; filename="`+r.PathValue("name")+`"`)
+		http.ServeFile(w, r, path)
+	})
+	mux.HandleFunc("POST /api/backups/{name}/open", func(w http.ResponseWriter, r *http.Request) {
+		path := backupPath(backupDir(), r.PathValue("name"))
+		if path == "" {
+			http.Error(w, "not a backup file", http.StatusBadRequest)
+			return
+		}
+		if _, err := os.Stat(path); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if err := exec.Command("rundll32", "url.dll,FileProtocolHandler", path).Start(); err != nil {
+			reply(w, nil, err)
+			return
+		}
+		log.Printf("opened backup %s", path)
+		reply(w, map[string]string{"path": path}, nil)
 	})
 	// The offline VCI's CAN trace (offlinevci.c canLog): the "VCI CAN" tab polls it to show the
 	// ISO15765 traffic between ODIS and the simulated units.

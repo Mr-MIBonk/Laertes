@@ -129,14 +129,15 @@ func TestSimCarFile(t *testing.T) {
 		"did F197 45 53 43 20 20 20 20 20 20 20 20 20 20\n", // "ESC" padded to 13
 		"did 0600 01 FA 6A A1\n",
 		"did F1A2 30 33 34 30 33 36\n", // ASAM dataset version "034036" as text: version "034" + 3 reserved
-		// The gateway's component list: slot 0 the gateway (bus master, with its stored fault), the brakes
-		// (node 19 = byte 2, bit 3) present, coded as VCDS's GVL says.
-		"did 04A3 01 08 3C\n",
-		"did 2A26 01 00 08 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n",
-		"did 2A28 01 00 00 00",
+		// The gateway's component list: slot 0 the gateway (bus master, with its stored fault), the
+		// gateway's own node 16 (byte 2, bit 0: the root of ODIS's unit tree) and the brakes (node 19 =
+		// byte 2, bit 3) present; coded as VCDS's GVL says plus the gateway's node.
+		"did 04A3 01 08 3D 00 00",
+		"did 2A26 01 00 09 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n",
+		"did 2A28 01 00 01 00",
 		"did 2A2E 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F 10 11 12 13 14", // 256 slots, slot = node
-		"did 2A2A 19 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 00",
-		"did 2A29 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00",
+		"did 2A2A 19 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 19 00 00 03 00", // gateway at 0 and its node 16
+		"did 2A29 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 00 00 01 00",
 		"unit 710 77A 19\n",
 		"dtc EA6200 09\n",
 	} {

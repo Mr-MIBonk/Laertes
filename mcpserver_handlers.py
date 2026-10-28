@@ -8,6 +8,7 @@
 # Do NOT put MCP server code in this file.
 
 import json
+import os
 import re
 import threading
 import time
@@ -2306,6 +2307,109 @@ def handle_gf_run(cmd):
     return {"ok": True, "job_id": run_background(job, cmd), "function": name}
 
 
+# Car backup: ODIS-E's Vehicle functions › 046 Vehicle special functions › 046.01 Coding /
+# Adaptations, "Read data". ODIS's own EcuDataTransferResultModel reads the coding and adaptation
+# channels of every unit and writes its result protocol (Cod_Anp_<VIN>_<time>.xml, plus the .html
+# view ODIS renders from it), the file the same function can later write back to the units. Its UI
+# action only adds a file dialog and a progress dialog, so the model is driven directly.
+
+def _bundle(name):
+    """The OSGi bundle with symbolic name `name`, to load ODIS classes no service hands out."""
+    for b in get_context().getBundles():
+        if b.getSymbolicName() == name:
+            return b
+    raise Exception("ODIS has no bundle %s" % name)
+
+
+def handle_car_backup(cmd):
+    """Reads coding and adaptations of the units at cmd["addresses"] (unit addresses as numbers;
+    without them, the units ODIS itself lists for the function) into a new result protocol in
+    cmd["dir"], as a background job. cmd["coding"], cmd["adaptation"] and cmd["kwp"] (read KWP units
+    too) default to true, as the checkboxes of 046.01 are ticked for a full backup. Only reads."""
+    from java.lang import Class
+    from java.util import ArrayList
+    from org.eclipse.core.runtime import NullProgressMonitor
+    out_dir = cmd.get("dir") or ""
+    if not out_dir:
+        return {"ok": False, "error": "missing dir (the folder for the backup file)"}
+    business = _bundle("de.volkswagen.odis.vaudas.business")
+    unit_class = business.loadClass("de.volkswagen.odis.vaudas.business.zecret.UiControlUnitImpl")
+    wrap = [c for c in Class.getConstructors(unit_class) if len(c.getParameterTypes()) == 1][0]
+    ecus = list(session_vehicle().getActualECUs() or [])
+    if not ecus:
+        return {"ok": False, "error": "ODIS has no units for this vehicle; load the vehicle project first"}
+    units = [wrap.newInstance([e]) for e in ecus]
+    model_class = _bundle("de.volkswagen.odis.vaudas.business.vehiclefunction").loadClass(
+        "de.volkswagen.odis.vaudas.business.vehiclefunction.zecret.ecudatatransfer.EcuDataTransferResultModel")
+    empty = Class.getField(business.loadClass("de.volkswagen.odis.vaudas.i18n.Messages"), "EMPTY_TEXT_ID").get(None)
+    # The model belongs to a unit, as every self-diagnosis function does; the gateway's, as in ODIS.
+    gateway = ([u for u in units if u.getAddress() == 0x19] or units)[0]
+    model = Class.getConstructors(model_class)[0].newInstance([gateway, empty, empty])
+    model.setActive(True)
+    if cmd.get("addresses"):
+        want = set(int(a) for a in cmd["addresses"])
+        chosen = ArrayList()
+        for u in units:
+            if u.getAddress() in want:
+                chosen.add(u)
+        model.setVisibleControlUnits(chosen)
+    chosen = list(model.getVisibleControlUnits() or [])
+    if not chosen:
+        model.setActive(False)
+        return {"ok": False, "error": "no units to back up: none of the addresses is a unit of the vehicle project"}
+    if cmd.get("coding", True):
+        model.selectCodingForAll()
+    if cmd.get("adaptation", True):
+        model.selectAdaptationForAll()
+    model.setSelectKwp(bool(cmd.get("kwp", True)))
+    if not model.isReadDataOfControlUnitsPossible():
+        model.setActive(False)
+        return {"ok": False, "error": "ODIS cannot read the backup now (choose coding, adaptations or both)"}
+    vin = unicode(model.getVIN() or "").strip()
+    path = os.path.join(out_dir, "Cod_Anp_%s%s.xml" % (vin + "_" if vin else "", time.strftime("%Y%m%dT%H%M%S")))
+    model.setProtFilePath(path)
+
+    def job(progress, jid):
+        # ODIS reports each unit through the monitor; a cancelled job stops it between units. The
+        # fields are underscore-named so they do not hide the monitor's own methods (done()).
+        class Monitor(NullProgressMonitor):
+            _total, _worked = 0, 0
+
+            def beginTask(self, name, total):
+                self._total, self._worked = total, 0
+                progress(1, unicode(name or "Reading the units"), "reading")
+
+            def subTask(self, name):
+                if name:
+                    progress(None, unicode(name))
+
+            def setTaskName(self, name):
+                self.subTask(name)
+
+            def worked(self, n):
+                self._worked += n
+                if self._total > 0:
+                    progress(min(99, int(100.0 * self._worked / self._total)))
+
+            def isCanceled(self):
+                return _job_cancelled(jid)
+
+        progress(0, "Reading coding and adaptations of %d units" % len(chosen), "reading")
+        try:
+            model.readEcuTransferData(Monitor())
+        finally:
+            model.setActive(False)
+        if _job_cancelled(jid):
+            raise Exception("cancelled")
+        if not os.path.exists(path):
+            raise Exception("ODIS wrote no backup file (see its engine.log)")
+        html = path[:-4] + ".html"
+        progress(100, "Backup saved", "done")
+        return {"xml": path, "html": html if os.path.exists(html) else None, "vin": vin, "units": len(chosen)}
+
+    return {"ok": True, "job_id": run_background(job, cmd), "file": path, "units": len(chosen)}
+
+
 def handle_project_state(cmd):
     """Read-only: the current/available vehicle project, to design offline simulation."""
     from de.volkswagen.odis.vaudas.vehiclefunction.automation.IDiagnosticInterface import Factory
@@ -3105,6 +3209,7 @@ HANDLERS = {
     "gf_functions": handle_gf_functions,
     "cp_probe": handle_cp_probe,
     "gf_run": handle_gf_run,
+    "car_backup": handle_car_backup,
     "job_answer": handle_job_answer,
     "fault_guidance": handle_fault_guidance,
     "service_methods": handle_service_methods,

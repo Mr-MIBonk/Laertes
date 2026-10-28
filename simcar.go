@@ -221,9 +221,23 @@ func gatewayLists(car scanCar, gw scanUnit) map[string][]byte {
 	if err != nil || len(coded) == 0 {
 		coded = append([]byte(nil), present...)
 	}
+	for len(coded) < 32 {
+		coded = append(coded, 0)
+	}
 	dtcs := bits(func(u scanUnit) bool { return len(u.Faults) > 0 })
 	if len(gw.Faults) > 0 {
 		dtcs[0] |= 1
+	}
+	// The gateway's own node is the root of ODIS's unit tree: unless it is coded and present, ODIS
+	// logs "Root entry for gateway tree is not coded - Cannot create tree" and keeps no unit at all
+	// (every unit then has "no runtime data"). VCDS's GVL leaves it out, so it is added here.
+	if gw.Node > 0 && gw.Node < 256 {
+		bit := byte(1 << (gw.Node % 8))
+		coded[gw.Node/8] |= bit
+		present[gw.Node/8] |= bit
+		if len(gw.Faults) > 0 {
+			dtcs[gw.Node/8] |= bit
+		}
 	}
 	// Every list has the same 256 slots, one per node address: ODIS's job turns slot i of each list
 	// into one entry and fails when a byte list is shorter than the bit lists.
@@ -232,6 +246,9 @@ func gatewayLists(car scanCar, gw scanUnit) map[string][]byte {
 		nodes[i] = byte(i)
 	}
 	prot[0], ids[0] = 0x01, 0x19 // the gateway: ISO-TP, bus master (bus type 0)
+	if gw.Node > 0 && gw.Node < 256 {
+		prot[gw.Node], ids[gw.Node], bus[gw.Node] = 0x01, 0x19, 0x10
+	}
 	for _, u := range units {
 		addr, _ := strconv.ParseUint(u.Address, 16, 8)
 		prot[u.Node] = 0x01 // diagnostic protocol: ISO-TP
