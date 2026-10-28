@@ -517,11 +517,58 @@ def handle_read_coding_values(cmd):
         context.ungetService(uds_ref)
 
 
+def odis_version_text(major, minor, micro):
+    """ODIS's product bundles carry its version as one number, two digits each for major, minor and
+    patch, then the build: 220000.401.0 -> "22.0.0 build 401" (as odisVersion in odis.go)."""
+    if major < 10000:
+        return "%d.%d.%d" % (major, minor, micro)
+    text = "%d.%d.%d" % (major // 10000, major // 100 % 100, major % 100)
+    if minor:
+        text += " build %d" % minor
+    return text
+
+
+def running_odis():
+    """The version and product ("OE"/"OS") of the ODIS this bridge runs in, from its OSGi bundles
+    (the ECU communication framework, versioned like the product in ODIS-E and ODIS-S) and its
+    install folder. Either is "" when it cannot be told."""
+    version = ""
+    try:
+        best = None
+        for b in get_context().getBundles():
+            name = b.getSymbolicName() or ""
+            v = b.getVersion()
+            if name == "de.volkswagen.odis.vaudas.ecucomframework.interface":
+                best = v
+                break
+            if name.startswith("de.volkswagen.odis.") and v.getMajor() >= 10000 and (best is None or v.compareTo(best) > 0):
+                best = v
+        if best is not None:
+            version = odis_version_text(best.getMajor(), best.getMinor(), best.getMicro())
+    except Throwable:
+        pass
+    except Exception:
+        pass
+    product = ""
+    from java.lang import System
+    area = (System.getProperty("osgi.install.area") or System.getProperty("user.dir") or "").replace("/", "\\").upper()
+    for p in ("OS", "OE"):
+        if ("\\" + p + "\\") in area or area.endswith("\\" + p):
+            product = p
+    return version, product
+
+
 def handle_ping(cmd):
+    # Kept across reloads of this file: the running ODIS does not change under the bridge.
+    if not _KEEP.get("odis"):
+        _KEEP["odis"] = running_odis()
+    version, product = _KEEP["odis"]
     return {
         "ok": True,
         "pong": True,
         "bridge": "odis-jython-tcp",
+        "odis_version": version,
+        "odis_product": product,
         "actions": sorted(HANDLERS.keys())
     }
 

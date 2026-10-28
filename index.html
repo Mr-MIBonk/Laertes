@@ -219,7 +219,7 @@ input[type=text]:focus { outline:1px solid var(--accent); }
 .help li { margin:3px 0; }
 .help dt { font-weight:bold; margin-top:10px; }
 .help dd { margin:2px 0 0 18px; }
-.help code { font:12.5px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
+.help code, .help kbd { font:12.5px Consolas, monospace; background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:0 4px; }
 .db td.mono { font-family:Consolas, monospace; white-space:nowrap; }
 /* Trouble-code catalog: several columns on wide screens; an opened code expands in place. */
 @media (min-width:1300px) { .dtclist { display:grid; grid-template-columns:repeat(auto-fill, minmax(600px, 1fr)); column-gap:24px; align-items:start; } }
@@ -265,6 +265,7 @@ body.busy button.op { opacity:.45; cursor:progress; }
 .activity .head { position:sticky; top:0; display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
 .activity .head b { flex:1; }
 .activity .row { display:grid; grid-template-columns:62px 20px 1fr auto; gap:6px; padding:5px 12px; border-bottom:1px solid var(--line); }
+.activity .row .retry { grid-column:3 / -1; justify-self:start; padding:1px 8px; font-size:12px; }
 .activity .row .t, .activity .row .ms { color:var(--muted); font:12px Consolas, monospace; white-space:nowrap; }
 .activity .row .x { white-space:pre-wrap; word-break:break-word; }
 .activity .row.err .x { color:var(--warn); }
@@ -335,6 +336,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <span id="conn" class="conn wait"><span class="dot"></span><span class="txt">ODIS bridge…</span></span>
   <span id="veh" class="veh" hidden></span>
   <span id="vciState" class="veh" hidden></span>
+  <button id="linksState" class="vcibtn" hidden onclick="showTab('rules')"></button>
   <button id="ignBtn" class="vcibtn" hidden onclick="toggleIgnition()"></button>
   <button id="resetVci" class="vcibtn" hidden onclick="resetVci()" title="Restart the vehicle communication interface (VCI)">↻ Restart VCI</button>
   <button id="startBridge" class="vcibtn" hidden onclick="startBridge(false)" title="Start ODIS in the background with your own VCI and run the bridge macro in it (ODIS must not be open with its window)">▶ Start bridge</button>
@@ -342,6 +344,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
   <button id="stopBridge" class="vcibtn warn" hidden onclick="stopBridge()" title="End the bridge macro so ODIS can be operated again">■ Stop bridge</button>
   <button id="actBtn" class="vcibtn" onclick="toggleActivity()" title="Activity: what Laertes did in this session (operations, results, messages, bridge)">📋<span class="badge" hidden></span></button>
   <select id="odisProduct" class="vcibtn" onchange="setOdisProduct(this.value)" title="Which ODIS installation Laertes drives: ODIS-E (Engineering, C:\Program Files\OE) or ODIS-S (Service, C:\Program Files\OS). ODIS-S runs guided functions such as component protection. Stop the bridge before switching; it applies on the next start. Note: ODIS-S shows a disclaimer dialog at startup that you must accept for the bridge to connect."><option value="OE">E</option><option value="OS">S</option></select>
+  <span id="odisVer" class="ver" hidden></span>
   <span id="ver" class="ver" title="Laertes version"></span>
   </div></nav>
 <div id="startProgress" hidden aria-hidden="true"><div class="fill"></div></div>
@@ -357,7 +360,6 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <div class="bar"><button class="op" onclick="quickScan()" title="Ask the gateway which units are installed, then identify only those (real cars)">Quick scan</button>
       <button class="op" onclick="scanAll()" title="Read the identification of every listed unit">Scan all</button>
       <button class="op" onclick="scanAllDtcs()" title="Read the fault memory of every listed unit and compare with the previous press">Scan all unit DTCs</button>
-      <button class="op" onclick="op('Coding links', buildProjectLinks)" title="Read every unit's coding definition and trouble codes from the ODIS database (about a minute, no car needed) and link each missing-message fault to the coding setting, in any unit, that says whether its partner is fitted">Coding links across units</button>
       <button class="op" onclick="fullScan()" title="Identification, coding and faults of every listed unit, as a VCDS-style Auto-Scan log">Full scan</button>
       <button class="op" id="retroStartBtn" onclick="retrofitStart()" title="Scan the car, then group all following changes under one name and ignore the faults found now">Start retrofit…</button>
       <span class="status" id="unitsMsg"></span></div>
@@ -493,6 +495,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       disconnects. The red badge counts errors you have not seen yet; <b>Clear</b> empties the list.</dd>
     <dt>E / S</dt>
     <dd>ODIS-E or ODIS-S, see above.</dd>
+    <dt>ODIS-E 22.0.0</dt>
+    <dd>The version of the running ODIS, reported by the bridge (shown while it is connected); then the Laertes version.</dd>
     <dt>📄 ODIS logs</dt>
     <dd>The button at the top right opens the <code>engine.log</code> of the selected ODIS in its default viewer, to see what ODIS
       itself is doing (startup, errors).</dd>
@@ -516,7 +520,8 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <dd>Reads the fault memory of every listed unit and shows, on every press, how many faults are new (+) or gone (−) since the
       press before.</dd>
     <dt>Coding links across units</dt>
-    <dd>Reads every unit's coding definition and trouble codes from the ODIS database (about a minute; no car needed) and links
+    <dd>Built automatically whenever the bridge connects (and again when another vehicle project is loaded), in the background
+      while you work; the top bar shows <b>🔗 Coding links 5/32</b> while it runs (click it for the Rules tab): reads every unit's coding definition and trouble codes from the ODIS database (about a minute) and links
       each missing-message fault to the coding setting, in any unit, that says whether its partner is fitted — e.g. the cluster's
       <i>Kessy_04 fehlende Botschaft</i> to Kessy in the central electronics. Faults and coding settings then show these links
       with the other unit's address; Help lists how many were found.</dd>
@@ -630,7 +635,7 @@ button.exp { border-color:var(--chg); color:var(--chg); }
       built-in rule has <b>Reset</b>, and deleted built-ins can be restored. Patterns are case-insensitive regular expressions; addresses
       are hex, separated by commas. A case can also name its faults by <b>codes</b>: an SAE code (<code>U112100</code>, or <code>U1121</code>
       for every fault type) or the VW fault number VCDS lists first (<code>559893</code>). Faults show all three forms
-      (<code>U112100</code>, <code>U1121 00</code>, <code>VCDS 559893</code>), and the code searches take any of them. Once <b>Coding links across units</b> is built, its links are listed too: <b>Hide</b> one that is
+      (<code>U112100</code>, <code>U1121 00</code>, <code>VCDS 559893</code>), and the code searches take any of them. Once the coding links across units are built (automatically, when the bridge connects), their links are listed too: <b>Hide</b> one that is
       wrong and it stops showing in the hints.</dd>
     <dt>Coverage</dt>
     <dd>Whether the coding of every project unit can be shown as text. <b>Check coverage</b> reads, from the ODIS database, every ECU
@@ -824,6 +829,14 @@ button.exp { border-color:var(--chg); color:var(--chg); }
     <li>Hover a parameter for help: its ODX name, current value, bit position and possible values.</li>
     <li>The filter fields above long lists (units, channels, groups, variants, table rows, trouble codes) narrow them as you
       type.</li>
+    <li>Keyboard: <kbd>/</kbd> jumps to the search or filter field of the open tab, <kbd>↑</kbd>/<kbd>↓</kbd> step through
+      the units in Project units, <kbd>Esc</kbd> leaves a field and closes 📋 Activity or the message at the bottom.</li>
+    <li>The filters are kept when the page is reloaded: Project units (with <i>responded only</i> and the selected unit),
+      Coverage, Rules, History, Retrofit, CP and the VCI CAN panel.</li>
+    <li>A read that failed (loading, reading, searching, a scan) has <b>↻ Retry</b> in 📋 Activity. Writes, clears and
+      routines do not: start them again yourself, so they ask for confirmation.</li>
+    <li>The browser tab's title shows the operation that runs; one that ends while you are in another tab marks the title with
+      ✔ or ✖ until you come back. Closing the page while an operation runs asks first.</li>
     <li>Laertes serves one browser page at a time, because two pages driving ODIS would interfere. Another page shows
       <i>Single access limit</i>; <b>Use Laertes here</b> takes over.</li>
   </ul>
@@ -1193,6 +1206,9 @@ async function trTable(btn, i) {
 // runs, starting another is refused; the top bar shows what runs and Stop cancels long scans
 // and live views after their current step.
 let busy = null;
+// Operations that only read (from a unit, ODIS or its database) can be retried from 📋 Activity when
+// they fail; writes, clears, routines and uploads cannot, so they go through their confirmation again.
+const RETRY_RE = /^(Loading|Reading|Searching|Looking up|Checking|Identifying|Opening|ODIS guidance|Scan all|Quick scan|Full scan|Find component protection|Car backup)/;
 async function op(label, fn) {
   if (busy) { toast(`Busy: ${busy.label}. Wait for it to finish or press Stop.`, true); return; }
   const o = busy = {label, cancelled: false, onCancel: null, started: Date.now()};
@@ -1205,12 +1221,33 @@ async function op(label, fn) {
     return r;
   } catch (e) {
     entry.kind = 'err'; entry.text = label + ': ' + e.message;
+    if (RETRY_RE.test(label)) entry.retry = () => op(label, fn);
     toast(e.message, true, true);
   } finally {
     entry.ms = Date.now() - o.started; renderActivity();
     clearInterval(timer); busy = null; renderBusy();
+    // A longer operation that ended while this page was in the background marks the browser tab.
+    if (document.hidden && entry.ms > 5000) { titleDone = `${ACT_ICON[entry.kind]} ${busyTitle(o.label)}`; renderTitle(); }
   }
 }
+
+// The search and filter fields of the tabs survive a reload of the page: keptFilter reads one
+// (called while the tabs' state is set up), keepFilter stores what was typed and returns it.
+function keptFilter(name) { try { return JSON.parse(localStorage.getItem('filters') || '{}')[name] || ''; } catch (e) { return ''; } }
+function keepFilter(name, value) {
+  try { const f = JSON.parse(localStorage.getItem('filters') || '{}'); f[name] = value; localStorage.setItem('filters', JSON.stringify(f)); } catch (e) {}
+  return value;
+}
+// The browser tab's title: the running operation, or how the last one ended while the page was in
+// the background (until it is looked at again).
+let titleDone = '';
+const busyTitle = label => label.length > 40 ? label.slice(0, 39) + '…' : label;
+function renderTitle() {
+  document.title = busy ? `⏳ ${busyTitle(busy.label)} — Laertes` : titleDone ? `${titleDone} — Laertes` : 'Laertes';
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && titleDone) { titleDone = ''; renderTitle(); } });
+// Closing or reloading the page while an operation runs (a write, a flash, a scan) asks first.
+window.addEventListener('beforeunload', e => { if (busy) { e.preventDefault(); e.returnValue = ''; } });
 
 // Activity log: what happened in this page session, newest first, from 📋 Activity in the top bar.
 // Operations (with their outcome and duration), messages and changes of the bridge are recorded;
@@ -1234,11 +1271,19 @@ function renderActivity() {
   const fmtMs = ms => ms == null ? '' : ms < 1000 ? ms + ' ms' : ms < 60000 ? (ms / 1000).toFixed(1) + ' s' : Math.floor(ms / 60000) + ' min ' + Math.round(ms / 1000 % 60) + ' s';
   const rows = activity.map(e => `<div class="row ${e.kind}" title="${esc(e.at.toLocaleString())}"><span class="t">${e.at.toLocaleTimeString()}</span>`
     + `<span class="i">${ACT_ICON[e.kind] || ''}</span><span class="x">${esc(e.text)}</span>`
-    + `<span class="ms">${e.kind === 'run' ? 'running…' : fmtMs(e.ms)}</span></div>`).join('');
+    + `<span class="ms">${e.kind === 'run' ? 'running…' : fmtMs(e.ms)}</span>`
+    + (e.kind === 'err' && e.retry ? `<button class="retry" onclick="retryActivity(${activity.indexOf(e)})" title="Run it again">↻ Retry</button>` : '')
+    + `</div>`).join('');
   el.innerHTML = `<div class="head"><b>Activity</b><span class="meta">this session, newest first</span>
     <button onclick="activity.length = 0; renderActivity()" title="Empty the list">Clear</button>
     <button onclick="toggleActivity()" title="Close">✕</button></div>`
     + (rows || '<div class="empty meta">Nothing yet. Operations, their results and messages appear here.</div>');
+}
+function retryActivity(i) {
+  const e = activity[i];
+  if (!e || !e.retry) return;
+  const again = e.retry; e.retry = null;  // once: a new entry records the new run
+  renderActivity(); again();
 }
 function toggleActivity() {
   const el = $('#activity');
@@ -1263,6 +1308,7 @@ function cancelOp() {
 function renderBusy() {
   $('#busy').hidden = !busy;
   if (busy) { $('#busy .txt').textContent = busy.label; renderBusyTime(); }
+  renderTitle();
   document.body.classList.toggle('busy', !!busy);
 }
 
@@ -1278,7 +1324,8 @@ async function pingBridge() {
   vci.hidden = false; vci.textContent = '🔌 ' + vciName; vci.classList.add('off');
   vci.title = 'VCI selected in ODIS: ' + vciName;
   try {
-    await api('POST', '/api/bridge', {action: 'ping'});
+    const pong = await api('POST', '/api/bridge', {action: 'ping'});
+    renderOdisVersion(o, pong);
     bridgeEvent('on', 'bridge', 'ODIS bridge connected' + (o.took ? ` (started in ${Math.round(o.took)} s)` : ''));
     el.className = 'conn on'; txt.textContent = 'ODIS bridge';
     el.title = 'Connected to the ODIS bridge (mcpserver.py).' + (o.took ? ` Started in ${Math.round(o.took)} s.` : '');
@@ -1290,6 +1337,7 @@ async function pingBridge() {
       veh.hidden = false; veh.textContent = v.project ? '🚗 ' + v.project : 'no vehicle';
       veh.title = v.project ? `Vehicle project loaded in ODIS. Every unit, trouble code and coding definition Laertes shows comes from ${v.project}.` : 'No vehicle project loaded in ODIS';
       renderProjectNotes();
+      autoProjectLinks(v.project || '');
     } catch (e) { veh.hidden = true; }
     try {
       const c = await api('POST', '/api/bridge', {action: 'vci'});
@@ -1304,6 +1352,8 @@ async function pingBridge() {
     el.className = 'conn off'; txt.textContent = 'ODIS bridge offline'; el.title = e.message;
     $('#stopBridge').hidden = true; $('#resetVci').hidden = true;
     veh.hidden = true;
+    renderOdisVersion(o, null);
+    if (linksBuild) linksBuild.cancelled = true;
     // Laertes may be starting the bridge itself (ODIS in the background, see odis.go).
     $('#startBridge').hidden = $('#startVirtual').hidden = o.state === 'starting';
     if (o.state === 'starting') { el.className = 'conn wait'; el.title = 'Laertes is starting ODIS and the bridge macro.' + (o.product === 'OS' ? '\n\nODIS-S: accept the disclaimer dialog in the ODIS-S window — the bridge connects only after you do.' : ''); startTimer(o); }
@@ -1313,6 +1363,16 @@ async function pingBridge() {
   }
 }
 let odisShown = '';
+// The version of the running ODIS, as the bridge reports it (pong, the ping reply); hidden while
+// the bridge is not connected or reports none.
+function renderOdisVersion(o, pong) {
+  const el = $('#odisVer'), v = pong && pong.odis_version;
+  el.hidden = !v;
+  if (!v) return;
+  const name = (pong.odis_product || o.product) === 'OS' ? 'ODIS-S' : 'ODIS-E';
+  el.textContent = name + ' ' + v;
+  el.title = `${name} ${v}, reported by the running ODIS through the bridge`;
+}
 // The Ignition button: shown while ODIS runs on Laertes's VCI with the clamp 15 wake-up; switches
 // the periodic wake-up frame on and off without restarting anything.
 let ignitionOn = false;
@@ -2008,7 +2068,7 @@ function loadVciTab() {
       <button onclick="toggleCanPanel(false)" title="Hide the panel; the page takes the full width again (◀ CAN on the right edge brings it back; recording continues)">▶ Hide</button></div>
     <div class="meta">Recorded all the time, also while hidden. Only the virtual VCI is traced; a real VCI is not.</div>
     <div class="bar"><button title="Stop updating the table (recording continues in the background)" id="vciPauseBtn" onclick="toggleVciPause()">⏸ Pause</button><button title="Empty the CAN trace file" onclick="clearVci()">Clear</button>
-      <input title="Show only messages containing this text (CAN ID, service, DID, meaning)" id="vciFilter" type="search" placeholder="Filter: CAN ID, service, DID…" oninput="pollVci(true)" style="width:220px">
+      <input title="Show only messages containing this text (CAN ID, service, DID, meaning)" id="vciFilter" type="search" placeholder="Filter: CAN ID, service, DID…" value="${esc(keptFilter('vciFilter'))}" oninput="keepFilter('vciFilter', this.value); pollVci(true)" style="width:220px">
       <label><input type="checkbox" id="vciEvents" onchange="pollVci(true)"> Setup events (connect, filters, ioctls)</label>
       <label title="The periodic clamp 15 frame (Settings › Clamp 15 wake-up); only the latest are kept"><input type="checkbox" id="vciWake" onchange="pollVci(true)"> Wake-up frames</label>
       <button onclick="copyEl($('#vciRows'))" title="Copy the messages shown (tab-separated, for a spreadsheet or a text file)">⧉ Copy</button>
@@ -2131,6 +2191,8 @@ function unitsStatus(text, err) { const m = $('#unitsMsg'); m.textContent = text
 // ODX variant); without a vehicle session, the plain project plan.
 async function loadUnits() {
   unitsStatus('Loading units from ODIS…');
+  // The selection follows the unit's address: a reloaded list may order or number units differently.
+  const selAddr = ((units || []).find(u => u.index === unitSel) || {}).id || unitPrefs.addr;
   try {
     let res, source = 'session vehicle';
     try { res = await bridge({action: 'list_vehicle_ecus'}); }
@@ -2143,6 +2205,9 @@ async function loadUnits() {
     unitsStatus(`${units.length} units from the ${source}, ${known} identified`);
   } catch (e) { units = units || []; unitsStatus(e.message, true); }
   units.forEach(u => { const f = unitScan[u.id] && unitScan[u.id].faults; if (f) countFaults(u, f); });
+  const sel = selAddr && units.find(u => u.id === selAddr);
+  if (sel && sel.index !== unitSel) { unitSel = sel.index; unitPath = []; unitReport = null; }
+  else if (!sel) unitSel = null;
   renderUnitList(); renderUnitDetail();
 }
 
@@ -2186,7 +2251,17 @@ function listedUnits() {
   const q = $('#unitFilter').value.trim().toLowerCase(), onlyResp = $('#unitResponded').checked;
   return (units || []).filter(u => (!q || (u.repr + ' ' + u.system + ' ' + u.variant).toLowerCase().includes(q)) && (!onlyResp || responded(u)));
 }
+// The filter, "responded only" and the selected unit's address survive a reload of the page.
+const unitPrefs = {filter: '', responded: false, addr: ''};
+try { Object.assign(unitPrefs, JSON.parse(localStorage.getItem('unitPrefs') || '{}')); } catch (e) {}
+function saveUnitPrefs() {
+  unitPrefs.filter = $('#unitFilter').value; unitPrefs.responded = $('#unitResponded').checked;
+  const u = (units || []).find(u => u.index === unitSel);
+  if (u) unitPrefs.addr = u.id;
+  try { localStorage.setItem('unitPrefs', JSON.stringify(unitPrefs)); } catch (e) {}
+}
 function renderUnitList() {
+  saveUnitPrefs();
   const table = $('table.unitlist');
   table.querySelectorAll('tbody.unit').forEach(b => b.remove());
   const rows = listedUnits()
@@ -2201,7 +2276,17 @@ function renderUnitList() {
   table.insertAdjacentHTML('beforeend', rows);
 }
 
-function selectUnit(index) { unitSel = index; unitPath = []; unitReport = null; renderUnitList(); renderUnitDetail(); }
+function selectUnit(index) {
+  unitSel = index; unitPath = []; unitReport = null; renderUnitList(); renderUnitDetail();
+  const row = $('table.unitlist tbody.unit.sel');
+  if (row) row.scrollIntoView({block: 'nearest'});
+}
+// ↑/↓ in Project units: the previous or next listed unit.
+function stepUnit(d) {
+  const list = listedUnits(); if (!list.length) return;
+  const i = list.findIndex(u => u.index === unitSel);
+  selectUnit(list[i < 0 ? (d > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, i + d))].index);
+}
 
 function valsTable(rows) {
   return copyNext(`<table class="vals">${rows.map(r => r.head ? `<tr><th colspan="3">${esc(r.head)}</th></tr>`
@@ -2682,7 +2767,7 @@ function knownLinksHelpHTML() {
   return `Every coding setting is matched by name against the trouble codes of its variant (${LINK_STOP.size} generic words ignored).
     On top of that <b>${st.cases} known cases</b> and <b>${st.senders} message senders</b> cover ${st.addrs} unit addresses
     (${st.edited} edited by you). See and edit them in the <a href="#" onclick="showTab('rules'); return false">Rules</a> tab, which also lists
-    the coding links across units once built.`;
+    the coding links across units, built automatically when the bridge connects.`;
 }
 // The hint under a fault read at addr:the coding options its text names, the known cases it
 // matches, or that it reports the coding itself.
@@ -2736,8 +2821,9 @@ async function unitLinks(u) {
 
 // Cross-unit links: a missing-message fault names its partner, often by CAN message (Kessy_04,
 // Klima_12, ESP_21: the leading word), and another unit's coding says whether that partner is
-// fitted (an option with an installed/verbaut choice whose name holds the word). Built on demand from
-// every project unit's ODIS data (Project units → Coding links across units), kept for the session.
+// fitted (an option with an installed/verbaut choice whose name holds the word). Built from
+// every project unit's ODIS data in the background whenever the bridge connects or loads another
+// vehicle project (autoProjectLinks), kept for the session.
 const PRESENT_RE = /install|verbau|vorhanden|available|fitted|present|mounted/i;
 const PARTNER_STOP = new Set(`gateway diagnose systeminfo klemmen status data message messages time bap baperr processing unit
   mode door mirror sign stop function drive wheel signaler air memory radio light fan blue belt locking park wind window warning
@@ -2769,13 +2855,46 @@ function crossUnitLinks(cats) {
   }
   return pairs;
 }
-let projectLinks = null;  // {pairs, units, at} once built
+let projectLinks = null;  // {pairs, units, project, at} once built
+// The running background build ({project, label, cancelled}), or null. It runs outside op() so
+// it never blocks the user's operations; a lost bridge or another project cancels it.
+let linksBuild = null;
+function autoProjectLinks(project) {
+  if (linksBuild && linksBuild.project === project) return;
+  if (!linksBuild && projectLinks && projectLinks.project === project) return;
+  // Another project than the last build's: its unit list is stale, so it is read again.
+  const prev = linksBuild ? linksBuild.project : projectLinks ? projectLinks.project : null;
+  if (linksBuild) linksBuild.cancelled = true;
+  const o = linksBuild = {project, label: 'Building coding links across units…', cancelled: false, reload: prev !== null && prev !== project, done: 0, total: 0};
+  renderLinksState();
+  const entry = logActivity('run', 'Coding links across units' + (project ? ' (' + project + ')' : ''));
+  const started = Date.now();
+  buildProjectLinks(o).then(() => { entry.kind = o.cancelled ? 'stop' : 'ok'; },
+    e => { entry.kind = 'err'; entry.text += ': ' + e.message; })
+    .finally(() => { entry.ms = Date.now() - started; renderActivity(); if (linksBuild === o) linksBuild = null; renderLinksState(); });
+  entry.retry = rebuildProjectLinks;
+}
+// The top bar shows a running build of the coding links with its progress; a click opens Rules.
+function renderLinksState() {
+  const b = $('#linksState');
+  b.hidden = !linksBuild;
+  if (!linksBuild) return;
+  b.textContent = '🔗 Coding links ' + (linksBuild.total ? `${linksBuild.done}/${linksBuild.total}` : '…');
+  b.title = linksBuild.label + '\nIn the background: other operations can run meanwhile. Click to open the Rules tab, which lists the links once built.';
+}
+function rebuildProjectLinks() {
+  if (linksBuild) { toast(linksBuild.label); return; }
+  const p = projectLinks ? projectLinks.project : '';
+  projectLinks = null; autoProjectLinks(p);
+  if (activeTab === 'rules') renderRules();
+}
 async function buildProjectLinks(o) {
-  if (!units || !units.length) await loadUnits();
+  if (!units || !units.length || o.reload) await loadUnits();
   const cats = [];
   for (const [i, u] of units.entries()) {
     if (o.cancelled) return;
-    opLabel(`Coding links: unit ${i + 1} of ${units.length} (${u.id})`);
+    o.label = `Building coding links across units: unit ${i + 1} of ${units.length} (${u.id})…`;
+    o.done = i; o.total = units.length; renderLinksState();
     try {
       // The car's variant when ODIS identified it, else the database's newest for this address.
       let v = u.variant ? {variant: u.variant} : null;
@@ -2787,7 +2906,8 @@ async function buildProjectLinks(o) {
     } catch (e) { /* unit without database data: skip it */ }
   }
   const pairs = crossUnitLinks(cats);
-  projectLinks = {pairs, units: cats.length, at: new Date()};
+  if (o.cancelled) return;
+  projectLinks = {pairs, units: cats.length, project: o.project, at: new Date()};
   toast(`Coding links: ${pairs.length} between faults and coding settings, ${pairs.filter(p => p.faultAt !== p.optionAt).length} across units, from ${cats.length} units.`);
   renderUnitDetail();
   if (activeTab === 'dtc') renderDtc();
@@ -2810,7 +2930,7 @@ const crossForOption = (name, addr) => projectLinks && hexAddr(addr) !== null
 // that could lend one). The car's own variant, when ODIS identified it, comes first.
 // The last check is kept in laertes.db, so the list shows without the bridge; the user's own
 // coverage (borrowed definitions, .lbl labels) is always read fresh.
-let coverage = null, covMissingOnly = true, covQ = '';
+let coverage = null, covMissingOnly = true, covQ = keptFilter('covQ');
 async function coverageFrom(cunits, at) {
   const [prefs, sets] = await Promise.all([api('GET', '/api/coding-prefs'), api('GET', '/api/labels/summary')]);
   const labels = new Map();
@@ -2896,7 +3016,7 @@ function renderCoverage() {
       shown as text — an ODIS definition, one borrowed from a related variant, or your .lbl labels.</div>
     <div class="bar"><button class="op" onclick="op('Checking coding coverage', loadCoverage)" title="Read the textual coding definition of every variant of every project unit from the ODIS database (needs the bridge; can take a minute)">${coverage && coverage.units ? 'Check again' : 'Check coverage'}</button>
       <label><input type="checkbox" ${covMissingOnly ? 'checked' : ''} onchange="covMissingOnly = this.checked; renderCoverage()"> only variants without an ODIS definition</label>
-      <input placeholder="Filter unit, address or variant" value="${esc(covQ)}" oninput="covQ = this.value; renderCoverageList()" style="max-width:260px"></div>`;
+      <input placeholder="Filter unit, address or variant" value="${esc(covQ)}" oninput="covQ = keepFilter('covQ', this.value); renderCoverageList()" style="max-width:260px"></div>`;
   if (!coverage) html += '<div class="meta">Not checked yet.</div>';
   else if (coverage.busy) html += '<div class="meta">Reading every variant\'s coding definition from the ODIS database…</div>';
   else if (coverage.err) html += `<div class="status err">${esc(coverage.err)}</div>`;
@@ -2939,7 +3059,7 @@ function renderCoverageList() {
 // shows the causes of each fault it stands for; a typed fault text shows what the rules say about it.
 const linkKey = p => `${addrText(p.faultAt)}|${p.code}|${p.text}|${addrText(p.optionAt)}|${p.param.long_name || p.param.name}`;
 const linkHidden = p => (ruleEdits.hidden || []).includes(linkKey(p));
-let rulesQ = '', ruleDraft = null, linksQ = '', linksShowHidden = false, shownLinks = [], tryAddr = '', tryText = '', tryCode = '', tryHits = null;
+let rulesQ = keptFilter('rulesQ'), ruleDraft = null, linksQ = keptFilter('linksQ'), linksShowHidden = false, shownLinks = [], tryAddr = '', tryText = '', tryCode = '', tryHits = null;
 // The ODIS database data of a unit address: its variant (the car's when ODIS identified it, else the
 // newest the database has), DTC catalog and textual coding definition. Cached per address.
 const unitDataCache = {};
@@ -2999,16 +3119,16 @@ function renderRules() {
       <input id="tryText" placeholder="or a fault text, e.g. Kessy_04 Datenbus fehlende Botschaft" value="${esc(tryText)}" style="width:30em" oninput="tryText = this.value; renderRuleTry()"></div>
     <div id="ruleTry"></div>
     <h2 class="sub">Known cases</h2>
-    <div class="bar"><input placeholder="Filter rules" value="${esc(rulesQ)}" oninput="rulesQ = this.value; renderRuleTables()" style="max-width:300px">
+    <div class="bar"><input placeholder="Filter rules" value="${esc(rulesQ)}" oninput="rulesQ = keepFilter('rulesQ', this.value); renderRuleTables()" style="max-width:300px">
       <button onclick="ruleNew('case')" title="Add a case of your own">Add case</button><button onclick="ruleNew('sender')" title="Add the sender of a CAN message">Add message sender</button></div>
     <div id="ruleCases"></div>
     <h2 class="sub">Message senders <small class="meta">a missing-message fault naming the message points at its sender</small></h2>
     <div id="ruleSenders"></div>
     <h2 class="sub">Coding links across units <small class="meta">computed from your ODIS database</small></h2>
-    ${pl ? `<div class="bar"><input placeholder="Filter links" value="${esc(linksQ)}" oninput="linksQ = this.value; renderRuleLinks()" style="max-width:300px">
+    ${pl ? `<div class="bar"><input placeholder="Filter links" value="${esc(linksQ)}" oninput="linksQ = keepFilter('linksQ', this.value); renderRuleLinks()" style="max-width:300px">
         <label><input type="checkbox" ${linksShowHidden ? 'checked' : ''} onchange="linksShowHidden = this.checked; renderRuleLinks()"> show hidden</label>
-        <button class="op" onclick="op('Coding links', buildProjectLinks)" title="Build the links again from every unit's ODIS data">Rebuild</button></div><div id="ruleLinks"></div>`
-      : `<div class="meta">Not built yet. <button class="op" onclick="op('Coding links', buildProjectLinks)" title="Read every unit's coding definition and trouble codes from the ODIS database (about a minute, no car needed)">Coding links across units</button></div>`}`;
+        <button onclick="rebuildProjectLinks()" title="Build the links again from every unit's ODIS data, in the background">Rebuild</button></div><div id="ruleLinks"></div>`
+      : `<div class="meta">${linksBuild ? esc(linksBuild.label) : 'Not built yet: they are built automatically once the ODIS bridge connects.'}</div>`}`;
   renderRuleTry(); renderRuleTables(); if (pl) renderRuleLinks();
 }
 function renderRuleTry() {
@@ -3151,7 +3271,7 @@ function diffNew(oldStr, newStr) {
     /^\s*$/.test(tok) ? tok : (tok !== (o[i] || '') ? `<span class="chg">${esc(tok)}</span>` : esc(tok))).join('');
 }
 // History filters: free text over every field (retrofit names included) and one retrofit.
-let histQ = '', histRetro = '', histBaseline = null;
+let histQ = keptFilter('histQ'), histRetro = '', histBaseline = null;
 function historyShown() {
   const q = histQ.trim().toLowerCase();
   return (changes || []).filter(c => (histRetro === '' || String(c.retrofitId) === histRetro)
@@ -3162,7 +3282,7 @@ function renderHistory() {
   if (!el) return;
   const rf = retrofits.find(r => String(r.id) === histRetro);
   el.innerHTML = `<div class="bar"><button title="Read the history again from the database" onclick="loadHistory()">Reload</button>
-      <input type="text" id="histQ" placeholder="Search unit, VIN, value, retrofit name…" value="${esc(histQ)}" oninput="histQ = this.value; renderHistoryRows()" style="max-width:300px">
+      <input type="text" id="histQ" placeholder="Search unit, VIN, value, retrofit name…" value="${esc(histQ)}" oninput="histQ = keepFilter('histQ', this.value); renderHistoryRows()" style="max-width:300px">
       <select onchange="histRetro = this.value; histBaseline = null; renderHistory()" style="max-width:280px">
         <option value="">All changes</option><option value="0" ${histRetro === '0' ? 'selected' : ''}>Outside a retrofit</option>
         ${retrofits.map(r => `<option value="${r.id}" ${String(r.id) === histRetro ? 'selected' : ''}>${esc(r.name)}${r.ended ? '' : ' (active)'}</option>`).join('')}</select>
@@ -3690,7 +3810,7 @@ function decodedTable(hexBytes, table, editable, links, addr, variant) {
   const stats = links || known.size ? `<div class="meta">Trouble code hints: ${links ? `${named.size} of ${ds.length} settings name ${codes.size}
     of the variant's trouble codes` : 'the variant\'s trouble codes are not loaded'}; ${known.size} known case${known.size === 1 ? '' : 's'}
     for this unit (${ruleStats().cases} in all, see the Rules tab); ${projectLinks ? `${crossed.size} faults in other units name a setting here`
-    : 'press <b>Coding links across units</b> in Project units for the faults other units raise'}.</div>` : '';
+    : (linksBuild ? 'coding links across units are being built' : 'the faults other units raise show once the bridge connects and the coding links across units are built')}.</div>` : '';
   return `${stats}<div class="bar">${trTableBtn(texts)}<input type="text" placeholder="Filter settings" oninput="filterRows(this)" title="Show only the settings whose name or value contains this text"></div>
     ${copyNext(`<table class="vals"><tr><th>Parameter</th><th>Value</th><th>Bits</th><th></th></tr>${rows}</table>`, 'Copy the decoded coding')}`;
 }
@@ -4448,7 +4568,7 @@ async function retrofitBaseline(id) {
 // --- Retrofit tab --------------------------------------------------------------------------
 // The setup of a new retrofit (units to cover), or every change of the active retrofit (or of
 // a past one picked here) straight from the database, narrowed by unit, e.g. to the ACC.
-let retroSetup = null, retroView = '', retroChanges = [], retroQ = '', retroBaseline = null;
+let retroSetup = null, retroView = '', retroChanges = [], retroQ = keptFilter('retroQ'), retroBaseline = null;
 const retroShownId = () => retroView || (retrofit ? String(retrofit.id) : retrofits.length ? String(retrofits[0].id) : '');
 const retroUnitsText = r => !r.units || !r.units.length ? 'all units' : r.units.length === 1 ? 'unit ' + r.units[0] : `${r.units.length} units: ${r.units.join(', ')}`;
 async function loadRetrofitTab() {
@@ -4484,7 +4604,7 @@ function renderRetrofitTab() {
       <button title="Read the retrofit&#39;s changes again" onclick="loadRetrofitTab()">Reload</button>
       ${retrofits.length ? `<select onchange="retroView = this.value; retroQ = ''; retroBaseline = null; loadRetrofitTab()" style="max-width:280px">
         ${retrofits.map(r => `<option value="${r.id}" ${String(r.id) === retroShownId() ? 'selected' : ''}>${esc(r.name)}${r.ended ? '' : ' (active)'}</option>`).join('')}</select>` : ''}
-      ${rf ? `<input type="text" placeholder="Search unit, value, setting…" value="${esc(retroQ)}" oninput="retroQ = this.value; renderRetrofitRows()" style="max-width:300px">` : ''}</div>
+      ${rf ? `<input type="text" placeholder="Search unit, value, setting…" value="${esc(retroQ)}" oninput="retroQ = keepFilter('retroQ', this.value); renderRetrofitRows()" style="max-width:300px">` : ''}</div>
     ${rf ? `<div class="retrobar">🔧 <b>${esc(rf.name)}</b><span class="meta">${rf.vin ? 'VIN ' + esc(rf.vin) + ' · ' : ''}${esc(fmtWhen(rf.started))} – ${rf.ended ? esc(fmtWhen(rf.ended)) : 'active'} · ${esc(retroUnitsText(rf))}</span>
       <button title="Give the retrofit another name" onclick="retrofitRename(${rf.id})">Rename…</button><button title="Scan the retrofit&#39;s units again and keep it as the state before the retrofit" onclick="retrofitBaseline(${rf.id})">Scan before the retrofit</button>
       ${rf.ended ? '' : `<button title="End retrofit mode; its changes stay in History" class="warn" onclick="retrofitEnd()">Stop retrofit</button>`}</div>
@@ -4694,7 +4814,7 @@ async function resumeJobs() {
 }
 
 // --- CP tab: component protection (per unit) -----------------------------------------------
-let gfUnit = '5F', cpFilter = '';
+let gfUnit = '5F', cpFilter = keptFilter('cpFilter');
 async function loadCpTab() {
   if (!units) { try { await loadUnits(); } catch (e) {} }
   renderCpTab();
@@ -4710,7 +4830,7 @@ function renderCpTab() {
     <div class="split">
       <div class="split-l">
         <div class="bar">
-          <input type="text" placeholder="Filter units" value="${esc(cpFilter)}" oninput="cpFilter = this.value; renderCpUnits()" ${dis}>
+          <input type="text" placeholder="Filter units" value="${esc(cpFilter)}" oninput="cpFilter = keepFilter('cpFilter', this.value); renderCpUnits()" ${dis}>
           <input id="gfUnit" type="text" placeholder="Address e.g. 5F" value="${esc(gfUnit)}" style="max-width:130px" ${dis} oninput="gfUnit = this.value">
           <button title="Remove component protection from the unit at this address (online, asks first)" class="op" onclick="cpRemove()" ${dis}>Remove component protection…</button></div>
         <div id="cpUnits"></div>
@@ -5510,6 +5630,28 @@ function vehSearch() {
   $('#vehModels').innerHTML = !q ? '' : models.length ? vehModelsTable(models) : '<div class="empty">No model matches.</div>';
 }
 
+// Keyboard: / focuses the current tab's search field, ↑/↓ step through the project units, Esc
+// closes the Activity list or the message (and leaves a field). Keys typed into fields are theirs.
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const t = e.target, typing = t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
+  if (e.key === 'Escape') {
+    if (typing) t.blur();
+    else if (!$('#activity').hidden) toggleActivity();
+    else $('#toast').hidden = true;
+    return;
+  }
+  if (typing) return;
+  const pane = $('#' + TABS[activeTab]);
+  if (e.key === '/') {
+    const f = activeTab === 'units' ? $('#unitFilter') : pane && [...pane.querySelectorAll('input[type=text], input:not([type])')].find(i => i.offsetParent);
+    if (f) { e.preventDefault(); f.focus(); f.select(); }
+  } else if (activeTab === 'units' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault(); stepUnit(e.key === 'ArrowDown' ? 1 : -1);
+  }
+});
+
+$('#unitFilter').value = unitPrefs.filter; $('#unitResponded').checked = !!unitPrefs.responded;
 initDatabaseTabs();
 let startTab = 'coding';
 try { startTab = localStorage.getItem('tab') || 'coding'; } catch (e) {}
